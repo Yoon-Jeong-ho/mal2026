@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import types
 from pathlib import Path
 import tempfile
 import unittest
@@ -189,6 +190,34 @@ class DecoderContractTests(unittest.TestCase):
         selection_mean = score_mean(optimization_partition)
         self.assertEqual(selection_mean, {key: 2.0 for key in SCORE_KEYS})
         self.assertNotEqual(selection_mean, score_mean(refit_all_records))
+
+    def test_deterministic_generation_sanitizes_sampling_only_values(self):
+        from mal2026.decoder import sanitized_deterministic_generation_config
+
+        config = types.SimpleNamespace(
+            do_sample=True, temperature=0.2, top_p=0.8, min_p=0.2,
+            typical_p=0.7, top_k=12, epsilon_cutoff=0.1, eta_cutoff=0.1,
+        )
+        sanitized = sanitized_deterministic_generation_config(config)
+        self.assertFalse(sanitized.do_sample)
+        self.assertEqual((sanitized.temperature, sanitized.top_p, sanitized.top_k), (1.0, 1.0, 50))
+        self.assertEqual((sanitized.min_p, sanitized.typical_p, sanitized.epsilon_cutoff, sanitized.eta_cutoff), (None, 1.0, 0.0, 0.0))
+        self.assertTrue(config.do_sample)  # copied; do not mutate a loaded model config
+
+    def test_orderly_distributed_shutdown_barriers_then_destroys_only_if_initialized(self):
+        from mal2026.decoder import orderly_distributed_shutdown
+
+        calls: list[str] = []
+        fake_dist = types.ModuleType("torch.distributed")
+        fake_dist.is_available = lambda: True
+        fake_dist.is_initialized = lambda: True
+        fake_dist.barrier = lambda: calls.append("barrier")
+        fake_dist.destroy_process_group = lambda: calls.append("destroy")
+        fake_torch = types.ModuleType("torch")
+        fake_torch.distributed = fake_dist
+        with patch.dict(sys.modules, {"torch": fake_torch, "torch.distributed": fake_dist}):
+            orderly_distributed_shutdown()
+        self.assertEqual(calls, ["barrier", "destroy"])
 
 
 if __name__ == "__main__":

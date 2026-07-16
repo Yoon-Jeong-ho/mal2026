@@ -21,12 +21,14 @@ from .decoder import (
     ContractError,
     SCORE_KEYS,
     assert_finite_loss,
+    orderly_distributed_shutdown,
     prompt_text,
     require_canonical_dataset,
     require_immutable_revision,
     require_path_under_run,
     require_tokenizer_chat_template,
     resolve_run_output_dir,
+    sanitized_deterministic_generation_config,
     target_for_record,
     validate_lora_targets,
     parse_decoder_output,
@@ -572,6 +574,9 @@ def train(config: DecoderTrainConfig) -> None:
     finally:
         if wandb_run is not None:
             wandb_run.finish()
+        # All ranks reach the same normal completion path before teardown.
+        # No-op for a single-process (non-distributed) launch.
+        orderly_distributed_shutdown()
 
 
 def _evaluate_selection_dev(accelerator: Any, model: Any, tokenizer: Any, loader: Any, config: DecoderTrainConfig) -> tuple[float, float]:
@@ -587,7 +592,9 @@ def _evaluate_selection_dev(accelerator: Any, model: Any, tokenizer: Any, loader
         fallback = json.load(handle)
     with torch.inference_mode():
         for batch in loader:
-            generated = accelerator.unwrap_model(model).generate(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], do_sample=False, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
+            unwrapped = accelerator.unwrap_model(model)
+            generation_config = sanitized_deterministic_generation_config(unwrapped.generation_config)
+            generated = unwrapped.generate(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], generation_config=generation_config, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
             texts = tokenizer.batch_decode(generated[:, batch["input_ids"].shape[1] :], skip_special_tokens=True)
             local_errors: list[float] = []
             local_invalid: list[int] = []

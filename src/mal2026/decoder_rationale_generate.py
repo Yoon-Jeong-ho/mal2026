@@ -23,6 +23,7 @@ from .decoder import (
     require_immutable_revision,
     require_tokenizer_chat_template,
     resolve_run_output_dir,
+    sanitized_deterministic_generation_config,
     template_sha256,
 )
 from .data_contract import DatasetRecord, load_and_validate_jsonl, split_prompt_groups, stable_hash
@@ -189,7 +190,7 @@ def generate(config: TeacherRationaleConfig) -> None:
             for _attempt in range(config.max_retries + 1):
                 generated = model.generate(
                     **encoded,
-                    do_sample=False,
+                    generation_config=sanitized_deterministic_generation_config(model.generation_config),
                     max_new_tokens=config.max_new_tokens,
                     pad_token_id=tokenizer.pad_token_id,
                     eos_token_id=tokenizer.eos_token_id,

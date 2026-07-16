@@ -19,12 +19,14 @@ from .decoder import (
     ContractError,
     SCORE_KEYS,
     parse_decoder_output,
+    orderly_distributed_shutdown,
     prompt_text,
     require_canonical_dataset,
     require_immutable_revision,
     require_path_under_run,
     require_tokenizer_chat_template,
     resolve_run_output_dir,
+    sanitized_deterministic_generation_config,
 )
 from .decoder_train import SYSTEM_MESSAGE, _directory_sha256, _records_as_mappings, _set_loader_epoch
 
@@ -310,7 +312,9 @@ def evaluate(config: DecoderEvalConfig) -> None:
         _set_loader_epoch(loader, 0)
         with torch.inference_mode():
             for batch in loader:
-                generated = accelerator.unwrap_model(model).generate(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], do_sample=False, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
+                unwrapped = accelerator.unwrap_model(model)
+                generation_config = sanitized_deterministic_generation_config(unwrapped.generation_config)
+                generated = unwrapped.generate(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], generation_config=generation_config, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
                 generated_text = tokenizer.batch_decode(generated[:, batch["input_ids"].shape[1] :], skip_special_tokens=True)
                 local_predictions: list[list[float]] = []
                 local_valid: list[int] = []
@@ -333,6 +337,8 @@ def evaluate(config: DecoderEvalConfig) -> None:
         _write_json(run_dir / "metrics.json", metrics)
         _wandb_log(config, metrics, accelerator)
         _write_run_manifest(run_dir, config, canonical_config_hash, metrics, accelerator)
+    accelerator.wait_for_everyone()
+    orderly_distributed_shutdown()
 
 
 def _essay_for_id(records: Sequence[Mapping[str, Any]], identifier: str) -> str:

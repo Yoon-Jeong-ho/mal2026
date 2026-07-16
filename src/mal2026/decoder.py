@@ -11,6 +11,7 @@ import hashlib
 import json
 import math
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -294,6 +295,45 @@ def require_tokenizer_chat_template(tokenizer: Any, expected_sha256: str) -> str
     if observed != expected_sha256:
         raise ContractError("loaded tokenizer chat template does not match frozen canonical config")
     return observed
+
+
+def sanitized_deterministic_generation_config(generation_config: Any) -> Any:
+    """Copy and neutralize sampling-only settings for greedy decoding.
+
+    Some model repositories persist temperature/top-p/top-k values in their
+    generation config. Transformers correctly warns when those values coexist
+    with ``do_sample=False``. They are semantically inactive for greedy decode,
+    so set their neutral defaults explicitly rather than suppressing warnings.
+    """
+    config = deepcopy(generation_config)
+    neutral_values = {
+        "do_sample": False,
+        "temperature": 1.0,
+        "top_p": 1.0,
+        "min_p": None,
+        "typical_p": 1.0,
+        "top_k": 50,
+        "epsilon_cutoff": 0.0,
+        "eta_cutoff": 0.0,
+    }
+    for name, value in neutral_values.items():
+        if hasattr(config, name):
+            setattr(config, name, value)
+    return config
+
+
+def orderly_distributed_shutdown() -> None:
+    """Barrier and destroy an initialized process group; harmless if absent."""
+    try:
+        import torch.distributed as distributed
+    except ImportError:
+        return
+    if not distributed.is_available() or not distributed.is_initialized():
+        return
+    try:
+        distributed.barrier()
+    finally:
+        distributed.destroy_process_group()
 
 
 def validate_lora_targets(module_names: Iterable[str], target_modules: Sequence[str]) -> tuple[str, ...]:
