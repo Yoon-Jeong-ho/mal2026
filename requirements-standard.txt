@@ -10,3 +10,4 @@ trl==0.29.1
 vllm==0.25.1
 # Required for Trainer's aggregate-only WandbCallback; install/login remains local.
 wandb==0.28.0
+safetensors==0.5.3

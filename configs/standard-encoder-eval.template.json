@@ -1,0 +1,11 @@
+{
+  "run_id": "REQUIRED_UNIQUE_EVALUATION_ID",
+  "source": "selection_dev",
+  "training_metadata_path": "REQUIRED_ABSOLUTE_STANDARD_ENCODER_TRAINING_COMPLETE_JSON",
+  "prepared_manifest": "REQUIRED_ABSOLUTE_CANONICAL_MANIFEST_PATH",
+  "validation_sha256": "",
+  "output_dir": "REQUIRED_IGNORED_OUTPUTS_STANDARD_ENCODER_EVAL_DIRECT_CHILD",
+  "per_device_eval_batch_size": 4,
+  "wandb_project": "mal2026-korean-writing-scoring",
+  "wandb_entity": null
+}
