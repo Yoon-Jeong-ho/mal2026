@@ -81,6 +81,26 @@ class StandardEncoderModelTests(unittest.TestCase):
             _nv_sentence_embeddings({"sentence_embedding": Embedding()}, 2)
 
 
+class StandardEncoderWandbTests(unittest.TestCase):
+    def test_wandb_routing_is_explicit_and_sets_entity(self):
+        import os
+        from mal2026.standard_encoder_train import StandardEncoderConfig, _configure_wandb
+        config = StandardEncoderConfig(
+            run_id="encoder-run", phase="selection", backbone="qwen3_embedding", model_id="Qwen/Qwen3-Embedding-8B",
+            model_revision=REVISION, tokenizer_revision=REVISION, model_path="/private/qwen", prepared_manifest="/manifest",
+            output_dir="/out", nv_snapshot_dir=None, nv_review=None, wandb_project="expected-project", wandb_entity="expected-entity",
+        )
+        old = dict(os.environ)
+        try:
+            _configure_wandb(config)
+            self.assertEqual("false", os.environ["WANDB_LOG_MODEL"])
+            self.assertEqual("expected-project", os.environ["WANDB_PROJECT"])
+            self.assertEqual("encoder-run", os.environ["WANDB_RUN_NAME"])
+            self.assertEqual("expected-entity", os.environ["WANDB_ENTITY"])
+        finally:
+            os.environ.clear(); os.environ.update(old)
+
+
 class StandardEncoderConfigTests(unittest.TestCase):
     def test_rejects_noncanonical_output_or_legacy_manual_settings(self):
         config = StandardEncoderConfig(

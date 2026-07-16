@@ -83,6 +83,17 @@ class StandardSFTConfig:
             _verify_refit_selection(self)
 
 
+def _configure_wandb(config: StandardSFTConfig) -> None:
+    """Set the complete W&B routing contract before Trainer initializes callbacks."""
+    os.environ["WANDB_LOG_MODEL"] = "false"
+    os.environ["WANDB_PROJECT"] = config.wandb_project
+    os.environ["WANDB_RUN_NAME"] = config.run_id
+    if config.wandb_entity:
+        os.environ["WANDB_ENTITY"] = config.wandb_entity
+    else:
+        os.environ.pop("WANDB_ENTITY", None)
+
+
 def _config_identity(config: StandardSFTConfig) -> dict[str, Any]:
     """Frozen selection/refit architecture and optimization identity.
 
@@ -165,9 +176,9 @@ def run_sft(config: StandardSFTConfig) -> None:
     except ImportError as exc:
         raise RuntimeError("standard stack requires the project .venv-standard (TRL/Transformers/PEFT)") from exc
 
-    # Explicitly disable W&B model/checkpoint uploads before Trainer creates
-    # its callback. Aggregate scalar metrics remain enabled through report_to.
-    os.environ["WANDB_LOG_MODEL"] = "false"
+    # Configure W&B before Trainer constructs its callback. Aggregate scalar
+    # metrics remain enabled, while model/checkpoint uploads are forbidden.
+    _configure_wandb(config)
     set_seed(config.seed)
     tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_path, revision=config.tokenizer_revision, local_files_only=True, use_fast=True)
     if tokenizer.pad_token is None:

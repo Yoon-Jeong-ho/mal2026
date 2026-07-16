@@ -47,6 +47,27 @@ class StandardDecoderStackTests(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+class StandardDecoderWandbTests(unittest.TestCase):
+    def test_wandb_routing_is_explicit_and_clears_stale_entity(self):
+        import os
+        from mal2026.standard_decoder_train import StandardSFTConfig, _configure_wandb
+        config = StandardSFTConfig(
+            run_id="decoder-run", phase="selection", mode="direct", model_path="/m", tokenizer_path="/t",
+            model_revision="a" * 40, tokenizer_revision="a" * 40, prepared_manifest="/manifest", output_dir="/out",
+            wandb_project="expected-project", wandb_entity=None,
+        )
+        old = dict(os.environ)
+        try:
+            os.environ["WANDB_ENTITY"] = "stale"
+            _configure_wandb(config)
+            self.assertEqual("false", os.environ["WANDB_LOG_MODEL"])
+            self.assertEqual("expected-project", os.environ["WANDB_PROJECT"])
+            self.assertEqual("decoder-run", os.environ["WANDB_RUN_NAME"])
+            self.assertNotIn("WANDB_ENTITY", os.environ)
+        finally:
+            os.environ.clear(); os.environ.update(old)
+
+
 class StandardDecoderRefitProvenanceTests(unittest.TestCase):
     def _refit_config(self, root, summary_path, *, learning_rate=2e-5):
         from mal2026.standard_decoder_train import StandardSFTConfig

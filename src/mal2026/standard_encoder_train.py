@@ -115,6 +115,17 @@ class StandardEncoderConfig:
         }
 
 
+def _configure_wandb(config: StandardEncoderConfig) -> None:
+    """Set the complete W&B routing contract before Trainer initializes callbacks."""
+    os.environ["WANDB_LOG_MODEL"] = "false"
+    os.environ["WANDB_PROJECT"] = config.wandb_project
+    os.environ["WANDB_RUN_NAME"] = config.run_id
+    if config.wandb_entity:
+        os.environ["WANDB_ENTITY"] = config.wandb_entity
+    else:
+        os.environ.pop("WANDB_ENTITY", None)
+
+
 def _config_identity(config: StandardEncoderConfig) -> dict[str, Any]:
     """Fields that must remain unchanged between selection and refit."""
     data = json.loads(json.dumps(asdict(config), ensure_ascii=False))
@@ -185,7 +196,7 @@ def run_standard_encoder(config: StandardEncoderConfig) -> dict[str, Any]:
     eval_dataset = build_encoder_dataset(dev_rows, tokenizer, config.max_length) if dev_rows is not None else None
     model = build_encoder_regressor(spec)
 
-    os.environ.setdefault("WANDB_LOG_MODEL", "false")
+    _configure_wandb(config)
     set_seed(config.seed)
     output = Path(config.output_dir)
     args = TrainingArguments(
