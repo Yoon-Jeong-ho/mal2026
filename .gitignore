@@ -1,6 +1,8 @@
 # Secrets and local Codex/OMX runtime state
 .env
 .omx/
+outputs/
+wandb/
 
 # AI-Hub raw downloads and operational logs (large and/or restricted data)
 data/raw/
