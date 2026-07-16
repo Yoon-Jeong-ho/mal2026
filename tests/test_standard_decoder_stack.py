@@ -24,6 +24,7 @@ class StandardDecoderStackTests(unittest.TestCase):
         self.assertEqual(row().score, parse_decoder_scores(target, "direct"))
         self.assertIsNone(parse_decoder_scores("reason " + target, "direct"))
         self.assertIsNone(parse_decoder_scores(target.replace("1.00", "1"), "direct"))
+        self.assertIsNone(parse_decoder_scores(target.replace("1.00", "5.99"), "direct"))
 
     def test_human_feedback_parser_requires_complete_canonical_json(self):
         target = render_human_feedback_target(row())

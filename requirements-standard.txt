@@ -1,10 +1,12 @@
-# Create the isolated project runtime with: python3.12 -m venv .venv-standard
-# Do not install these into the shared server Python environment.
-torch==2.7.0
-transformers==4.52.4
-accelerate==1.7.0
-datasets==3.6.0
-peft==0.15.2
-trl==0.17.0
-vllm==0.8.5.post1
+# Tested project-local runtime lock (Python 3.12, CUDA 13.0) on 2026-07-17.
+# Install only into ignored .venv-standard; do not modify shared environments.
+# `pip check` passed with these installed core versions before this lock was written.
+torch==2.11.0
+transformers==5.14.1
+accelerate==1.14.0
+datasets==5.0.0
+peft==0.19.1
+trl==0.29.1
+vllm==0.25.1
+# Required for Trainer's aggregate-only WandbCallback; install/login remains local.
 wandb==0.28.0

@@ -212,7 +212,10 @@ def parse_decoder_scores(text: str, mode: str) -> dict[str, float] | None:
         matched = _DIRECT_RE.fullmatch(text)
         if not matched:
             return None
-        return {field: float(value) for field, value in zip(SCORE_FIELDS, matched.groups(), strict=True)}
+        try:
+            return {field: _score(value, f"generated.{field}") for field, value in zip(SCORE_FIELDS, matched.groups(), strict=True)}
+        except StandardDecoderContractError:
+            return None
     try:
         parsed = json.loads(text, object_pairs_hook=_object_pairs_no_duplicates)
     except (json.JSONDecodeError, StandardDecoderContractError):

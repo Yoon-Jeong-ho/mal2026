@@ -73,7 +73,9 @@ class StandardSFTConfig:
 
 def _conversation_dataset(rows, mode: str):
     from datasets import Dataset
-    return Dataset.from_list({"messages": messages_for_sft(row, mode)} for row in rows)
+    # Dataset.from_list requires a concrete list; a generator can silently fail
+    # before Trainer sees the restricted split.
+    return Dataset.from_list([{"messages": messages_for_sft(row, mode)} for row in rows])
 
 
 def run_sft(config: StandardSFTConfig) -> None:
@@ -130,6 +132,7 @@ def run_sft(config: StandardSFTConfig) -> None:
     completion = {
         "status": "completed", "run_id": config.run_id, "phase": config.phase, "mode": config.mode,
         "global_step": int(trainer.state.global_step), "best_metric": trainer.state.best_metric,
+        "model_revision": config.model_revision, "tokenizer_revision": config.tokenizer_revision,
         "train_records": len(train_rows), "eval_records": len(eval_rows or []),
         "fallback_mean": score_mean(train_rows), "config": asdict(config),
     }

@@ -91,8 +91,27 @@ class VLLMEvalConfig:
             raise StandardDecoderContractError("vLLM must use canonical aggregate prepared manifest")
         if Path(self.output_dir).resolve().parent != (ROOT / "outputs" / "standard-evals").resolve() or Path(self.output_dir).exists():
             raise StandardDecoderContractError("evaluator output must be a new direct child of ignored outputs/standard-evals")
-        if not Path(self.adapter_path).is_dir() or not Path(self.adapter_path).resolve().is_relative_to((ROOT / "outputs" / "standard-runs").resolve()):
+        adapter = Path(self.adapter_path)
+        standard_runs = (ROOT / "outputs" / "standard-runs").resolve()
+        if not adapter.is_dir() or not adapter.resolve().is_relative_to(standard_runs):
             raise StandardDecoderContractError("adapter must be inside a standard training output")
+        # Bind the adapter to a completed standard-Trainer run. Selection-dev
+        # evaluation may use its selection adapter; frozen validation accepts
+        # only a refit adapter, preventing selection/final lineage swaps.
+        completion_path = adapter.parent / "standard_training_complete.json"
+        try:
+            completion = json.loads(completion_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise StandardDecoderContractError("adapter is missing standard training completion provenance") from exc
+        if not isinstance(completion, dict) or completion.get("status") != "completed":
+            raise StandardDecoderContractError("adapter training completion status is invalid")
+        if completion.get("mode") != self.mode or completion.get("model_revision") not in {None, self.model_revision}:
+            raise StandardDecoderContractError("adapter completion does not match evaluation mode/model revision")
+        expected_phase = "selection" if self.source == "selection_dev" else "refit"
+        if completion.get("phase") != expected_phase:
+            raise StandardDecoderContractError("evaluation source requires matching selection/refit adapter provenance")
+        if not (adapter / "adapter_config.json").is_file():
+            raise StandardDecoderContractError("adapter directory lacks adapter_config.json")
         expected_len, expected_new = (2048, 256) if self.mode == "direct" else (4096, 1536)
         if (self.max_model_len, self.max_new_tokens) != (expected_len, expected_new):
             raise StandardDecoderContractError("vLLM mode-specific token budget is frozen")
