@@ -36,6 +36,11 @@ class StandardDecoderStackTests(unittest.TestCase):
         with self.assertRaises(StandardDecoderContractError):
             render_scores({"average": 4, "content": 1, "organization": 2, "expression": 3})
 
+    def test_standard_sft_disables_unused_parameter_search(self):
+        from pathlib import Path
+        source = Path("src/mal2026/standard_decoder_train.py").read_text(encoding="utf-8")
+        self.assertIn("ddp_find_unused_parameters=False", source)
+
     def test_aggregate_metrics_contains_no_row_text(self):
         target = row().score
         result = aggregate_metrics([target], [target], [True])

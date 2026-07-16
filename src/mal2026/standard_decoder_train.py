@@ -209,7 +209,9 @@ def run_sft(config: StandardSFTConfig) -> None:
         greater_is_better=False if eval_rows else None, save_total_limit=None if eval_rows else 1,
         max_steps=config.selected_global_step if config.phase == "refit" else -1,
         bf16=True, tf32=True, gradient_checkpointing=True, report_to=["wandb"],
-        remove_unused_columns=False, dataset_num_proc=1,
+        # All reviewed LoRA target modules participate in the causal forward;
+        # avoid DDP's redundant unused-parameter autograd traversal.
+        ddp_find_unused_parameters=False, remove_unused_columns=False, dataset_num_proc=1,
     )
     callbacks = [EarlyStoppingCallback(early_stopping_patience=config.early_stopping_patience)] if eval_rows else []
     trainer = SFTTrainer(
