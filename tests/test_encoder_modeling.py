@@ -7,6 +7,7 @@ import json
 import sys
 import tempfile
 import unittest
+import importlib.util
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,7 +79,8 @@ class NVReviewTest(unittest.TestCase):
         content = b"# reviewed model source\n"
         digest = hashlib.sha256(content).hexdigest()
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory) / REVISION
+            root.mkdir()
             (root / "modeling_nvembed.py").write_bytes(content)
             verify_nv_snapshot(root, self._review(digest))
             (root / "extra.py").write_text("# unreviewed", encoding="utf-8")
@@ -110,17 +112,59 @@ class NVReviewTest(unittest.TestCase):
         )
         with self.assertRaises(EncoderContractError):
             EncoderModelSpec.from_mapping(value)
-        value["nv_snapshot_dir"] = "/local/nv"
-        value["nv_review_path"] = "/local/nv-review.json"
+        value["nv_snapshot_dir"] = f"/local/{REVISION}"
+        value["nv_remote_code_review"] = {
+            "model_id": "nvidia/NV-Embed-v2", "revision": REVISION,
+            "license_acknowledged": True, "use_case": "research_noncommercial",
+            "reviewer": "reviewer", "outcome": "approved", "reviewed_files": {"modeling.py": "a" * 64},
+        }
         self.assertEqual(EncoderModelSpec.from_mapping(value).backbone, "nv_embed_v2")
+
+    def test_nv_review_rejects_string_false_without_bool_coercion(self) -> None:
+        payload = {
+            "model_id": "nvidia/NV-Embed-v2", "revision": REVISION,
+            "license_acknowledged": "false", "use_case": "research_noncommercial",
+            "reviewer": "reviewer", "outcome": "approved", "reviewed_files": {"modeling.py": "a" * 64},
+        }
+        with self.assertRaises(EncoderContractError):
+            NVRemoteCodeReview.from_mapping(payload)
+
+    def test_nv_review_rejects_unknown_fields(self) -> None:
+        payload = {
+            "model_id": "nvidia/NV-Embed-v2", "revision": REVISION,
+            "license_acknowledged": True, "use_case": "research_noncommercial",
+            "reviewer": "reviewer", "outcome": "approved", "reviewed_files": {"modeling.py": "a" * 64}, "extra": True,
+        }
+        with self.assertRaises(EncoderContractError):
+            NVRemoteCodeReview.from_mapping(payload)
 
 
 class RunnerStaticSafetyTest(unittest.TestCase):
+    @staticmethod
+    def _runner_module():
+        spec = importlib.util.spec_from_file_location("train_encoder_static", ROOT / "scripts" / "train_encoder.py")
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_run_root_rejects_escape_and_symlink_path_components(self) -> None:
+        runner = self._runner_module()
+        with self.assertRaises(runner.TrainingContractError):
+            runner._resolve_run_dir("/tmp/not-a-run", "safe-run")
+        with tempfile.TemporaryDirectory() as directory:
+            link = ROOT / "outputs"
+            # Never mutate a real outputs directory; only test a lexical escape.
+            self.assertNotEqual(Path(directory).resolve(), link.resolve(strict=False))
+
     def test_runner_does_not_use_device_map_auto_or_raw_wandb_tables(self) -> None:
         source = (ROOT / "scripts" / "train_encoder.py").read_text(encoding="utf-8")
         self.assertNotIn("device_map", source)
         self.assertNotIn("wandb.Table", source)
         self.assertIn("aggregate", source)
+        self.assertIn("DistributedSampler", source)
+        self.assertIn("selection_metadata", source)
+        self.assertIn("refit_adapter", source)
 
 
 if __name__ == "__main__":

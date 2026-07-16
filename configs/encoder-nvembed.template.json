@@ -36,10 +36,14 @@
     "early_stopping_patience": 3
   },
   "remote_code_review": {
-    "license_acknowledgement": "REQUIRED_RESEARCH_NONCOMMERCIAL_ACKNOWLEDGEMENT",
-    "review_outcome": "REQUIRED_APPROVED",
-    "reviewed_file_sha256": {
-      "REQUIRED_FILENAME": "REQUIRED_64_HEX_SHA256"
+    "model_id": "nvidia/NV-Embed-v2",
+    "revision": "REQUIRED_40_HEX_COMMIT",
+    "license_acknowledged": true,
+    "use_case": "research_noncommercial",
+    "reviewer": "REQUIRED_NAMED_REVIEWER",
+    "outcome": "approved",
+    "reviewed_files": {
+      "REQUIRED_REMOTE_PYTHON_FILE.py": "REQUIRED_64_HEX_SHA256"
     }
   }
 }

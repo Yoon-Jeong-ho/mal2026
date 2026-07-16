@@ -64,18 +64,29 @@ class NVRemoteCodeReview:
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "NVRemoteCodeReview":
+        """Parse the one canonical NV review schema without coercion.
+
+        In particular, ``bool("false")`` is true in Python; accepting that
+        conversion would silently authorize remote code.  Require exact keys
+        and an actual JSON boolean instead.
+        """
+        required = {"model_id", "revision", "license_acknowledged", "use_case", "reviewer", "outcome", "reviewed_files"}
+        _require(isinstance(value, Mapping) and set(value) == required, "NV remote-code review has unknown or missing fields")
+        _require(isinstance(value["license_acknowledged"], bool), "NV license_acknowledged must be a JSON boolean")
+        _require(isinstance(value["reviewed_files"], Mapping), "NV reviewed_files must be an object")
         try:
             review = cls(
-                model_id=str(value["model_id"]),
-                revision=str(value["revision"]),
-                license_acknowledged=bool(value["license_acknowledged"]),
-                use_case=str(value["use_case"]),
-                reviewer=str(value["reviewer"]),
-                outcome=str(value["outcome"]),
+                model_id=value["model_id"],
+                revision=value["revision"],
+                license_acknowledged=value["license_acknowledged"],
+                use_case=value["use_case"],
+                reviewer=value["reviewer"],
+                outcome=value["outcome"],
                 reviewed_files=dict(value["reviewed_files"]),
             )
         except (KeyError, TypeError) as error:
             raise EncoderContractError("NV remote-code review record is incomplete") from error
+        _require(all(isinstance(item, str) for item in (review.model_id, review.revision, review.use_case, review.reviewer, review.outcome)), "NV review text fields must be strings")
         review.validate_record()
         return review
 
@@ -123,11 +134,13 @@ def verify_nv_snapshot(snapshot_dir: str | Path, review: NVRemoteCodeReview) -> 
     """
 
     root = Path(snapshot_dir).resolve()
-    _require(root.is_dir(), "NV local snapshot directory does not exist")
+    _require(root.is_dir() and not Path(snapshot_dir).is_symlink(), "NV local snapshot directory does not exist or is a symlink")
+    _require(root.name == review.revision, "NV snapshot directory must be named by the reviewed immutable revision")
+    _require(not any(candidate.is_symlink() for candidate in root.rglob("*")), "NV snapshot may not contain symlinks")
     actual_python = {
         file.relative_to(root).as_posix()
         for file in root.rglob("*.py")
-        if file.is_file() and not file.is_symlink()
+        if file.is_file()
     }
     expected_python = set(review.reviewed_files)
     _require(actual_python == expected_python, "NV snapshot Python files differ from approved review record")
@@ -154,7 +167,7 @@ class EncoderModelSpec:
     regression_loss: str
     loss_reduction: str
     nv_snapshot_dir: str | None = None
-    nv_review_path: str | None = None
+    nv_remote_code_review: NVRemoteCodeReview | None = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "EncoderModelSpec":
@@ -176,7 +189,8 @@ class EncoderModelSpec:
                 regression_loss=str(value["regression_loss"]),
                 loss_reduction=str(value["loss_reduction"]),
                 nv_snapshot_dir=value.get("nv_snapshot_dir"),
-                nv_review_path=value.get("nv_review_path"),
+                nv_remote_code_review=(NVRemoteCodeReview.from_mapping(value["nv_remote_code_review"])
+                                       if value.get("nv_remote_code_review") is not None else None),
             )
         except (KeyError, TypeError, ValueError) as error:
             raise EncoderContractError("encoder model specification is incomplete") from error
@@ -200,9 +214,17 @@ class EncoderModelSpec:
         _require(self.loss_reduction == "mean", "encoder loss_reduction must explicitly be mean")
         is_nv = self.backbone == "nv_embed_v2"
         _require(is_nv == bool(self.nv_snapshot_dir), "NV snapshot path is required only for NV-Embed-v2")
-        _require(is_nv == bool(self.nv_review_path), "NV review record is required only for NV-Embed-v2")
+        _require(is_nv == (self.nv_remote_code_review is not None), "NV typed review is required only for NV-Embed-v2")
         if is_nv:
+            assert self.nv_remote_code_review is not None
             _require(self.tokenizer_revision == self.revision, "NV local tokenizer revision must match reviewed model revision")
+            _require(self.nv_remote_code_review.model_id == self.model_id and self.nv_remote_code_review.revision == self.revision, "NV review must bind this exact model revision")
+
+    def validate_nv_runtime(self) -> None:
+        """Validate the local reviewed snapshot immediately before remote code."""
+        _require(self.backbone == "nv_embed_v2", "NV runtime validation applies only to NV-Embed-v2")
+        assert self.nv_snapshot_dir is not None and self.nv_remote_code_review is not None
+        verify_nv_snapshot(self.nv_snapshot_dir, self.nv_remote_code_review)
 
 
 def validate_lora_targets(model: Any, targets: Sequence[str]) -> None:
@@ -262,9 +284,9 @@ def build_encoder_regressor(spec: EncoderModelSpec) -> Any:
         "low_cpu_mem_usage": True,
     }
     if spec.backbone == "nv_embed_v2":
-        review = load_nv_remote_code_review(spec.nv_review_path or "")
-        _require(review.revision == spec.revision, "NV review and model revisions must match")
-        verify_nv_snapshot(spec.nv_snapshot_dir or "", review)
+        # The sole typed review source is part of spec/config and validates
+        # snapshot revision plus every Python file before remote code executes.
+        spec.validate_nv_runtime()
         model_kwargs.update({"trust_remote_code": True, "local_files_only": True})
         model_source = spec.nv_snapshot_dir
     else:
