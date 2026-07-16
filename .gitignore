@@ -1,0 +1,10 @@
+# Secrets and local Codex/OMX runtime state
+.env
+.omx/
+
+# AI-Hub raw downloads and operational logs (large and/or restricted data)
+data/raw/
+data/logs/
+
+# Downloaded third-party executable; retrieve it through the documented script.
+tools/aihubshell
