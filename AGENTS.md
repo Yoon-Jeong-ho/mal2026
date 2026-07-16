@@ -34,6 +34,12 @@ reproducible code and documentation for model training and evaluation.
   Use a custom loop only for a documented framework gap. For decoder batch
   generation/evaluation, use a maintained high-throughput engine such as
   vLLM or SGLang when compatible with the model and evaluation contract.
+- When a clarification would otherwise pause an approved experiment, first
+  obtain a bounded proceed/stop recommendation from a subagent acting as a
+  user proxy. A proceed recommendation authorizes completing the approved
+  experiment stage without another routine question; it never substitutes for
+  explicit consent for destructive actions, external publication, credentials,
+  or use outside the approved resource and data boundaries.
 
 ## Guidance maintenance
 
