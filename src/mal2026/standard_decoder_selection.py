@@ -64,6 +64,7 @@ def select_checkpoint(selection_run_dir: Path, evaluation_results: Sequence[Path
     summary = {
         "status": "completed", "phase": "selection", "selection_run_id": completion.get("run_id"),
         "mode": completion.get("mode"), "model_revision": completion.get("model_revision"),
+        "tokenizer_revision": completion.get("tokenizer_revision"),
         "selection_metric": "vllm_source_dev_primary_macro_mae", "trainer_monitor": "eval_loss_only",
         "selected_global_step": selected["global_step"], "selected_primary_macro_mae": selected["primary_macro_mae"],
         "candidates": sorted(candidates, key=lambda item: item["global_step"]),

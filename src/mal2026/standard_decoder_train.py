@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -82,8 +83,26 @@ class StandardSFTConfig:
             _verify_refit_selection(self)
 
 
+def _config_identity(config: StandardSFTConfig) -> dict[str, Any]:
+    """Frozen selection/refit architecture and optimization identity.
+
+    Selection-only monitoring/cadence and the selected update linkage are
+    intentionally excluded.  Model/tokenizer snapshots, prepared corpus,
+    deterministic seed, sequence budget, learning rate, both batch sizes,
+    accumulation, and LoRA settings must remain identical for the refit.
+    """
+    identity = json.loads(json.dumps(asdict(config), ensure_ascii=False))
+    for key in (
+        "run_id", "phase", "output_dir", "selection_summary_path", "selected_global_step",
+        "num_train_epochs", "eval_steps", "save_steps", "logging_steps", "early_stopping_patience",
+        "wandb_project", "wandb_entity",
+    ):
+        identity.pop(key)
+    return identity
+
+
 def _verify_refit_selection(config: StandardSFTConfig) -> dict[str, Any]:
-    """Bind refit step count to the aggregate-only source-dev vLLM selector."""
+    """Bind refit to the actual matching selection run and frozen identity."""
     path = Path(config.selection_summary_path).resolve()
     standard_runs = (ROOT / "outputs" / "standard-runs").resolve()
     if not path.is_file() or not path.is_relative_to(standard_runs) or path.name != "selected_checkpoint.json":
@@ -94,9 +113,26 @@ def _verify_refit_selection(config: StandardSFTConfig) -> dict[str, Any]:
         raise StandardDecoderContractError("refit selection summary is unreadable") from exc
     if not isinstance(summary, dict) or summary.get("status") != "completed":
         raise StandardDecoderContractError("refit selection summary is incomplete")
-    expected = {"phase": "selection", "mode": config.mode, "model_revision": config.model_revision, "selected_global_step": config.selected_global_step}
-    if any(summary.get(key) != value for key, value in expected.items()):
+    selection_run_id = summary.get("selection_run_id")
+    if not isinstance(selection_run_id, str) or not selection_run_id or path.parent != standard_runs / selection_run_id:
+        raise StandardDecoderContractError("selection summary is not located in its declared selection run")
+    try:
+        selection_completion = json.loads((path.parent / "standard_training_complete.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise StandardDecoderContractError("selection run completion provenance is unreadable") from exc
+    if not isinstance(selection_completion, dict) or selection_completion.get("status") != "completed":
+        raise StandardDecoderContractError("selection run completion provenance is incomplete")
+    expected = {
+        "phase": "selection", "mode": config.mode, "model_revision": config.model_revision,
+        "tokenizer_revision": config.tokenizer_revision, "selected_global_step": config.selected_global_step,
+        "run_id": selection_run_id,
+    }
+    if any(selection_completion.get(key) != value for key, value in expected.items() if key != "selected_global_step"):
+        raise StandardDecoderContractError("selection completion does not match refit model/mode provenance")
+    if any(summary.get(key) != value for key, value in expected.items() if key != "run_id"):
         raise StandardDecoderContractError("refit selection summary does not match model/mode/selected step")
+    if selection_completion.get("identity") != _config_identity(config):
+        raise StandardDecoderContractError("selection/refit architecture or optimization contract differs")
     return summary
 
 
@@ -129,6 +165,9 @@ def run_sft(config: StandardSFTConfig) -> None:
     except ImportError as exc:
         raise RuntimeError("standard stack requires the project .venv-standard (TRL/Transformers/PEFT)") from exc
 
+    # Explicitly disable W&B model/checkpoint uploads before Trainer creates
+    # its callback. Aggregate scalar metrics remain enabled through report_to.
+    os.environ["WANDB_LOG_MODEL"] = "false"
     set_seed(config.seed)
     tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_path, revision=config.tokenizer_revision, local_files_only=True, use_fast=True)
     if tokenizer.pad_token is None:
@@ -184,6 +223,6 @@ def run_sft(config: StandardSFTConfig) -> None:
         "fallback_mean": score_mean(train_rows), "selection_candidate_steps": checkpoint_steps if config.phase == "selection" else [],
         "selection_lifecycle": "Trainer eval_loss early-stopping/checkpointing; external vLLM source-dev macro-MAE selects refit step" if config.phase == "selection" else "refit uses selected_global_step from aggregate vLLM summary",
         "selected_global_step": config.selected_global_step, "selection_summary_path": config.selection_summary_path,
-        "config": asdict(config),
+        "identity": _config_identity(config), "config": asdict(config),
     }
     (Path(config.output_dir) / "standard_training_complete.json").write_text(json.dumps(completion, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
