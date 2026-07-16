@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+import copy
+import json
 import types
 from pathlib import Path
 import tempfile
@@ -21,6 +23,9 @@ from mal2026.decoder_eval import aggregate_metrics, quadratic_weighted_kappa
 from mal2026.decoder_train import (
     _SelectionGenerationDataset,
     _load_restricted_rows,
+    _manifest_path,
+    _prepared_data_dir,
+    _validate_prepared_manifest,
     accelerator_batch_assignment,
     build_sft_example,
     head_tail_truncate,
@@ -101,6 +106,28 @@ class DecoderContractTests(unittest.TestCase):
             self.assertEqual(len(_load_restricted_rows(path, digest, 1)), 1)
             path.write_text(row.replace('"id":"a",', '"id":"a","id":"b",'), encoding="utf-8")
             with self.assertRaises(ContractError): _load_restricted_rows(path, hashlib.sha256(path.read_bytes()).hexdigest(), 1)
+
+    def test_decoder_prepared_paths_are_exactly_canonical(self):
+        self.assertEqual(_prepared_data_dir("data/processed/aihub_human_feedback_v1").name, "aihub_human_feedback_v1")
+        self.assertEqual(_manifest_path("data/manifests/aihub_human_feedback_v1.json").name, "aihub_human_feedback_v1.json")
+        with self.assertRaises(ContractError):
+            _prepared_data_dir("data/processed/another-direct-child")
+        with self.assertRaises(ContractError):
+            _manifest_path("data/manifests/another-direct-child.json")
+
+    def test_manifest_requires_training_only_common_eligibility_and_frozen_split(self):
+        root = Path(__file__).resolve().parents[1]
+        manifest = json.loads((root / "data" / "manifests" / "aihub_human_feedback_v1.json").read_text(encoding="utf-8"))
+        _validate_prepared_manifest(manifest)
+        invalid_source = copy.deepcopy(manifest)
+        invalid_source["source"]["included_split"] = "AI-Hub upstream Validation"
+        with self.assertRaises(ContractError): _validate_prepared_manifest(invalid_source)
+        invalid_gate = copy.deepcopy(manifest)
+        invalid_gate["eligibility"]["common_to_all_four_experiments"] = False
+        with self.assertRaises(ContractError): _validate_prepared_manifest(invalid_gate)
+        invalid_split = copy.deepcopy(manifest)
+        invalid_split["split"]["requested_dev_fraction"] = "0.10"
+        with self.assertRaises(ContractError): _validate_prepared_manifest(invalid_split)
 
     def test_lora_and_revision_fail_closed(self):
         names = [f"model.layers.0.{key}" for key in ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")]

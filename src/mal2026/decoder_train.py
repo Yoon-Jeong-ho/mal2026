@@ -40,6 +40,10 @@ SYSTEM_MESSAGE = (
 )
 PREPARED_SCHEMA_VERSION = 1
 PREPARED_DATASET_ID = "aihub_human_feedback_v1"
+PREPARED_MANIFEST_NAME = "aihub_human_feedback_v1.json"
+PREPARED_PARTITIONS = ("selection_train", "selection_dev", "refit_train")
+TRAINING_ONLY_SOURCE = "AI-Hub upstream Training TL archives only"
+SPLIT_ALGORITHM = "per_primary_dataset_subject_exact_record_count_dp_then_lexicographic_group_hash_sequence"
 
 
 @dataclass(frozen=True)
@@ -114,28 +118,44 @@ class DecoderTrainConfig:
             raise ContractError("frozen decoder optimizer is LR=2e-4, wd=0.01, warmup=0.05")
 
 
+def _canonical_prepared_data_dir() -> Path:
+    return project_root() / "data" / "processed" / PREPARED_DATASET_ID
+
+
+def _canonical_manifest_path() -> Path:
+    return project_root() / "data" / "manifests" / PREPARED_MANIFEST_NAME
+
+
 def _prepared_data_dir(value: str) -> Path:
-    root = project_root()
+    """Admit only the one preparation-owned ignored data root, never a sibling."""
     candidate = Path(value)
-    candidate = candidate if candidate.is_absolute() else root / candidate
-    expected_root = (root / "data" / "processed").resolve(strict=False)
-    if candidate.resolve(strict=False).parent != expected_root:
-        raise ContractError("prepared_data_dir must be a direct child of ignored data/processed")
-    if candidate.exists() and candidate.is_symlink():
-        raise ContractError("prepared_data_dir may not be a symlink")
-    return candidate
+    candidate = candidate if candidate.is_absolute() else project_root() / candidate
+    expected = _canonical_prepared_data_dir()
+    try:
+        if candidate.absolute() != expected.absolute() or candidate.is_symlink():
+            raise ContractError("prepared_data_dir must equal canonical data/processed/aihub_human_feedback_v1")
+        resolved = candidate.resolve(strict=True)
+        if resolved != expected.resolve(strict=True) or not resolved.is_dir():
+            raise ContractError("prepared_data_dir must be the canonical non-symlink prepared data root")
+    except OSError as exc:
+        raise ContractError("canonical prepared data root must exist before launch") from exc
+    return resolved
 
 
 def _manifest_path(value: str) -> Path:
-    root = project_root()
+    """Admit only the aggregate manifest paired with the canonical data root."""
     candidate = Path(value)
-    candidate = candidate if candidate.is_absolute() else root / candidate
-    expected_root = (root / "data" / "manifests").resolve(strict=False)
-    if candidate.resolve(strict=False).parent != expected_root or candidate.suffix != ".json":
-        raise ContractError("data_manifest_path must be a JSON direct child of data/manifests")
-    if not candidate.is_file() or candidate.is_symlink():
-        raise ContractError("data_manifest_path must be a readable non-symlink aggregate manifest")
-    return candidate
+    candidate = candidate if candidate.is_absolute() else project_root() / candidate
+    expected = _canonical_manifest_path()
+    try:
+        if candidate.absolute() != expected.absolute() or candidate.is_symlink():
+            raise ContractError("data_manifest_path must equal canonical data/manifests/aihub_human_feedback_v1.json")
+        resolved = candidate.resolve(strict=True)
+        if resolved != expected.resolve(strict=True) or not resolved.is_file():
+            raise ContractError("data_manifest_path must be the canonical non-symlink aggregate manifest")
+    except OSError as exc:
+        raise ContractError("canonical prepared aggregate manifest must exist before launch") from exc
+    return resolved
 
 
 def load_json_config(path: str) -> DecoderTrainConfig:
@@ -258,15 +278,85 @@ def _load_restricted_rows(path: Path, expected_sha256: str, expected_count: int)
     return rows
 
 
+def _is_sha256(value: Any) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"[0-9a-f]{64}", value))
+
+
+def _aggregate_manifest_only(value: Any, path: str = "manifest") -> None:
+    """Reject accidental restricted records/text in a tracked aggregate manifest."""
+    forbidden = {"id", "document_id", "prompt", "essay", "response", "feedback", "records"}
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            # `eligibility.tokenizer.id` is a pinned public model identifier,
+            # not an example identifier. All other ID-bearing fields are banned.
+            permitted_model_id = path == "manifest.eligibility.tokenizer" and key == "id"
+            if not isinstance(key, str) or (key.casefold() in forbidden and not permitted_model_id):
+                raise ContractError(f"{path} contains a restricted raw-data field")
+            _aggregate_manifest_only(nested, f"{path}.{key}")
+    elif isinstance(value, list):
+        if not all(item is None or isinstance(item, (str, int, float, bool)) for item in value):
+            raise ContractError(f"{path} aggregate lists may contain scalars only")
+    elif value is None or isinstance(value, (str, int, float, bool)):
+        return
+    else:
+        raise ContractError(f"{path} contains an unsupported aggregate value")
+
+
+def _validate_prepared_manifest(raw: Mapping[str, Any]) -> None:
+    required_top = {"schema_version", "dataset_id", "source", "eligibility", "score_contract", "feedback_contract", "split", "files"}
+    if set(raw) != required_top or raw.get("schema_version") != PREPARED_SCHEMA_VERSION or raw.get("dataset_id") != PREPARED_DATASET_ID:
+        raise ContractError("prepared manifest schema/version is not approved")
+    _aggregate_manifest_only(raw)
+
+    source = raw["source"]
+    if not isinstance(source, Mapping) or source.get("included_corpora") != ["descriptive", "argumentative"] or source.get("included_split") != TRAINING_ONLY_SOURCE:
+        raise ContractError("prepared manifest must use only descriptive/argumentative AI-Hub Training TL source")
+    if not isinstance(source.get("excluded"), list) or not {"essay corpus", "AI-Hub upstream Validation", "frozen eval/validation.jsonl"}.issubset(set(source["excluded"])):
+        raise ContractError("prepared manifest must record essay/upstream-validation/frozen-eval exclusion")
+    if not _is_sha256(source.get("archive_list_sha256")) or not isinstance(source.get("source_records"), int) or source["source_records"] < 1:
+        raise ContractError("prepared manifest source fingerprint/count is invalid")
+
+    eligibility = raw["eligibility"]
+    if not isinstance(eligibility, Mapping) or eligibility.get("common_to_all_four_experiments") is not True or eligibility.get("assistant_target_token_cap") != 1536:
+        raise ContractError("prepared manifest must bind the common 1536-token all-experiment eligibility gate")
+    if not isinstance(eligibility.get("over_budget_rejections"), int) or eligibility["over_budget_rejections"] < 0 or not isinstance(eligibility.get("eligible_records"), int) or eligibility["eligible_records"] < 1 or not _is_sha256(eligibility.get("eligible_record_id_sha256")):
+        raise ContractError("prepared manifest eligibility counts/fingerprint are invalid")
+    tokenizer = eligibility.get("tokenizer")
+    if not isinstance(tokenizer, Mapping) or tokenizer.get("id") != "Qwen/Qwen2.5-7B-Instruct" or not _is_sha256(tokenizer.get("chat_template_sha256")) or not isinstance(tokenizer.get("revision"), str) or not re.fullmatch(r"[0-9a-f]{40}", tokenizer["revision"]):
+        raise ContractError("prepared manifest eligibility tokenizer binding is invalid")
+
+    score_contract, feedback_contract = raw["score_contract"], raw["feedback_contract"]
+    if not isinstance(score_contract, Mapping) or score_contract.get("fields") != list(SCORE_KEYS) or score_contract.get("analytic_raters_per_criterion") != 2 or score_contract.get("analytic_score_range") != [1, 5] or score_contract.get("emitted_quantization") != "0.01 ROUND_HALF_UP":
+        raise ContractError("prepared manifest score contract is invalid")
+    if not isinstance(feedback_contract, Mapping) or feedback_contract.get("ordered_fields") != list(HUMAN_FEEDBACK_KEYS) or feedback_contract.get("task_1_used_for_score") is not False:
+        raise ContractError("prepared manifest feedback contract is invalid")
+
+    split = raw["split"]
+    if not isinstance(split, Mapping) or split.get("selection_algorithm") != SPLIT_ALGORITHM or split.get("requested_dev_fraction") != "0.20" or not isinstance(split.get("normalized_question_groups"), int) or split["normalized_question_groups"] < 1 or not isinstance(split.get("cross_corpus_or_stratum_group_collisions"), int) or split["cross_corpus_or_stratum_group_collisions"] < 0:
+        raise ContractError("prepared manifest split contract is invalid")
+    train_groups, dev_groups = split.get("selection_train_group_hashes"), split.get("selection_dev_group_hashes")
+    if not isinstance(train_groups, list) or not isinstance(dev_groups, list) or not train_groups or not dev_groups or not all(_is_sha256(item) for item in train_groups + dev_groups) or set(train_groups) & set(dev_groups):
+        raise ContractError("prepared manifest split group hashes are invalid or overlap")
+    if not isinstance(split.get("primary_strata"), Mapping) or not isinstance(split.get("per_original_stratum_records"), Mapping) or not split["primary_strata"] or not split["per_original_stratum_records"]:
+        raise ContractError("prepared manifest split strata audit is missing")
+
+    files = raw["files"]
+    if not isinstance(files, Mapping) or set(files) != set(PREPARED_PARTITIONS):
+        raise ContractError("prepared manifest must declare exactly selection_train, selection_dev, refit_train")
+    for name in PREPARED_PARTITIONS:
+        entry = files[name]
+        if not isinstance(entry, Mapping) or set(entry) != {"filename", "sha256", "record_count"} or entry.get("filename") != f"{name}.jsonl" or not _is_sha256(entry.get("sha256")) or not isinstance(entry.get("record_count"), int) or entry["record_count"] < 1:
+            raise ContractError(f"prepared manifest files.{name} has an invalid schema")
+    if files["selection_train"]["record_count"] + files["selection_dev"]["record_count"] != files["refit_train"]["record_count"] or files["refit_train"]["record_count"] != eligibility["eligible_records"] or source["source_records"] != eligibility["eligible_records"] + eligibility["over_budget_rejections"]:
+        raise ContractError("prepared manifest source/eligibility/split record counts are inconsistent")
+
+
 def _load_prepared_manifest(config: DecoderTrainConfig) -> tuple[dict[str, Any], Path]:
     path = _manifest_path(config.data_manifest_path)
     if _sha256(path) != config.data_manifest_sha256:
         raise ContractError("data_manifest_sha256 does not match aggregate manifest")
     raw = _strict_json_object(path.read_text(encoding="utf-8"), "prepared manifest")
-    if raw.get("schema_version") != PREPARED_SCHEMA_VERSION or raw.get("dataset_id") != PREPARED_DATASET_ID:
-        raise ContractError("prepared manifest schema/version is not approved")
-    if not isinstance(raw.get("files"), Mapping) or set(raw["files"]) != {"selection_train", "selection_dev", "refit_train"}:
-        raise ContractError("prepared manifest must declare exactly selection_train, selection_dev, refit_train")
+    _validate_prepared_manifest(raw)
     return raw, _prepared_data_dir(config.prepared_data_dir)
 
 
@@ -275,8 +365,8 @@ def _manifest_file(manifest: Mapping[str, Any], data_dir: Path, key: str) -> tup
     if not isinstance(entry, Mapping) or set(entry) != {"filename", "sha256", "record_count"}:
         raise ContractError(f"prepared manifest files.{key} has an invalid schema")
     filename, digest, count = entry["filename"], entry["sha256"], entry["record_count"]
-    if not isinstance(filename, str) or Path(filename).name != filename or not filename.endswith(".jsonl"):
-        raise ContractError(f"prepared manifest files.{key}.filename is unsafe")
+    if filename != f"{key}.jsonl":
+        raise ContractError(f"prepared manifest files.{key}.filename must be canonical")
     if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest) or not isinstance(count, int) or count < 1:
         raise ContractError(f"prepared manifest files.{key} digest/count is invalid")
     return data_dir / filename, digest, count
