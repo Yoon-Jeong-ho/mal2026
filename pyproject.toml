@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mal2026-korean-writing-scoring"
+version = "0.1.0"
+description = "Reproducible, privacy-preserving Korean writing-score experiments"
+requires-python = ">=3.12,<3.13"
+readme = "README.md"
+license = {text = "Proprietary research code"}
+dependencies = [
+  "PyYAML==6.0.3",
+  "wandb==0.28.0",
+]
+
+[project.optional-dependencies]
+train = [
+  "accelerate==1.7.0",
+  "datasets==3.6.0",
+  "huggingface-hub==0.32.4",
+  "peft==0.15.2",
+  "safetensors==0.5.3",
+  "scikit-learn==1.6.1",
+  "sentence-transformers==4.1.0",
+  "torch==2.7.0",
+  "transformers==4.52.4",
+]
+
+test = ["pytest==8.3.5"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

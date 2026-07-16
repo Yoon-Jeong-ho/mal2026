@@ -1,0 +1,13 @@
+# Install only into the project-local .venv after the dependency/config smoke gate.
+# The CUDA-specific PyTorch wheel index is selected by the launch procedure, not here.
+accelerate==1.7.0
+datasets==3.6.0
+huggingface-hub==0.32.4
+peft==0.15.2
+PyYAML==6.0.3
+safetensors==0.5.3
+scikit-learn==1.6.1
+sentence-transformers==4.1.0
+torch==2.7.0
+transformers==4.52.4
+wandb==0.28.0

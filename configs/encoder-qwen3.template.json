@@ -1,0 +1,7 @@
+{
+  "run_kind": "encoder-qwen3",
+  "model": {"id": "Qwen/Qwen3-Embedding-8B", "revision": "REQUIRED_40_HEX_COMMIT", "tokenizer_revision": "REQUIRED_40_HEX_COMMIT", "pooling": "last_token_mean", "pooling_revision": "v1"},
+  "adapter": {"rank": 16, "alpha": 32, "dropout": 0.05, "target_modules": ["REQUIRED_VALIDATED_TARGET_MODULE"]},
+  "data": {"max_sequence_length": 2048, "head_fraction": 0.75, "dev_fraction": 0.10},
+  "optimization": {"seed": 20260716, "learning_rate": 0.0001, "epochs": 20, "warmup_ratio": 0.05, "per_device_batch_size": 1, "gradient_accumulation_steps": 8}
+}
