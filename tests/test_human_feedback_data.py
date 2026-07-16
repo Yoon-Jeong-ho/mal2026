@@ -78,7 +78,6 @@ class HumanFeedbackDataTests(unittest.TestCase):
             parse_label_record(raw_record(f"q{index}", index, f"Question {index}", "국어" if index < 3 else "과학"), "descriptive")
             for index in range(1, 5)
         )
-        prepared = prepare_human_feedback_data((), FakeTokenizer(), expected_source_records=None) if False else None
         # DP selection is deterministic, group-disjoint, and ties by sorted hashes.
         train, dev, audit = split_records(records)
         self.assertTrue(train and dev)
@@ -97,15 +96,36 @@ class HumanFeedbackDataTests(unittest.TestCase):
         self.assertEqual(TARGET_TOKEN_CAP, prepared.manifest["eligibility"]["assistant_target_token_cap"])
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            output = root / "data" / "processed" / "fixture"
-            manifest = root / "manifest.json"
-            written = write_prepared_dataset(prepared, output, manifest)
-            self.assertEqual(4, written["files"]["refit_train"]["record_count"])
-            safe = manifest.read_text(encoding="utf-8")
-            self.assertNotIn("Question 1", safe)
-            self.assertNotIn("artificial answer", safe)
-            self.assertNotIn("descriptive:q1:1", safe)
-            self.assertTrue((output / "selection_train.jsonl").is_file())
+            (root / "data" / "processed").mkdir(parents=True)
+            old_root = module.REPOSITORY_ROOT
+            module.REPOSITORY_ROOT = root
+            try:
+                output = root / "data" / "processed" / "fixture"
+                manifest = root / "manifest.json"
+                written = write_prepared_dataset(prepared, output, manifest)
+                self.assertEqual(4, written["files"]["refit_train"]["record_count"])
+                safe = manifest.read_text(encoding="utf-8")
+                self.assertNotIn("Question 1", safe)
+                self.assertNotIn("artificial answer", safe)
+                self.assertNotIn("descriptive:q1:1", safe)
+                self.assertTrue((output / "selection_train.jsonl").is_file())
+
+                # Traversal and nested paths are rejected rather than normalized.
+                with self.assertRaises(HumanFeedbackDataError):
+                    write_prepared_dataset(prepared, root / "data" / "processed" / ".." / "escape", root / "traversal.json")
+                with self.assertRaises(HumanFeedbackDataError):
+                    write_prepared_dataset(prepared, root / "data" / "processed" / "nested" / "escape", root / "nested.json")
+
+                # A direct child that is a symlink would otherwise redirect
+                # protected writing outside the ignored repository boundary.
+                outside = root / "outside"
+                outside.mkdir()
+                link = root / "data" / "processed" / "linked-output"
+                link.symlink_to(outside, target_is_directory=True)
+                with self.assertRaises(HumanFeedbackDataError):
+                    write_prepared_dataset(prepared, link, root / "symlink.json")
+            finally:
+                module.REPOSITORY_ROOT = old_root
 
     def test_discovery_rejects_validation_and_reads_only_tl(self):
         with tempfile.TemporaryDirectory() as directory:

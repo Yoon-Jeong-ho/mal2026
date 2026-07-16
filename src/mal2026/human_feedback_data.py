@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from hashlib import sha256
 import json
 from pathlib import Path
+import os
 import re
 from typing import Any, Iterable, Mapping, Protocol, Sequence
 from zipfile import ZipFile
@@ -27,6 +28,8 @@ TARGET_TOKEN_CAP = 1536
 QWEN_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 QWEN_REVISION = "a09a35458c702b33eeacc393d103063234e8bc28"
 QWEN_CHAT_TEMPLATE_SHA256 = "cd8e9439f0570856fd70470bf8889ebd8b5d1107207f67a5efb46e342330527f"
+# Canonical repository boundary for restricted derived rows.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 # Order is part of the decoder target contract; do not replace with a set.
 FEEDBACK_FIELDS = (
@@ -402,10 +405,39 @@ def _write_jsonl(path: Path, records: Sequence[HumanFeedbackRecord]) -> dict[str
     return {"records": len(records), "sha256": _jsonl_sha256(path)}
 
 
-def _assert_ignored_processed_destination(output_root: Path) -> None:
-    # A path-level guard remains effective even if a future .gitignore edit is wrong.
-    if "data" not in output_root.parts or "processed" not in output_root.parts:
-        raise HumanFeedbackDataError("restricted records may only be written under data/processed")
+def _assert_ignored_processed_destination(output_root: Path) -> Path:
+    """Admit only a non-symlink direct child of this repository's processed root.
+
+    Derived rows contain restricted writing.  A lexical ``data/processed`` check
+    is insufficient because ``..`` and symlinks can redirect writes outside the
+    Git-ignored boundary.  This guard deliberately rejects even an in-boundary
+    path containing traversal syntax so the accepted output contract is unique.
+    """
+    if any(part == ".." for part in output_root.parts):
+        raise HumanFeedbackDataError("restricted output path must not contain traversal components")
+    repository = REPOSITORY_ROOT.resolve(strict=True)
+    processed = repository / "data" / "processed"
+    if processed.is_symlink():
+        raise HumanFeedbackDataError("canonical data/processed root must not be a symlink")
+    if not processed.is_dir():
+        raise HumanFeedbackDataError("canonical data/processed root does not exist")
+    lexical = Path(os.path.abspath(os.fspath(output_root.expanduser())))
+    # First enforce direct-child placement before resolving any existing links.
+    if lexical.parent != processed:
+        raise HumanFeedbackDataError("restricted rows may only use a direct child of repository data/processed")
+    if lexical.name in {"", ".", ".."}:
+        raise HumanFeedbackDataError("restricted output directory name is invalid")
+    # Reject any symlink in the canonical path, including a pre-existing final
+    # directory.  A resolved-path comparison alone would miss an in-boundary
+    # link and would be vulnerable to a path-policy bypass.
+    current = repository
+    for part in lexical.relative_to(repository).parts:
+        current = current / part
+        if current.is_symlink():
+            raise HumanFeedbackDataError("restricted output path must not traverse a symlink")
+    if lexical.resolve(strict=False).parent != processed.resolve(strict=True):
+        raise HumanFeedbackDataError("restricted output path resolves outside canonical data/processed")
+    return lexical
 
 
 def prepare_human_feedback_data(
@@ -472,9 +504,8 @@ def prepare_human_feedback_data(
 
 def write_prepared_dataset(prepared: PreparedHumanFeedbackData, output_root: str | Path, manifest_path: str | Path) -> Mapping[str, Any]:
     """Write restricted JSONL to ignored storage and an aggregate-only manifest."""
-    output = Path(output_root)
+    output = _assert_ignored_processed_destination(Path(output_root))
     manifest_file = Path(manifest_path)
-    _assert_ignored_processed_destination(output)
     if output.exists():
         raise HumanFeedbackDataError(f"refusing to overwrite processed dataset: {output}")
     if manifest_file.exists():
