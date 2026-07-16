@@ -148,21 +148,37 @@ class RunnerStaticSafetyTest(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
-    def test_run_root_rejects_escape_and_symlink_path_components(self) -> None:
+    def test_run_root_and_canonical_dataset_admission_reject_escapes(self) -> None:
         runner = self._runner_module()
         with self.assertRaises(runner.TrainingContractError):
             runner._resolve_run_dir("/tmp/not-a-run", "safe-run")
-        with tempfile.TemporaryDirectory() as directory:
-            link = ROOT / "outputs"
-            # Never mutate a real outputs directory; only test a lexical escape.
-            self.assertNotEqual(Path(directory).resolve(), link.resolve(strict=False))
+        with self.assertRaises(runner.TrainingContractError):
+            runner._require_prior_run_dir("/tmp/not-a-run")
+        # Check the immutable checksum gate before any data path is resolved/read.
+        with self.assertRaises(runner.TrainingContractError):
+            runner._require_canonical_dataset("/tmp/look-alike.jsonl", "0" * 64, "train")
+        with self.assertRaises(runner.TrainingContractError):
+            runner._require_canonical_dataset("eval/train.jsonl", runner.CANONICAL_TRAIN_SHA256, "train")
+
+    def test_single_accelerate_shard_has_rank_coverage_and_post_prepare_updates(self) -> None:
+        runner = self._runner_module()
+        coverage = runner._rank_batch_coverage(record_count=23, batch_size=2, world_size=3)
+        self.assertEqual(sorted(index for rank in coverage for index in rank), list(range(23)))
+        for left, first in enumerate(coverage):
+            for second in coverage[left + 1:]:
+                self.assertFalse(set(first) & set(second))
+        self.assertEqual(runner._prepared_update_count(prepared_batches=4, accumulation_steps=2), 2)
+        self.assertEqual(runner._prepared_update_count(prepared_batches=5, accumulation_steps=2), 3)
 
     def test_runner_does_not_use_device_map_auto_or_raw_wandb_tables(self) -> None:
         source = (ROOT / "scripts" / "train_encoder.py").read_text(encoding="utf-8")
         self.assertNotIn("device_map", source)
         self.assertNotIn("wandb.Table", source)
         self.assertIn("aggregate", source)
-        self.assertIn("DistributedSampler", source)
+        self.assertNotIn("from torch.utils.data.distributed", source)
+        self.assertIn("_prepared_update_count(len(train_loader)", source)
+        self.assertIn("_require_canonical_dataset", source)
+        self.assertIn("_require_prior_run_artifact", source)
         self.assertIn("selection_metadata", source)
         self.assertIn("refit_adapter", source)
 
