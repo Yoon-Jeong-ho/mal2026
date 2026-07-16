@@ -29,6 +29,11 @@ reproducible code and documentation for model training and evaluation.
 - Run and verify a small smoke test before a multi-GPU or long-running job;
   preserve null and negative results and do not retune a protocol after seeing
   results without recording the change.
+- For routine training, prefer maintained standard Hugging Face training
+  integrations (``Trainer``/TRL ``SFTTrainer``) over bespoke training loops.
+  Use a custom loop only for a documented framework gap. For decoder batch
+  generation/evaluation, use a maintained high-throughput engine such as
+  vLLM or SGLang when compatible with the model and evaluation contract.
 
 ## Guidance maintenance
 
