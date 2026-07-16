@@ -279,6 +279,23 @@ def template_sha256(system_message: str, user_instruction: str) -> str:
     return hashlib.sha256((system_message + "\n" + user_instruction).encode("utf-8")).hexdigest()
 
 
+def tokenizer_chat_template_sha256(tokenizer: Any) -> str:
+    """Hash the *loaded* tokenizer chat template, not a caller declaration."""
+    template = getattr(tokenizer, "chat_template", None)
+    if not isinstance(template, str) or not template.strip():
+        raise ContractError("loaded tokenizer must expose a nonempty chat_template")
+    return hashlib.sha256(template.encode("utf-8")).hexdigest()
+
+
+def require_tokenizer_chat_template(tokenizer: Any, expected_sha256: str) -> str:
+    if not isinstance(expected_sha256, str) or not SHA256_RE.fullmatch(expected_sha256):
+        raise ContractError("expected chat template hash must be a SHA-256")
+    observed = tokenizer_chat_template_sha256(tokenizer)
+    if observed != expected_sha256:
+        raise ContractError("loaded tokenizer chat template does not match frozen canonical config")
+    return observed
+
+
 def validate_lora_targets(module_names: Iterable[str], target_modules: Sequence[str]) -> tuple[str, ...]:
     """Require every configured LoRA target to exist before adapting a model."""
     targets = tuple(target_modules)

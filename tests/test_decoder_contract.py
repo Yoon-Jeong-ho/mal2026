@@ -18,7 +18,14 @@ from mal2026.decoder import (
 )
 from mal2026.decoder_eval import aggregate_metrics, quadratic_weighted_kappa
 from mal2026.decoder_rationale_generate import TEACHER_TEMPLATE_SHA256, _parse_teacher_output, teacher_request
-from mal2026.decoder_train import _SelectionGenerationDataset, _selection_generation_collator, build_sft_example, head_tail_truncate
+from mal2026.decoder_train import (
+    _SelectionGenerationDataset,
+    _selection_generation_collator,
+    accelerator_batch_assignment,
+    build_sft_example,
+    head_tail_truncate,
+    updates_for_prepared_loader,
+)
 from mal2026.data_contract import DatasetRecord, ScoreVector
 from mal2026.rationale import RationaleValidationError, validate_rationale_payload
 
@@ -150,6 +157,25 @@ class DecoderContractTests(unittest.TestCase):
             validate_rationale_payload(payload, record.essay)
         with self.assertRaises(RationaleValidationError):
             _parse_teacher_output(__import__("json").dumps(payload, ensure_ascii=False), record.essay)
+
+    def test_one_accelerate_shard_rank_coverage_and_post_prepare_update_count(self):
+        assignments = accelerator_batch_assignment(batch_count=11, world_size=3)
+        self.assertEqual(assignments, ((0, 3, 6, 9), (1, 4, 7, 10), (2, 5, 8)))
+        self.assertEqual(sorted(index for assignment in assignments for index in assignment), list(range(11)))
+        self.assertEqual(updates_for_prepared_loader(4, 8), 1)
+        self.assertEqual(updates_for_prepared_loader(17, 8), 3)
+        with self.assertRaises(ContractError):
+            updates_for_prepared_loader(0, 8)
+
+    def test_loaded_chat_template_hash_is_checked(self):
+        from mal2026.decoder import require_tokenizer_chat_template, tokenizer_chat_template_sha256
+
+        tokenizer = FakeTokenizer()
+        tokenizer.chat_template = "{{ messages }}"
+        digest = tokenizer_chat_template_sha256(tokenizer)
+        self.assertEqual(require_tokenizer_chat_template(tokenizer, digest), digest)
+        with self.assertRaises(ContractError):
+            require_tokenizer_chat_template(tokenizer, "0" * 64)
 
 
 if __name__ == "__main__":

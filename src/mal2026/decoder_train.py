@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import random
+import re
 import sys
 from dataclasses import asdict, dataclass, fields
 from datetime import UTC, datetime
@@ -24,6 +25,7 @@ from .decoder import (
     require_canonical_dataset,
     require_immutable_revision,
     require_path_under_run,
+    require_tokenizer_chat_template,
     resolve_run_output_dir,
     target_for_record,
     validate_lora_targets,
@@ -47,6 +49,8 @@ class DecoderTrainConfig:
     train_path: str
     output_dir: str
     canonical_config_path: str
+    selection_run_id: str | None = None
+    selection_config_hash: str | None = None
     train_sha256: str = CANONICAL_TRAIN_SHA256
     rationale_run_id: str | None = None
     selected_updates: int | None = None
@@ -84,6 +88,12 @@ class DecoderTrainConfig:
         if self.phase == "refit":
             if not isinstance(self.selected_updates, int) or self.selected_updates < 1:
                 raise ContractError("refit requires selected_updates >= 1 from its selection run")
+            if not isinstance(self.selection_run_id, str) or not self.selection_run_id:
+                raise ContractError("refit requires the immutable source selection_run_id")
+            if not isinstance(self.selection_config_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", self.selection_config_hash):
+                raise ContractError("refit requires selection_config_hash from verified selection metadata")
+        elif self.selection_run_id is not None or self.selection_config_hash is not None:
+            raise ContractError("selection runs must not claim a prior selection binding")
         require_canonical_dataset(self.train_path, "train", self.train_sha256)
         if self.mode == "rationale" and not self.rationale_run_id:
             raise ContractError("rationale mode requires a score-blind synthetic rationale run")
@@ -144,6 +154,62 @@ def _validate_canonical_contract(config: DecoderTrainConfig) -> tuple[dict[str, 
         # generator config records its immutable revision and settings.
         raise ContractError("canonical rationale teacher must be the Qwen decoder family")
     return contract, contract_hash
+
+
+def _runtime_config_hash(config: DecoderTrainConfig) -> str:
+    return hashlib.sha256(
+        json.dumps(asdict(config), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _verify_refit_selection_binding(config: DecoderTrainConfig) -> None:
+    """Cryptographically tie a refit to its completed named selection run."""
+    if config.phase != "refit":
+        return
+    assert config.selection_run_id is not None and config.selection_config_hash is not None
+    selection_dir = resolve_run_output_dir(
+        config.selection_run_id, Path(config.output_dir).parent / config.selection_run_id, must_exist=True
+    )
+    metadata_path = selection_dir / "selection_metadata.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError("refit source selection metadata is unavailable") from exc
+    expected = {
+        "status": "completed",
+        "run_id": config.selection_run_id,
+        "config_hash": config.selection_config_hash,
+        "selected_updates": config.selected_updates,
+        "mode": config.mode,
+        "model_revision": config.model_revision,
+        "tokenizer_revision": config.tokenizer_revision,
+        "train_sha256": config.train_sha256,
+    }
+    if any(metadata.get(key) != value for key, value in expected.items()):
+        raise ContractError("refit binding does not match verified selection metadata")
+
+
+def updates_for_prepared_loader(loader_length: int, gradient_accumulation_steps: int) -> int:
+    """One pure source of truth for post-prepare optimizer-step accounting."""
+    if not isinstance(loader_length, int) or loader_length < 1:
+        raise ContractError("prepared loader length must be positive")
+    if not isinstance(gradient_accumulation_steps, int) or gradient_accumulation_steps < 1:
+        raise ContractError("gradient accumulation must be positive")
+    return (loader_length + gradient_accumulation_steps - 1) // gradient_accumulation_steps
+
+
+def accelerator_batch_assignment(batch_count: int, world_size: int) -> tuple[tuple[int, ...], ...]:
+    """Dependency-free coverage model for one ordinary-loader sharding layer.
+
+    Accelerate owns this assignment at runtime after ``prepare``.  Keeping this
+    small pure model tested prevents reintroducing a user-supplied sampler that
+    would apply a second rank partition before Accelerate sees the loader.
+    """
+    if not isinstance(batch_count, int) or batch_count < 1:
+        raise ContractError("batch_count must be positive")
+    if not isinstance(world_size, int) or world_size < 1:
+        raise ContractError("world_size must be positive")
+    return tuple(tuple(range(rank, batch_count, world_size)) for rank in range(world_size))
 
 
 def _records_as_mappings(rows: Any) -> list[dict[str, Any]]:
@@ -336,6 +402,7 @@ def train(config: DecoderTrainConfig) -> None:
     """Run selection/refit SFT.  Calling this function requires declared ML deps."""
     config.validate()
     _, canonical_config_hash = _validate_canonical_contract(config)
+    _verify_refit_selection_binding(config)
     run_dir = resolve_run_output_dir(config.run_id, config.output_dir)
     if run_dir.exists():
         raise ContractError(f"refusing to overwrite run output: {config.output_dir}")
@@ -343,7 +410,6 @@ def train(config: DecoderTrainConfig) -> None:
     from peft import LoraConfig, TaskType, get_peft_model
     from torch.optim import AdamW
     from torch.utils.data import DataLoader
-    from torch.utils.data.distributed import DistributedSampler
     from transformers import AutoModelForCausalLM, AutoTokenizer, get_scheduler
     import torch
 
@@ -354,6 +420,8 @@ def train(config: DecoderTrainConfig) -> None:
         torch.cuda.manual_seed_all(config.seed + accelerator.process_index)
 
     tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.tokenizer_revision, use_fast=True)
+    canonical_contract, _ = _validate_canonical_contract(config)
+    require_tokenizer_chat_template(tokenizer, canonical_contract["model"]["chat_template_sha256"])
     tokenizer.padding_side = "right"
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -367,19 +435,13 @@ def train(config: DecoderTrainConfig) -> None:
     train_records, dev_records, split_manifest = _load_train_partitions(config)
     rationales = _read_rationale_map(config.rationale_run_id, train_records, split_manifest, config) if config.rationale_run_id else None
     train_dataset = _SFTDataset(tokenizer, train_records, config.mode, rationales, config.max_seq_length)
-    train_sampler = DistributedSampler(
-        train_dataset, num_replicas=accelerator.num_processes, rank=accelerator.process_index,
-        shuffle=True, seed=config.seed, drop_last=False,
-    )
-    train_loader = DataLoader(train_dataset, batch_size=config.per_device_batch_size, sampler=train_sampler, collate_fn=_train_collator(tokenizer), drop_last=False)
+    # Ordinary loaders are intentionally passed to ``Accelerator.prepare``.
+    # Adding DistributedSampler here would shard them twice under Accelerate.
+    train_loader = DataLoader(train_dataset, batch_size=config.per_device_batch_size, shuffle=True, collate_fn=_train_collator(tokenizer), drop_last=False)
     dev_loader = None
     if dev_records:
         dev_dataset = _SelectionGenerationDataset(tokenizer, dev_records, config.max_seq_length)
-        dev_sampler = DistributedSampler(
-            dev_dataset, num_replicas=accelerator.num_processes, rank=accelerator.process_index,
-            shuffle=False, seed=config.seed, drop_last=False,
-        )
-        dev_loader = DataLoader(dev_dataset, batch_size=config.per_device_batch_size, sampler=dev_sampler, collate_fn=_selection_generation_collator(tokenizer), drop_last=False)
+        dev_loader = DataLoader(dev_dataset, batch_size=config.per_device_batch_size, shuffle=False, collate_fn=_selection_generation_collator(tokenizer), drop_last=False)
     optimizer = AdamW(model.parameters(), lr=config.learning_rate, betas=(0.9, 0.95), weight_decay=config.weight_decay)
     if dev_loader is None:
         model, optimizer, train_loader = accelerator.prepare(model, optimizer, train_loader)
@@ -388,9 +450,7 @@ def train(config: DecoderTrainConfig) -> None:
 
     # Accelerate may shard/wrap the loader; calculate optimizer updates only
     # after that point so multi-GPU scheduler and refit counts stay exact.
-    updates_per_epoch = (len(train_loader) + config.gradient_accumulation_steps - 1) // config.gradient_accumulation_steps
-    if updates_per_epoch < 1:
-        raise ContractError("prepared train loader has no optimizer update")
+    updates_per_epoch = updates_for_prepared_loader(len(train_loader), config.gradient_accumulation_steps)
     total_updates = int(config.selected_updates) if config.phase == "refit" else updates_per_epoch * config.epochs
     if config.phase == "refit" and total_updates > updates_per_epoch * config.epochs:
         raise ContractError("selected_updates exceeds the frozen refit epoch budget")
@@ -458,6 +518,13 @@ def train(config: DecoderTrainConfig) -> None:
         if accelerator.is_main_process:
             summary = {"status": "completed", "updates": updates, "selected_updates": best_updates, "best_dev_average_mae": best_dev_mae if best_updates is not None else None, "ended_at": datetime.now(UTC).isoformat()}
             _write_json(run_dir / "training_complete.json", summary)
+            if config.phase == "selection":
+                _write_json(run_dir / "selection_metadata.json", {
+                    "status": "completed", "run_id": config.run_id,
+                    "config_hash": _runtime_config_hash(config), "selected_updates": best_updates,
+                    "mode": config.mode, "model_revision": config.model_revision,
+                    "tokenizer_revision": config.tokenizer_revision, "train_sha256": config.train_sha256,
+                })
             _write_run_manifest(
                 run_dir, config, canonical_config_hash, split_manifest,
                 {"updates": updates, "selected_updates": best_updates or 0, "best_dev_average_mae": best_dev_mae if best_updates is not None else -1.0},
@@ -510,7 +577,11 @@ def _save_checkpoint(accelerator: Any, model: Any, run_dir: Path, epoch: int, up
     accelerator.save_state(str(checkpoint / "accelerate"))
     if accelerator.is_main_process:
         accelerator.unwrap_model(model).save_pretrained(checkpoint / "adapter", safe_serialization=True)
-        _write_json(checkpoint / "metadata.json", {"epoch": epoch, "optimizer_updates": updates})
+        _write_json(checkpoint / "metadata.json", {
+            "epoch": epoch,
+            "optimizer_updates": updates,
+            "adapter_sha256": _directory_sha256(checkpoint / "adapter"),
+        })
     accelerator.wait_for_everyone()
 
 
@@ -553,6 +624,25 @@ def _set_loader_epoch(loader: Any, epoch: int) -> None:
     nested_sampler = getattr(batch_sampler, "sampler", None)
     if hasattr(nested_sampler, "set_epoch"):
         nested_sampler.set_epoch(epoch)
+
+
+def _directory_sha256(path: Path) -> str:
+    """Hash adapter file names and bytes deterministically; reject symlinks."""
+    if not path.is_dir():
+        raise ContractError("adapter directory is missing")
+    digest = hashlib.sha256()
+    for item in sorted(path.rglob("*")):
+        if item.is_symlink() or not item.is_file():
+            if item.is_symlink():
+                raise ContractError("adapter directory may not contain symlinks")
+            continue
+        relative = item.relative_to(path).as_posix().encode("utf-8")
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        with item.open("rb") as handle:
+            while chunk := handle.read(1024 * 1024):
+                digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _write_run_manifest(

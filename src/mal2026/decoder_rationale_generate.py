@@ -21,6 +21,7 @@ from .decoder import (
     ContractError,
     require_canonical_dataset,
     require_immutable_revision,
+    require_tokenizer_chat_template,
     resolve_run_output_dir,
     template_sha256,
 )
@@ -52,6 +53,8 @@ class TeacherRationaleConfig:
     canonical_config_path: str
     train_sha256: str = CANONICAL_TRAIN_SHA256
     seed: int = 20260716
+    temperature: float = 0.0
+    top_p: float = 1.0
     max_new_tokens: int = 512
     max_retries: int = 2
     wandb_project: str = "mal2026-korean-writing-scoring"
@@ -74,6 +77,8 @@ class TeacherRationaleConfig:
         resolve_run_output_dir(self.run_id, self.output_dir)
         if self.max_new_tokens != 512 or self.max_retries != 2:
             raise ContractError("frozen teacher generation uses 512 new tokens and two retries")
+        if self.temperature != 0.0 or self.top_p != 1.0:
+            raise ContractError("deterministic frozen teacher policy requires temperature=0.0 and top_p=1.0")
 
 
 def load_json_config(path: str) -> TeacherRationaleConfig:
@@ -103,7 +108,9 @@ def _validate_canonical_contract(config: TeacherRationaleConfig) -> tuple[dict[s
         raise ContractError("runtime teacher ID/revision does not match canonical config")
     if teacher["prompt_template_sha256"] != TEACHER_TEMPLATE_SHA256:
         raise ContractError("canonical teacher prompt hash does not match frozen score-blind template")
-    if (teacher["seed"], teacher["max_new_tokens"], teacher["max_retries"]) != (config.seed, config.max_new_tokens, config.max_retries):
+    if (
+        teacher["seed"], teacher["temperature"], teacher["top_p"], teacher["max_new_tokens"], teacher["max_retries"]
+    ) != (config.seed, config.temperature, config.top_p, config.max_new_tokens, config.max_retries):
         raise ContractError("runtime generation settings do not match canonical config")
     return contract, contract_hash
 
@@ -145,21 +152,26 @@ def _parse_teacher_output(text: str, essay: str) -> list[dict[str, Any]]:
 def generate(config: TeacherRationaleConfig) -> None:
     """Generate, validate, and gate synthetic rationales with a frozen teacher."""
     config.validate()
-    _, canonical_config_hash = _validate_canonical_contract(config)
+    canonical_contract, canonical_config_hash = _validate_canonical_contract(config)
     run_dir = resolve_run_output_dir(config.run_id, config.output_dir)
     if run_dir.exists():
         raise ContractError("refusing to overwrite synthetic rationale output")
     from transformers import AutoModelForCausalLM, AutoTokenizer
     import torch
 
+    if not torch.cuda.is_available():
+        raise ContractError("score-blind teacher generation requires an available CUDA device")
+    device = torch.device("cuda:0")
     random.seed(config.seed)
     torch.manual_seed(config.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(config.seed)
     tokenizer = AutoTokenizer.from_pretrained(config.teacher_id, revision=config.tokenizer_revision, use_fast=True)
+    require_tokenizer_chat_template(tokenizer, canonical_contract["model"]["chat_template_sha256"])
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(config.teacher_id, revision=config.teacher_revision, torch_dtype=torch.bfloat16)
+    model.to(device)
     model.eval()
     records, partition = _partition_records(config)
     run_dir.mkdir(parents=True, exist_ok=False)
@@ -172,7 +184,7 @@ def generate(config: TeacherRationaleConfig) -> None:
             # no score, id, document_id, prompt_num, or split argument.
             messages = teacher_request(record)
             prefix = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            encoded = tokenizer(prefix, return_tensors="pt", add_special_tokens=False).to(model.device)
+            encoded = tokenizer(prefix, return_tensors="pt", add_special_tokens=False).to(device)
             rationale: list[dict[str, Any]] = []
             for _attempt in range(config.max_retries + 1):
                 generated = model.generate(
@@ -211,6 +223,9 @@ def generate(config: TeacherRationaleConfig) -> None:
         "tokenizer_revision": config.tokenizer_revision,
         "teacher_template_sha256": TEACHER_TEMPLATE_SHA256,
         "generation_do_sample": False,
+        "generation_temperature": config.temperature,
+        "generation_top_p": config.top_p,
+        "generation_device": str(device),
         "generation_max_new_tokens": config.max_new_tokens,
         "generation_max_retries": config.max_retries,
         "seed": config.seed,
@@ -251,6 +266,8 @@ def _write_manifest(run_dir: Path, config: TeacherRationaleConfig, canonical_con
             "phase": config.phase,
             "teacher_revision": config.teacher_revision,
             "teacher_template_sha256": TEACHER_TEMPLATE_SHA256,
+            "generation_temperature": config.temperature,
+            "generation_top_p": config.top_p,
             "nonempty_valid_count": provenance["nonempty_valid_count"],
             "invalid_or_exhausted_count": provenance["invalid_or_exhausted_count"],
             "nonempty_valid_rate": provenance["nonempty_valid_rate"],

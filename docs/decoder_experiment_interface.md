@@ -75,9 +75,11 @@ PYTHONPATH=src python scripts/generate_decoder_rationales.py --config /secure/co
 
 `decoder_rationale_generate.py` uses only prompt and essay text in its teacher
 request: it never reads scores, IDs, document IDs, prompt numbers, or split
-names. Its teacher revision, tokenizer revision, custom template hash,
-deterministic generation (`do_sample=false`, 512 tokens), seed, and two retry
-limit are pinned by the canonical rationale config. Each response must pass the
+names. Its teacher revision, tokenizer revision, custom template hash, actual
+loaded tokenizer chat-template hash, deterministic generation (`do_sample=false`,
+`temperature=0.0`, `top_p=1.0`, 512 tokens), seed, and two retry limit are
+pinned by the canonical rationale config. It explicitly requires CUDA and uses
+`cuda:0`; it never silently falls back to CPU. Each response must pass the
 shared exact-schema/offset/no-score-cue validator. Failed records are retained
 as empty local artifacts only; generation stops the protocol if fewer than 85%
 are nonempty valid. The resulting ignored run directory contains

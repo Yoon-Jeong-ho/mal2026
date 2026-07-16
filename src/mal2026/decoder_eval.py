@@ -23,9 +23,10 @@ from .decoder import (
     require_canonical_dataset,
     require_immutable_revision,
     require_path_under_run,
+    require_tokenizer_chat_template,
     resolve_run_output_dir,
 )
-from .decoder_train import SYSTEM_MESSAGE, _records_as_mappings, _set_loader_epoch
+from .decoder_train import SYSTEM_MESSAGE, _directory_sha256, _records_as_mappings, _set_loader_epoch
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,7 @@ class DecoderEvalConfig:
         adapter = require_path_under_run(self.adapter_path, self.refit_run_id)
         if not adapter.is_dir():
             raise ContractError("adapter_path must be a refit adapter directory")
-        _require_completed_refit(self)
+        _require_completed_refit(self, adapter)
         resolve_run_output_dir(self.selection_run_id, Path(self.output_dir).parent / self.selection_run_id, must_exist=True)
         if set(self.fallback_mean) != set(SCORE_KEYS):
             raise ContractError("fallback_mean must be the saved optimization-train four-score mean")
@@ -112,13 +113,14 @@ def _validate_canonical_contract(config: DecoderEvalConfig) -> tuple[dict[str, A
     return contract, contract_hash
 
 
-def _require_completed_refit(config: DecoderEvalConfig) -> None:
+def _require_completed_refit(config: DecoderEvalConfig, adapter: Path) -> None:
     """Bind fallback and adapter to a completed refit artifact, never selection."""
     refit_dir = resolve_run_output_dir(config.refit_run_id, Path(config.output_dir).parent / config.refit_run_id, must_exist=True)
     try:
         completed = json.loads((refit_dir / "training_complete.json").read_text(encoding="utf-8"))
         saved_config = json.loads((refit_dir / "config.json").read_text(encoding="utf-8"))
         saved_mean = json.loads((refit_dir / "train_partition_mean.json").read_text(encoding="utf-8"))
+        adapter_metadata = json.loads((adapter.parent / "metadata.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ContractError("refit output is missing required completion provenance") from exc
     if completed.get("status") != "completed" or saved_config.get("phase") != "refit":
@@ -129,8 +131,22 @@ def _require_completed_refit(config: DecoderEvalConfig) -> None:
         saved_config.get("model_id"), saved_config.get("model_revision"), saved_config.get("tokenizer_revision")
     ) != (config.model_id, config.model_revision, config.tokenizer_revision):
         raise ContractError("final evaluation model fields do not match the completed refit output")
+    # Re-check the persisted refit-to-selection cryptographic binding rather
+    # than trusting that the refit process happened to check it at launch.
+    from .decoder_train import DecoderTrainConfig, _verify_refit_selection_binding
+
+    try:
+        persisted_refit = DecoderTrainConfig.from_mapping(saved_config)
+        persisted_refit.validate()
+        _verify_refit_selection_binding(persisted_refit)
+    except (ContractError, TypeError) as exc:
+        raise ContractError("completed refit has no valid immutable selection binding") from exc
     if saved_mean != config.fallback_mean:
         raise ContractError("fallback_mean must exactly equal the completed refit train mean")
+    if not isinstance(adapter_metadata.get("optimizer_updates"), int) or adapter_metadata["optimizer_updates"] > completed.get("updates", -1):
+        raise ContractError("named refit adapter metadata has invalid optimizer update provenance")
+    if adapter_metadata.get("adapter_sha256") != _directory_sha256(adapter):
+        raise ContractError("named refit adapter checksum does not match checkpoint metadata")
 
 
 def _head_tail_prompt(ids: list[int], cap: int) -> list[int]:
@@ -258,12 +274,13 @@ def evaluate(config: DecoderEvalConfig) -> None:
     from accelerate import Accelerator
     from peft import PeftModel
     from torch.utils.data import DataLoader
-    from torch.utils.data.distributed import DistributedSampler
     from transformers import AutoModelForCausalLM, AutoTokenizer
     import torch
 
     accelerator = Accelerator(mixed_precision="bf16")
     tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.tokenizer_revision, use_fast=True)
+    canonical_contract, _ = _validate_canonical_contract(config)
+    require_tokenizer_chat_template(tokenizer, canonical_contract["model"]["chat_template_sha256"])
     tokenizer.padding_side = "left"
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -274,8 +291,8 @@ def evaluate(config: DecoderEvalConfig) -> None:
     from .data_contract import load_and_validate_jsonl
     records = _records_as_mappings(load_and_validate_jsonl(config.evaluation_path, expected_sha256=config.evaluation_sha256))
     dataset = _GenerationDataset(tokenizer, records, config.max_seq_length)
-    sampler = DistributedSampler(dataset, num_replicas=accelerator.num_processes, rank=accelerator.process_index, shuffle=False, drop_last=False)
-    loader = DataLoader(dataset, batch_size=config.per_device_batch_size, sampler=sampler, collate_fn=_collator(tokenizer), drop_last=False)
+    # Let Accelerator provide the one DDP sharding layer.
+    loader = DataLoader(dataset, batch_size=config.per_device_batch_size, shuffle=False, collate_fn=_collator(tokenizer), drop_last=False)
     model, loader = accelerator.prepare(model, loader)
     if accelerator.is_main_process:
         run_dir.mkdir(parents=True, exist_ok=False)
