@@ -1,0 +1,10 @@
+# Create the isolated project runtime with: python3.12 -m venv .venv-standard
+# Do not install these into the shared server Python environment.
+torch==2.7.0
+transformers==4.52.4
+accelerate==1.7.0
+datasets==3.6.0
+peft==0.15.2
+trl==0.17.0
+vllm==0.8.5.post1
+wandb==0.28.0

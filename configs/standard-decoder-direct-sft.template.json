@@ -1,0 +1,16 @@
+{
+  "run_id": "REQUIRED_UNIQUE_RUN_ID",
+  "phase": "selection",
+  "mode": "direct",
+  "model_path": "REQUIRED_LOCAL_QWEN_SNAPSHOT",
+  "tokenizer_path": "REQUIRED_LOCAL_QWEN_SNAPSHOT",
+  "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "tokenizer_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "prepared_manifest": "REQUIRED_ABSOLUTE_CANONICAL_MANIFEST_PATH",
+  "output_dir": "REQUIRED_IGNORED_OUTPUTS_STANDARD_RUN_DIRECT_CHILD",
+  "seed": 2026, "max_length": 2048, "learning_rate": 0.00002, "num_train_epochs": 12.0,
+  "per_device_train_batch_size": 1, "per_device_eval_batch_size": 1, "gradient_accumulation_steps": 8,
+  "eval_steps": 100, "save_steps": 100, "logging_steps": 5, "early_stopping_patience": 4,
+  "lora_r": 32, "lora_alpha": 64, "lora_dropout": 0.05,
+  "wandb_project": "mal2026-korean-writing-scoring", "wandb_entity": null
+}
