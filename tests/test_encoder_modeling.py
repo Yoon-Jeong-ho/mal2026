@@ -283,12 +283,12 @@ class RunnerStaticSafetyTest(unittest.TestCase):
 
     def test_prepared_manifest_accepts_only_named_human_feedback_partitions(self) -> None:
         runner = self._runner_module()
-        processed_root = ROOT / "data" / "processed" / "aihub_human_feedback_v1"
-        manifest_path = ROOT / "data" / "manifests" / "aihub_human_feedback_v1.json"
-        self.assertFalse(processed_root.exists())
-        self.assertFalse(manifest_path.exists())
-        processed_root.mkdir(parents=True)
-        try:
+        with tempfile.TemporaryDirectory() as directory:
+            sandbox = Path(directory)
+            processed_root = sandbox / "data" / "processed" / "aihub_human_feedback_v1"
+            manifest_path = sandbox / "data" / "manifests" / "aihub_human_feedback_v1.json"
+            processed_root.mkdir(parents=True)
+            manifest_path.parent.mkdir(parents=True)
             row = {
                 "id": "synthetic-test-id", "prompt": "p", "essay": "e",
                 "score": {"content": 1.0, "organization": 2.0, "expression": 3.0, "average": 2.0},
@@ -310,18 +310,15 @@ class RunnerStaticSafetyTest(unittest.TestCase):
                 "files": files,
             }
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            loaded = runner._load_prepared_manifest(str(manifest_path.resolve()))
-            rows = runner._load_prepared_records(loaded.selection_train)
-            self.assertEqual(len(rows), 1)
-            self.assertFalse(hasattr(rows[0], "feedback"))
-            manifest["files"]["selection_train"]["filename"] = "wrong.jsonl"
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            with self.assertRaises(runner.TrainingContractError):
-                runner._load_prepared_manifest(str(manifest_path.resolve()))
-        finally:
-            import shutil
-            shutil.rmtree(processed_root)
-            manifest_path.unlink(missing_ok=True)
+            with patch.object(runner, "_PREPARED_ROOT", processed_root), patch.object(runner, "_PREPARED_MANIFEST", manifest_path):
+                loaded = runner._load_prepared_manifest(str(manifest_path.resolve()))
+                rows = runner._load_prepared_records(loaded.selection_train)
+                self.assertEqual(len(rows), 1)
+                self.assertFalse(hasattr(rows[0], "feedback"))
+                manifest["files"]["selection_train"]["filename"] = "wrong.jsonl"
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaises(runner.TrainingContractError):
+                    runner._load_prepared_manifest(str(manifest_path.resolve()))
 
 
 if __name__ == "__main__":
