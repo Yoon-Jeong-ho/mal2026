@@ -47,6 +47,8 @@ def validate_rationale_payload(payload: Mapping[str, Any], essay: str | None) ->
         raise RationaleValidationError("rationale must be a list")
     if not entries:
         return RationaleValidation(nonempty_valid=False, entry_count=0)
+    if len(entries) != len(EVIDENCE_CRITERIA):
+        raise RationaleValidationError("nonempty rationale must contain exactly one entry per criterion")
     seen_criteria: set[str] = set()
     for entry in entries:
         if not isinstance(entry, Mapping) or set(entry) != _ENTRY_KEYS:
@@ -54,6 +56,8 @@ def validate_rationale_payload(payload: Mapping[str, Any], essay: str | None) ->
         criterion = entry["criterion"]
         if criterion not in EVIDENCE_CRITERIA:
             raise RationaleValidationError("unknown rationale criterion")
+        if criterion in seen_criteria:
+            raise RationaleValidationError("each rationale criterion may occur only once")
         seen_criteria.add(criterion)
         quote = entry["quote"]
         start, end = entry["start"], entry["end"]

@@ -24,13 +24,28 @@ not in quoted source text). These generated artifacts remain under ignored
 
 ## Configuration and execution
 
-Both runners require a non-secret JSON config. Model and tokenizer revisions
-must be immutable 40-character lowercase Git commit SHAs. A selection config
-derives its internal development partition deterministically from the
-hash-validated `eval/train.jsonl` prompt groups. A refit config requires the
-selected optimizer-update count and uses all training records. Final evaluation
-requires both the selection and refit run IDs and uses a saved
-optimization-train fallback mean; it cannot be used for selection.
+All decoder runtime configs require `canonical_config_path`, pointing to a
+filled, validated copy of `configs/decoder-direct.template.json` or
+`configs/decoder-rationale-score.template.json`. The runtime model, adapter,
+sequence, seed, and optimization fields must match that canonical contract.
+Model and tokenizer revisions must be immutable 40-character lowercase Git
+commit SHAs.
+
+The runners accept only the canonical local `eval/train.jsonl` or
+`eval/validation.jsonl` paths with their frozen SHA-256 values. A selection
+config derives its internal development partition deterministically from
+prompt groups in canonical training data. A refit config requires the selected
+optimizer-update count and uses all canonical training records. Final
+evaluation requires both selection/refit run IDs, a completed refit adapter
+located inside `outputs/runs/<refit-run-id>/`, and the exact saved refit train
+mean; it cannot select checkpoints or fit calibration.
+
+Every decoder artifact must use exactly
+`outputs/runs/<run-id>`; symlinks anywhere in this path are rejected. Each
+completed run writes an aggregate-only local run manifest (code/config/data
+hashes, command, environment/hardware, metrics, and deviations). W&B is
+rank-zero only, disables code/model upload, and uses the immutable run ID with
+`resume="never"`.
 
 Launch after dependency and config smoke gates with Accelerate, for example:
 
@@ -48,3 +63,28 @@ accepts no prose, markdown, reordered keys, strings, scientific notation, or
 out-of-range values. An invalid output receives the frozen optimization-train
 mean and remains in metrics. Evaluation writes only restricted ID/prediction
 artifacts under ignored outputs; W&B receives aggregate metrics/config only.
+
+## Score-blind synthetic rationale generation
+
+Do **not** supply a hand-authored or arbitrary rationale JSONL to SFT. Run the
+frozen teacher first, on the SFT training partition only:
+
+```bash
+PYTHONPATH=src python scripts/generate_decoder_rationales.py --config /secure/configs/decoder-rationale-teacher-selection.json
+```
+
+`decoder_rationale_generate.py` uses only prompt and essay text in its teacher
+request: it never reads scores, IDs, document IDs, prompt numbers, or split
+names. Its teacher revision, tokenizer revision, custom template hash,
+deterministic generation (`do_sample=false`, 512 tokens), seed, and two retry
+limit are pinned by the canonical rationale config. Each response must pass the
+shared exact-schema/offset/no-score-cue validator. Failed records are retained
+as empty local artifacts only; generation stops the protocol if fewer than 85%
+are nonempty valid. The resulting ignored run directory contains
+`synthetic-rationales.jsonl` and aggregate `rationale_provenance.json`.
+
+Rationale SFT refers to that **run ID**, not a caller-chosen file path. It
+checks the source-train hash, deterministic partition ID hash/count, validation
+gate, and artifact checksum before use. Synthetic evidence is model-generated
+training scaffolding, not a human label or proof that a generated explanation
+is faithful.

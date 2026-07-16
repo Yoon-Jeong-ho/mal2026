@@ -6,15 +6,26 @@ text remains a scored prediction through the frozen optimization-train mean.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
-import os
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
+import sys
 from typing import Any, Mapping, Sequence
 
-from .decoder import ContractError, SCORE_KEYS, parse_decoder_output, prompt_text, require_immutable_revision
-from .decoder_train import SYSTEM_MESSAGE, _records_as_mappings
+from .decoder import (
+    CANONICAL_VALIDATION_SHA256,
+    ContractError,
+    SCORE_KEYS,
+    parse_decoder_output,
+    prompt_text,
+    require_canonical_dataset,
+    require_immutable_revision,
+    require_path_under_run,
+    resolve_run_output_dir,
+)
+from .decoder_train import SYSTEM_MESSAGE, _records_as_mappings, _set_loader_epoch
 
 
 @dataclass(frozen=True)
@@ -30,6 +41,8 @@ class DecoderEvalConfig:
     fallback_mean: dict[str, float]
     selection_run_id: str
     refit_run_id: str
+    canonical_config_path: str
+    evaluation_sha256: str = CANONICAL_VALIDATION_SHA256
     max_seq_length: int = 3072
     per_device_batch_size: int = 1
     max_new_tokens: int = 512
@@ -53,8 +66,15 @@ class DecoderEvalConfig:
             raise ContractError("final evaluation requires separate selection_run_id and refit_run_id")
         if self.max_seq_length != 3072 or self.per_device_batch_size != 1:
             raise ContractError("final decoder evaluation uses frozen 3072 cap and batch size 1")
-        if Path(self.output_dir).name != self.run_id or not self.run_id:
-            raise ContractError("output_dir must end with nonempty run_id")
+        run_dir = resolve_run_output_dir(self.run_id, self.output_dir)
+        if self.run_id == self.refit_run_id:
+            raise ContractError("final evaluation must use a distinct immutable run_id")
+        require_canonical_dataset(self.evaluation_path, "validation", self.evaluation_sha256)
+        adapter = require_path_under_run(self.adapter_path, self.refit_run_id)
+        if not adapter.is_dir():
+            raise ContractError("adapter_path must be a refit adapter directory")
+        _require_completed_refit(self)
+        resolve_run_output_dir(self.selection_run_id, Path(self.output_dir).parent / self.selection_run_id, must_exist=True)
         if set(self.fallback_mean) != set(SCORE_KEYS):
             raise ContractError("fallback_mean must be the saved optimization-train four-score mean")
         for key in SCORE_KEYS:
@@ -70,7 +90,47 @@ def load_json_config(path: str) -> DecoderEvalConfig:
         raise ContractError("decoder eval config must be JSON object")
     config = DecoderEvalConfig.from_mapping(raw)
     config.validate()
+    _validate_canonical_contract(config)
     return config
+
+
+def _validate_canonical_contract(config: DecoderEvalConfig) -> tuple[dict[str, Any], str]:
+    from .config import ConfigError, load_experiment_config
+
+    try:
+        contract, contract_hash = load_experiment_config(config.canonical_config_path)
+    except ConfigError as exc:
+        raise ContractError(f"invalid canonical decoder config: {exc}") from exc
+    expected_kind = "decoder-direct" if config.mode == "direct" else "decoder-rationale-score"
+    if contract["run_kind"] != expected_kind:
+        raise ContractError("canonical run_kind does not match decoder evaluation mode")
+    model, data = contract["model"], contract["data"]
+    if (model["id"], model["revision"], model["tokenizer_revision"]) != (config.model_id, config.model_revision, config.tokenizer_revision):
+        raise ContractError("evaluation model fields do not match canonical config")
+    if data["max_sequence_length"] != config.max_seq_length:
+        raise ContractError("evaluation sequence length does not match canonical config")
+    return contract, contract_hash
+
+
+def _require_completed_refit(config: DecoderEvalConfig) -> None:
+    """Bind fallback and adapter to a completed refit artifact, never selection."""
+    refit_dir = resolve_run_output_dir(config.refit_run_id, Path(config.output_dir).parent / config.refit_run_id, must_exist=True)
+    try:
+        completed = json.loads((refit_dir / "training_complete.json").read_text(encoding="utf-8"))
+        saved_config = json.loads((refit_dir / "config.json").read_text(encoding="utf-8"))
+        saved_mean = json.loads((refit_dir / "train_partition_mean.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError("refit output is missing required completion provenance") from exc
+    if completed.get("status") != "completed" or saved_config.get("phase") != "refit":
+        raise ContractError("final evaluation accepts only a completed refit output")
+    if saved_config.get("mode") != config.mode or saved_config.get("run_id") != config.refit_run_id:
+        raise ContractError("refit output mode/run ID does not match final evaluation")
+    if (
+        saved_config.get("model_id"), saved_config.get("model_revision"), saved_config.get("tokenizer_revision")
+    ) != (config.model_id, config.model_revision, config.tokenizer_revision):
+        raise ContractError("final evaluation model fields do not match the completed refit output")
+    if saved_mean != config.fallback_mean:
+        raise ContractError("fallback_mean must exactly equal the completed refit train mean")
 
 
 def _head_tail_prompt(ids: list[int], cap: int) -> list[int]:
@@ -191,11 +251,14 @@ def aggregate_metrics(target: Sequence[Sequence[float]], prediction: Sequence[Se
 
 def evaluate(config: DecoderEvalConfig) -> None:
     config.validate()
-    if Path(config.output_dir).exists():
+    _, canonical_config_hash = _validate_canonical_contract(config)
+    run_dir = resolve_run_output_dir(config.run_id, config.output_dir)
+    if run_dir.exists():
         raise ContractError(f"refusing to overwrite run output: {config.output_dir}")
     from accelerate import Accelerator
     from peft import PeftModel
     from torch.utils.data import DataLoader
+    from torch.utils.data.distributed import DistributedSampler
     from transformers import AutoModelForCausalLM, AutoTokenizer
     import torch
 
@@ -209,10 +272,11 @@ def evaluate(config: DecoderEvalConfig) -> None:
     model = PeftModel.from_pretrained(base, config.adapter_path, is_trainable=False)
     model.config.use_cache = True
     from .data_contract import load_and_validate_jsonl
-    records = _records_as_mappings(load_and_validate_jsonl(config.evaluation_path))
-    loader = DataLoader(_GenerationDataset(tokenizer, records, config.max_seq_length), batch_size=config.per_device_batch_size, shuffle=False, collate_fn=_collator(tokenizer), drop_last=False)
+    records = _records_as_mappings(load_and_validate_jsonl(config.evaluation_path, expected_sha256=config.evaluation_sha256))
+    dataset = _GenerationDataset(tokenizer, records, config.max_seq_length)
+    sampler = DistributedSampler(dataset, num_replicas=accelerator.num_processes, rank=accelerator.process_index, shuffle=False, drop_last=False)
+    loader = DataLoader(dataset, batch_size=config.per_device_batch_size, sampler=sampler, collate_fn=_collator(tokenizer), drop_last=False)
     model, loader = accelerator.prepare(model, loader)
-    run_dir = Path(config.output_dir)
     if accelerator.is_main_process:
         run_dir.mkdir(parents=True, exist_ok=False)
         _write_json(run_dir / "config.json", asdict(config))
@@ -224,6 +288,7 @@ def evaluate(config: DecoderEvalConfig) -> None:
     all_valid: list[bool] = []
     with open(rank_path, "w", encoding="utf-8") as output:
         model.eval()
+        _set_loader_epoch(loader, 0)
         with torch.inference_mode():
             for batch in loader:
                 generated = accelerator.unwrap_model(model).generate(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], do_sample=False, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
@@ -247,7 +312,8 @@ def evaluate(config: DecoderEvalConfig) -> None:
     if accelerator.is_main_process:
         metrics = aggregate_metrics(all_target, all_pred, all_valid)
         _write_json(run_dir / "metrics.json", metrics)
-        _wandb_log(config, metrics)
+        _wandb_log(config, metrics, accelerator)
+        _write_run_manifest(run_dir, config, canonical_config_hash, metrics, accelerator)
 
 
 def _essay_for_id(records: Sequence[Mapping[str, Any]], identifier: str) -> str:
@@ -258,13 +324,57 @@ def _essay_for_id(records: Sequence[Mapping[str, Any]], identifier: str) -> str:
     raise ContractError("internal evaluation id lookup failed")
 
 
-def _wandb_log(config: DecoderEvalConfig, metrics: Mapping[str, float]) -> None:
-    import wandb
+def _wandb_log(config: DecoderEvalConfig, metrics: Mapping[str, float], accelerator: Any) -> None:
+    from .provenance import wandb_log_aggregates, wandb_rank_zero_init
 
-    os.environ.setdefault("WANDB_LOG_MODEL", "false")
-    run = wandb.init(project=config.wandb_project, entity=config.wandb_entity, name=config.run_id, config={"run_id": config.run_id, "mode": config.mode, "selection_run_id": config.selection_run_id, "refit_run_id": config.refit_run_id})
-    run.log(dict(metrics))
-    run.finish()
+    run = wandb_rank_zero_init(
+        project=config.wandb_project,
+        run_id=config.run_id,
+        rank=accelerator.process_index,
+        config={"run_id": config.run_id, "mode": config.mode, "selection_run_id": config.selection_run_id, "refit_run_id": config.refit_run_id},
+    )
+    try:
+        wandb_log_aggregates(run, metrics, step=0)
+    finally:
+        if run is not None:
+            run.finish()
+
+
+def _write_run_manifest(run_dir: Path, config: DecoderEvalConfig, canonical_config_hash: str, metrics: Mapping[str, float], accelerator: Any) -> None:
+    from .provenance import aggregate_only_payload, build_run_manifest
+
+    config_hash = hashlib.sha256(json.dumps(asdict(config), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    gpu_name = "unavailable"
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(accelerator.local_process_index)
+    except Exception:
+        pass
+    manifest = build_run_manifest(
+        run_id=config.run_id,
+        config_hash=config_hash,
+        data_contract={"validation_sha256": config.evaluation_sha256, "validation_records": int(metrics["count"])},
+        command=" ".join(sys.argv),
+        output_path=str(run_dir),
+        extra={
+            "canonical_config_hash": canonical_config_hash,
+            "mode": config.mode,
+            "model_revision": config.model_revision,
+            "tokenizer_revision": config.tokenizer_revision,
+            "selection_run_id": config.selection_run_id,
+            "refit_run_id": config.refit_run_id,
+            "world_size": accelerator.num_processes,
+            "gpu_name": gpu_name,
+            "metrics": dict(metrics),
+            "deviations": "none",
+        },
+    )
+    destination = run_dir / "run_manifest.json"
+    if destination.exists():
+        raise ContractError("refusing to overwrite run manifest")
+    destination.write_text(json.dumps(aggregate_only_payload(manifest), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _write_json(path: Path, value: Mapping[str, Any]) -> None:

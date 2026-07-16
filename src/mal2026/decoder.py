@@ -13,12 +13,21 @@ import math
 import re
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 SCORE_KEYS: tuple[str, ...] = ("content", "organization", "expression", "average")
 SCORE_MIN = Decimal("1.00")
 SCORE_MAX = Decimal("5.00")
 IMMUTABLE_REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+# These values identify the user-supplied restricted evaluation files.  They
+# are intentionally constants rather than mutable config defaults: a run must
+# fail if a look-alike file or a changed fixed split is supplied.
+CANONICAL_TRAIN_SHA256 = "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737"
+CANONICAL_VALIDATION_SHA256 = "0805445029328848164cf15f34b90b88fb5f7896d7b73f24f1717b733a9a00a4"
 
 # These must match the frozen protocol rather than accepting loosely formatted
 # generation.  Exact ordered output makes assistant-only supervision auditable.
@@ -36,6 +45,83 @@ SCORE_CUE_RE = re.compile(
 
 class ContractError(ValueError):
     """Raised when an input, target, output, or execution config is invalid."""
+
+
+def project_root() -> Path:
+    """Return the repository root without consulting caller-controlled CWD."""
+    return Path(__file__).resolve().parents[2]
+
+
+def canonical_dataset_path(split: str) -> Path:
+    if split not in {"train", "validation"}:
+        raise ContractError("dataset split must be train or validation")
+    return project_root() / "eval" / f"{split}.jsonl"
+
+
+def require_canonical_dataset(path: str | Path, split: str, digest: str) -> Path:
+    """Bind a decoder run to its one approved local restricted input file."""
+    expected_digest = CANONICAL_TRAIN_SHA256 if split == "train" else CANONICAL_VALIDATION_SHA256
+    if digest != expected_digest:
+        raise ContractError(f"{split}_sha256 must equal the frozen canonical checksum")
+    candidate = Path(path)
+    try:
+        resolved = candidate.resolve(strict=True)
+        expected = canonical_dataset_path(split).resolve(strict=True)
+    except OSError as exc:
+        raise ContractError(f"canonical eval/{split}.jsonl must exist before launch") from exc
+    if resolved != expected:
+        raise ContractError(f"{split} path must be the canonical eval/{split}.jsonl")
+    return expected
+
+
+def _path_has_symlink(path: Path) -> bool:
+    """Reject symlinks instead of attempting to reason about their target."""
+    current = Path(path.anchor) if path.is_absolute() else Path()
+    for part in path.parts[1:] if path.is_absolute() else path.parts:
+        current = current / part
+        if current.exists() and current.is_symlink():
+            return True
+    return False
+
+
+def resolve_run_output_dir(run_id: str, output_dir: str | Path, *, must_exist: bool = False) -> Path:
+    """Allow only an unsymlinked ``outputs/runs/<run-id>`` directory.
+
+    The lexical equality check prevents a path such as ``../`` from being
+    accepted, and the symlink checks prevent an ignored output location from
+    silently escaping to a tracked or external location.
+    """
+    if not isinstance(run_id, str) or not RUN_ID_RE.fullmatch(run_id):
+        raise ContractError("run_id must be a safe nonempty immutable run identifier")
+    root = project_root()
+    expected = root / "outputs" / "runs" / run_id
+    supplied = Path(output_dir)
+    supplied = supplied if supplied.is_absolute() else root / supplied
+    if supplied.absolute() != expected.absolute():
+        raise ContractError("output_dir must be exactly repository outputs/runs/<run-id>")
+    for path in (root / "outputs", root / "outputs" / "runs", expected):
+        if _path_has_symlink(path):
+            raise ContractError("output path contains a symlink and is rejected")
+    # resolve(strict=False) also detects a symlink introduced between checks.
+    if supplied.resolve(strict=False) != expected.resolve(strict=False):
+        raise ContractError("output path resolution escaped the approved run directory")
+    if must_exist and not expected.is_dir():
+        raise ContractError("required prior run output directory does not exist")
+    return expected
+
+
+def require_path_under_run(path: str | Path, run_id: str) -> Path:
+    """Accept an existing non-symlinked artifact only from the named run."""
+    run_dir = resolve_run_output_dir(run_id, project_root() / "outputs" / "runs" / run_id, must_exist=True)
+    candidate = Path(path)
+    if not candidate.exists() or _path_has_symlink(candidate):
+        raise ContractError("referenced run artifact must exist and may not use symlinks")
+    resolved = candidate.resolve(strict=True)
+    try:
+        resolved.relative_to(run_dir.resolve(strict=True))
+    except ValueError as exc:
+        raise ContractError("referenced artifact must be inside its named refit run") from exc
+    return resolved
 
 
 class _JsonNumber(str):
