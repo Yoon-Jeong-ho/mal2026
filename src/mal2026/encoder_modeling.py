@@ -173,6 +173,29 @@ def verify_nv_snapshot(snapshot_dir: str | Path, review: NVRemoteCodeReview) -> 
         _require(_sha256_file(file) == expected_hash, f"NV remote-code hash mismatch: {relative_path}")
 
 
+def load_nv_local_config(auto_config: Any, spec: "EncoderModelSpec") -> Any:
+    """Load NV's reviewed config locally and pin its tokenizer source locally.
+
+    The reviewed NV model may instantiate a tokenizer from
+    ``text_config._name_or_path``.  Passing the hub model ID there would give
+    remote code a second model-source resolution path, so overwrite and verify
+    it before the model class is created.
+    """
+    spec.validate_nv_runtime()  # Sets offline guards before any HF import/call.
+    snapshot = Path(spec.nv_snapshot_dir or "").resolve(strict=True)
+    config = auto_config.from_pretrained(
+        str(snapshot), revision=spec.revision, trust_remote_code=True, local_files_only=True
+    )
+    text_config = getattr(config, "text_config", None)
+    _require(text_config is not None, "NV remote config must expose text_config")
+    try:
+        setattr(text_config, "_name_or_path", str(snapshot))
+    except (AttributeError, TypeError) as error:
+        raise EncoderContractError("NV text_config._name_or_path cannot be bound to the reviewed snapshot") from error
+    _require(getattr(text_config, "_name_or_path", None) == str(snapshot), "NV text_config source must equal reviewed local snapshot")
+    return config
+
+
 @dataclass(frozen=True)
 class EncoderModelSpec:
     """The architecture-critical settings that must be frozen before a run."""
@@ -294,12 +317,16 @@ def build_encoder_regressor(spec: EncoderModelSpec) -> Any:
     requested here; placement is owned by Accelerate/DDP.
     """
 
+    # For NV, install offline guards and verify local source files *before*
+    # importing Transformers/Hugging Face code that may resolve remote modules.
+    if spec.backbone == "nv_embed_v2":
+        spec.validate_nv_runtime()
     try:
         import torch
         import torch.nn as nn
         import torch.nn.functional as functional
         from peft import LoraConfig, TaskType, get_peft_model
-        from transformers import AutoModel
+        from transformers import AutoConfig, AutoModel
     except ImportError as error:  # pragma: no cover - exercised in runtime environment
         raise RuntimeError("encoder training requires torch, transformers, and peft") from error
 
@@ -309,11 +336,11 @@ def build_encoder_regressor(spec: EncoderModelSpec) -> Any:
         "low_cpu_mem_usage": True,
     }
     if spec.backbone == "nv_embed_v2":
-        # The sole typed review source is part of spec/config and validates
-        # snapshot revision plus every Python file before remote code executes.
-        spec.validate_nv_runtime()
-        model_kwargs.update({"trust_remote_code": True, "local_files_only": True})
-        model_source = spec.nv_snapshot_dir
+        # ``load_nv_local_config`` validates the source after offline guards,
+        # then pins text_config's tokenizer lookup to this snapshot.
+        nv_config = load_nv_local_config(AutoConfig, spec)
+        model_kwargs.update({"config": nv_config, "trust_remote_code": True, "local_files_only": True})
+        model_source = str(Path(spec.nv_snapshot_dir or "").resolve(strict=True))
     else:
         model_kwargs["trust_remote_code"] = False
         model_source = spec.model_id

@@ -251,11 +251,13 @@ def _build_collator(tokenizer: Any) -> Any:
 
 
 def _build_tokenizer(spec: EncoderModelSpec) -> Any:
+    # Set offline guards and verify the local review before importing the HF
+    # loader that will execute a custom tokenizer class.
+    if spec.backbone == "nv_embed_v2":
+        spec.validate_nv_runtime()
     from transformers import AutoTokenizer
     if spec.backbone == "nv_embed_v2":
-        # spec validation and snapshot hashing occur before this remote-code call.
-        spec.validate_nv_runtime()
-        tokenizer = AutoTokenizer.from_pretrained(spec.nv_snapshot_dir, revision=spec.tokenizer_revision, trust_remote_code=True, local_files_only=True)
+        tokenizer = AutoTokenizer.from_pretrained(str(Path(spec.nv_snapshot_dir or "").resolve(strict=True)), revision=spec.tokenizer_revision, trust_remote_code=True, local_files_only=True)
     else:
         tokenizer = AutoTokenizer.from_pretrained(spec.model_id, revision=spec.tokenizer_revision, trust_remote_code=False)
     if tokenizer.pad_token_id is None:

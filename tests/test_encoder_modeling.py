@@ -10,6 +10,8 @@ import tempfile
 import unittest
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -21,6 +23,7 @@ from mal2026.encoder_modeling import (  # noqa: E402
     NV_EMBEDDING_DIMENSION,
     _remote_sentence_embeddings,
     enforce_nv_offline_runtime,
+    load_nv_local_config,
     verify_nv_snapshot,
 )
 
@@ -183,6 +186,41 @@ class NVInterfaceTest(unittest.TestCase):
                     else:
                         os.environ[name] = old
 
+    def test_nv_local_config_intercepts_remote_source_and_pins_text_config(self) -> None:
+        source = b"# reviewed remote source\n"
+        digest = hashlib.sha256(source).hexdigest()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / REVISION
+            root.mkdir()
+            (root / "modeling_nvembed.py").write_bytes(source)
+            for name in ("config.json", "tokenizer_config.json", "tokenizer.json"):
+                (root / name).write_text("{}", encoding="utf-8")
+            spec = EncoderModelSpec.from_mapping(qwen_spec(
+                backbone="nv_embed_v2", model_id="nvidia/NV-Embed-v2", pooling="remote_sentence_embedding",
+                nv_snapshot_dir=str(root), nv_remote_code_review={
+                    "model_id": "nvidia/NV-Embed-v2", "revision": REVISION, "license_acknowledged": True,
+                    "use_case": "research_noncommercial", "reviewer": "reviewer", "outcome": "approved",
+                    "reviewed_files": {"modeling_nvembed.py": digest},
+                },
+            ))
+            calls: list[tuple[str, dict[str, object]]] = []
+            class LocalOnlyAutoConfig:
+                @staticmethod
+                def from_pretrained(source_id: str, **kwargs: object) -> object:
+                    calls.append((source_id, kwargs))
+                    # A remote source/flag omission would be an attempted network path.
+                    if source_id != str(root.resolve()) or kwargs.get("local_files_only") is not True:
+                        import urllib.request
+                        urllib.request.urlopen("https://blocked.invalid")
+                    return SimpleNamespace(text_config=SimpleNamespace(_name_or_path="nvidia/NV-Embed-v2"))
+            with patch("urllib.request.urlopen", side_effect=AssertionError("network attempted")) as blocked:
+                config = load_nv_local_config(LocalOnlyAutoConfig, spec)
+            self.assertFalse(blocked.called)
+            self.assertEqual(calls[0][0], str(root.resolve()))
+            self.assertTrue(calls[0][1]["local_files_only"])
+            self.assertTrue(calls[0][1]["trust_remote_code"])
+            self.assertEqual(config.text_config._name_or_path, str(root.resolve()))
+
     def test_lora_rejects_unreviewed_latent_target(self) -> None:
         with self.assertRaises(EncoderContractError):
             EncoderModelSpec.from_mapping(qwen_spec(lora_target_modules=["q_proj", "latent_attention"]))
@@ -234,6 +272,8 @@ class RunnerStaticSafetyTest(unittest.TestCase):
         self.assertIn("pool_mask=attention_mask", modeling)
         self.assertIn("sentence_embeddings", modeling)
         self.assertNotIn('outputs.get("sentence_embedding")', modeling)
+        self.assertIn("load_nv_local_config", modeling)
+        self.assertIn("text_config", modeling)
 
 
 if __name__ == "__main__":
