@@ -1,27 +1,27 @@
 # Experiment configuration templates
 
-These JSON files are intentionally **not runnable**. Before a smoke run, copy
-the relevant file to an ignored run directory and replace every `REQUIRED_*`
-value with an immutable commit SHA or approved architecture value. The shared
-config validator fails closed for branch/tag revisions, unset pooling, or empty
-adapter target modules. Do not put credentials, prompts, writing text, IDs, or
-W&B tokens in these files.
+Templates are intentionally not runnable. Copy one into an ignored run/config
+location, replace each `REQUIRED_*` value with an immutable revision/hash, and
+set the runtime config to the aggregate-only prepared-data manifest. Do not put
+credentials, prompts, student writing, identifiers, labels, or W&B tokens in
+configuration files.
 
+Use `decoder-direct.template.json` for score-only Qwen SFT and
+`decoder-human-feedback-score.template.json` for human-feedback→score Qwen
+SFT. The shared validator fixes their token budgets, split fraction, and
+prepared-data schema version.
 
-## Human-feedback encoder data interface
+## Encoder human-feedback input
 
-Encoder `selection` and `refit` runs do **not** accept `eval/train.jsonl`.
-They require an absolute ignored `data/processed/.../manifest.json` through
-`--prepared-manifest`. The manifest is aggregate-only and uses protocol
-`aihub_human_feedback_score_v1`; it names exactly the relative files
-`selection_train.jsonl`, `selection_dev.jsonl`, and `refit_train.jsonl`, each
-with a SHA-256 and record count. It also has an aggregate source fingerprint,
-eligibility summary, and group-split summary. It must not contain writing text,
-feedback, IDs, or row tables. Prepared row files are restricted and contain
-`id`, `prompt`, `essay`, four-field `score`, and complete `feedback`; encoder
-input uses only prompt and essay and targets only score.
+Encoder selection/refit require the absolute canonical safe manifest
+`data/manifests/aihub_human_feedback_v1.json` through `--prepared-manifest`.
+It identifies the three fixed ignored prepared files with keys
+`selection_train`, `selection_dev`, and `refit_train`; each has exactly
+`filename`, `sha256`, and `record_count`. Files reside under
+`data/processed/aihub_human_feedback_v1/`. Encoder input consumes only prompt
+and essay, and its regression target consumes only the four-field score; the
+required human feedback is validated but never passed to the encoder.
 
-Source selection is the prepared approximately 20% development split and
-uses four-score macro MAE. `final-eval` remains limited to the canonical
-`eval/validation.jsonl` and verifies its refit lineage without accepting any
-training-data argument.
+The prepared source development split is approximately 20%; selection uses
+four-score macro MAE. Final evaluation accepts only frozen
+`eval/validation.jsonl` and refit lineage.

@@ -240,22 +240,19 @@ class PreparedHumanFeedbackManifest:
 
 
 _FORBIDDEN_MANIFEST_KEYS = frozenset({"id", "document_id", "prompt", "essay", "response", "feedback", "records"})
-_PREPARED_PROTOCOL = "aihub_human_feedback_score_v1"
+_PREPARED_DATASET_ID = "aihub_human_feedback_v1"
+_PREPARED_MANIFEST = PROJECT_ROOT / "data" / "manifests" / "aihub_human_feedback_v1.json"
+_PREPARED_ROOT = PROJECT_ROOT / "data" / "processed" / _PREPARED_DATASET_ID
 
 
-def _require_prepared_path(path: str | Path, *, must_exist: bool = True) -> Path:
-    """Resolve a local ignored prepared-data path without allowing escapes."""
-    candidate = Path(path)
-    _need(candidate.is_absolute(), "prepared manifest/data paths must be absolute")
+def _require_prepared_root(path: Path) -> Path:
+    """Resolve a restricted prepared partition beneath its fixed ignored root."""
     try:
-        resolved = candidate.resolve(strict=must_exist)
-        base = (PROJECT_ROOT / "data" / "processed").resolve(strict=True)
-    except OSError as error:
-        raise TrainingContractError("prepared manifest/data path does not exist") from error
-    try:
-        resolved.relative_to(base)
-    except ValueError as error:
-        raise TrainingContractError("prepared manifest/data must remain under ignored data/processed") from error
+        root = _PREPARED_ROOT.resolve(strict=True)
+        resolved = path.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as error:
+        raise TrainingContractError("prepared rows must remain under fixed ignored data/processed root") from error
     return resolved
 
 
@@ -266,49 +263,57 @@ def _assert_aggregate_manifest(value: Any, path: str = "manifest") -> None:
             _need(key.casefold() not in _FORBIDDEN_MANIFEST_KEYS, f"{path} contains restricted raw-data field {key}")
             _assert_aggregate_manifest(nested, f"{path}.{key}")
     elif isinstance(value, list):
-        # Only non-sensitive normalized-question/checksum hashes may be lists;
-        # row objects, IDs, prompts, feedback, and free text remain forbidden.
-        _need(all(isinstance(item, str) and len(item) == 64 and all(char in "0123456789abcdef" for char in item) for item in value), f"{path} list must contain only SHA-256 hashes")
+        # Aggregate manifest lists may contain fixed labels/checksums, never
+        # nested row objects that could carry writing text or identifiers.
+        _need(all(item is None or isinstance(item, (str, int, float, bool)) for item in value), f"{path} list must contain aggregate scalars only")
     elif value is None or isinstance(value, (str, int, float, bool)):
         return
     else:
         raise TrainingContractError(f"{path} contains unsupported value")
 
 
-def _parse_partition(manifest_dir: Path, value: Any, expected_name: str) -> PreparedPartition:
-    _need(isinstance(value, Mapping) and set(value) == {"path", "sha256", "record_count"}, f"prepared partition {expected_name} has invalid fields")
-    relative, digest, count = value["path"], value["sha256"], value["record_count"]
-    _need(isinstance(relative, str) and Path(relative).name == expected_name and not Path(relative).is_absolute() and ".." not in Path(relative).parts, f"prepared partition must be named {expected_name}")
+def _parse_partition(value: Any, expected_name: str) -> PreparedPartition:
+    _need(isinstance(value, Mapping) and set(value) == {"filename", "sha256", "record_count"}, f"prepared partition {expected_name} has invalid fields")
+    filename, digest, count = value["filename"], value["sha256"], value["record_count"]
+    _need(filename == expected_name, f"prepared partition filename must be {expected_name}")
     _need(isinstance(digest, str) and len(digest) == 64 and all(char in "0123456789abcdef" for char in digest), "prepared partition sha256 is invalid")
     _need(isinstance(count, int) and count > 0, "prepared partition record_count must be positive")
-    path = _require_prepared_path(str((manifest_dir / relative).resolve()))
+    path = _require_prepared_root(_PREPARED_ROOT / expected_name)
     _need(_sha256_file(path) == digest, f"prepared partition checksum mismatch: {expected_name}")
     return PreparedPartition(path=path, sha256=digest, record_count=count)
 
 
 def _load_prepared_manifest(path: str) -> PreparedHumanFeedbackManifest:
-    location = _require_prepared_path(path)
-    _need(location.name == "manifest.json", "prepared manifest must be named manifest.json")
+    location = Path(path)
+    _need(location.is_absolute(), "prepared manifest path must be absolute")
     try:
-        raw = json.loads(location.read_text(encoding="utf-8"))
+        resolved = location.resolve(strict=True)
+        expected = _PREPARED_MANIFEST.resolve(strict=True)
+    except OSError as error:
+        raise TrainingContractError("prepared human-feedback manifest does not exist") from error
+    _need(resolved == expected, "prepared manifest must be canonical data/manifests/aihub_human_feedback_v1.json")
+    try:
+        raw = json.loads(resolved.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise TrainingContractError("unable to read prepared human-feedback manifest") from error
     _need(isinstance(raw, Mapping), "prepared manifest must be an object")
     _assert_aggregate_manifest(raw)
-    required = {"schema_version", "protocol", "source_fingerprint", "eligibility", "split", "files"}
+    required = {"schema_version", "dataset_id", "source", "eligibility", "score_contract", "feedback_contract", "split", "files"}
     _need(set(raw) == required, "prepared manifest has unknown or missing top-level fields")
-    _need(raw["schema_version"] == 1 and raw["protocol"] == _PREPARED_PROTOCOL, "unsupported prepared human-feedback manifest protocol")
-    _need(isinstance(raw["source_fingerprint"], str) and len(raw["source_fingerprint"]) == 64 and all(char in "0123456789abcdef" for char in raw["source_fingerprint"]), "prepared manifest source fingerprint is invalid")
-    _need(isinstance(raw["eligibility"], Mapping) and isinstance(raw["split"], Mapping), "prepared manifest requires aggregate eligibility and split mappings")
+    _need(raw["schema_version"] == 1 and raw["dataset_id"] == _PREPARED_DATASET_ID, "unsupported prepared human-feedback manifest dataset")
+    source = raw["source"]
+    _need(isinstance(source, Mapping) and isinstance(source.get("archive_list_sha256"), str) and len(source["archive_list_sha256"]) == 64 and all(char in "0123456789abcdef" for char in source["archive_list_sha256"]), "prepared manifest source archive fingerprint is invalid")
+    _need(isinstance(raw["eligibility"], Mapping) and isinstance(raw["score_contract"], Mapping) and isinstance(raw["feedback_contract"], Mapping) and isinstance(raw["split"], Mapping), "prepared manifest requires aggregate source contracts")
     files = raw["files"]
-    _need(isinstance(files, Mapping) and set(files) == {"selection_train", "selection_dev", "refit_train"}, "prepared manifest must name exactly the three frozen partitions")
+    expected_files = {"selection_train", "selection_dev", "refit_train"}
+    _need(isinstance(files, Mapping) and set(files) == expected_files, "prepared manifest must name exactly the three frozen partitions")
     return PreparedHumanFeedbackManifest(
-        manifest_path=location,
-        manifest_sha256=_sha256_file(location),
-        source_fingerprint=raw["source_fingerprint"],
-        selection_train=_parse_partition(location.parent, files["selection_train"], "selection_train.jsonl"),
-        selection_dev=_parse_partition(location.parent, files["selection_dev"], "selection_dev.jsonl"),
-        refit_train=_parse_partition(location.parent, files["refit_train"], "refit_train.jsonl"),
+        manifest_path=resolved,
+        manifest_sha256=_sha256_file(resolved),
+        source_fingerprint=source["archive_list_sha256"],
+        selection_train=_parse_partition(files["selection_train"], "selection_train.jsonl"),
+        selection_dev=_parse_partition(files["selection_dev"], "selection_dev.jsonl"),
+        refit_train=_parse_partition(files["refit_train"], "refit_train.jsonl"),
     )
 
 
@@ -579,7 +584,7 @@ def run(args: argparse.Namespace) -> None:
         _need(args.eval_jsonl and args.eval_sha256 and args.refit_dir, "final-eval requires frozen validation JSONL/hash and refit directory")
         canonical_eval_path, canonical_eval_sha = _require_final_validation(args.eval_jsonl, args.eval_sha256)
     else:
-        _need(args.prepared_manifest, "selection/refit requires the ignored human-feedback prepared manifest")
+        _need(args.prepared_manifest, "selection/refit requires the canonical aggregate human-feedback manifest")
         prepared = _load_prepared_manifest(args.prepared_manifest)
         if args.phase == "refit":
             _need(args.selection_metadata, "refit requires selection metadata")
@@ -692,7 +697,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--output-dir", required=True, help="new ignored outputs/runs/<run-id>")
-    parser.add_argument("--prepared-manifest", help="absolute ignored data/processed/.../manifest.json for human-feedback source partitions")
+    parser.add_argument("--prepared-manifest", help="absolute canonical data/manifests/aihub_human_feedback_v1.json")
     parser.add_argument("--selection-metadata", help="selection output selection_metadata.json (refit only)")
     parser.add_argument("--eval-jsonl", help="restricted eval/validation.jsonl (final-eval only)")
     parser.add_argument("--eval-sha256", help="expected SHA-256 for eval/validation.jsonl")

@@ -1,96 +1,74 @@
-# Decoder SFT interface (Qwen2.5-7B)
+# Qwen2.5 decoder experiment interface
 
-`src/mal2026/decoder_train.py` and `decoder_eval.py` implement only the two
-Qwen decoder regimes. They are invoked through `scripts/train_decoder_sft.py`
-and `scripts/evaluate_decoder.py` with `PYTHONPATH=src` (or an installed
-package). Do not pass raw writing data, generations, or labels to W&B.
+`src/mal2026/decoder_train.py` and `decoder_eval.py` implement two decoder
+regimes: `direct` emits four scores, while `human_feedback` emits the source
+human feedback followed by those scores. Both receive **only** the prompt and
+student response in their user message. IDs, split metadata, scores, and
+feedback never enter the model input or W&B.
 
-## Inputs
+## Prepared source-data contract
 
-Training/dev/evaluation JSONL rows are restricted local files with exactly the
-required fields `id`, `prompt`, `essay`, and
-`score.{content,organization,expression,average}`. The runner never uses IDs,
-split names, or scores in a user message. Synthetic-rationale JSONL is
-train-only and contains exactly `{"id":...,"rationale":[...]}` per training
-row; it deliberately cannot contain score fields or split metadata.
+Preparation writes restricted JSONL files under ignored
+`data/processed/aihub_human_feedback_v1/` and an aggregate-only tracked
+manifest at `data/manifests/aihub_human_feedback_v1.json`. A runtime config
+binds both the directory and the manifest SHA-256. The manifest has exactly:
 
-Each rationale item has exactly `criterion`, `quote`, `start`, `end`, and
-`observation`. Criteria are `CONTENT`, `ORGANIZATION`, `EXPRESSION`; nonempty
-candidates must cover all three exactly once and their quotes must equal the
-unmodified essay slice at `[start:end]`. The version-controlled shared
-validator rejects numeric, rating, or score-proxy text in `observation` (but
-not in quoted source text). These generated artifacts remain under ignored
-`outputs/` paths.
-
-## Configuration and execution
-
-All decoder runtime configs require `canonical_config_path`, pointing to a
-filled, validated copy of `configs/decoder-direct.template.json` or
-`configs/decoder-rationale-score.template.json`. The runtime model, adapter,
-sequence, seed, and optimization fields must match that canonical contract.
-Model and tokenizer revisions must be immutable 40-character lowercase Git
-commit SHAs.
-
-The runners accept only the canonical local `eval/train.jsonl` or
-`eval/validation.jsonl` paths with their frozen SHA-256 values. A selection
-config derives its internal development partition deterministically from
-prompt groups in canonical training data. A refit config requires the selected
-optimizer-update count and uses all canonical training records. Final
-evaluation requires both selection/refit run IDs, a completed refit adapter
-located inside `outputs/runs/<refit-run-id>/`, and the exact parser fallback
-mean originally computed from the frozen selection optimization partition. The
-refit copies this checksum-verified value; it never recomputes a mean over all
-canonical training records. Final evaluation also requires the named adapter
-checkpoint's optimizer update to equal the completed refit selected-update
-count. It cannot select checkpoints or fit calibration.
-
-Every decoder artifact must use exactly
-`outputs/runs/<run-id>`; symlinks anywhere in this path are rejected. Each
-completed run writes an aggregate-only local run manifest (code/config/data
-hashes, command, environment/hardware, metrics, and deviations). W&B is
-rank-zero only, disables code/model upload, and uses the immutable run ID with
-`resume="never"`.
-
-Launch after dependency and config smoke gates with Accelerate, for example:
-
-```bash
-PYTHONPATH=src accelerate launch --num_processes 8 scripts/train_decoder_sft.py --config /secure/configs/decoder-direct-selection.json
+```json
+{
+  "schema_version": 1,
+  "dataset_id": "aihub_human_feedback_v1",
+  "files": {
+    "selection_train": {"filename":"selection_train.jsonl","sha256":"...","record_count":1},
+    "selection_dev": {"filename":"selection_dev.jsonl","sha256":"...","record_count":1},
+    "refit_train": {"filename":"refit_train.jsonl","sha256":"...","record_count":1}
+  }
+}
 ```
 
-The frozen decoder policy is BF16 DDP (no `device_map`), one example/GPU,
-accumulation 8, LoRA rank/alpha/dropout `32/64/0.05`, target projections
-`q/k/v/o/gate/up/down`, and 3,072 input tokens. Prefix truncation retains 75%
-head and 25% tail; assistant tokens alone contribute to SFT loss.
+Rows have exactly ordered keys `id`, `prompt`, `essay`, `score`, `feedback`.
+`score` has ordered `content`, `organization`, `expression`, `average` numeric
+values in `[1,5]` quantized to two decimals. `feedback` has ordered nonblank
+human strings `holistic`, `content_1`, `content_2`, `content_3`,
+`organization_1`, `organization_2`, `expression_1`, `expression_2`, `task_1`.
+The loader rejects duplicate JSON keys, key reordering, blank values, invalid
+scores, file digest/count mismatches, and train/dev ID overlap. Selection reads
+the preparation-owned `selection_train`/`selection_dev` split; refit reads
+`refit_train`. The runner does not resplit source data.
 
-Targets are exact ordered JSON with numeric two-decimal values. The parser
-accepts no prose, markdown, reordered keys, strings, scientific notation, or
-out-of-range values. An invalid output receives the frozen optimization-train
-mean and remains in metrics. Evaluation writes only restricted ID/prediction
-artifacts under ignored outputs; W&B receives aggregate metrics/config only.
+The human-feedback assistant target is exactly:
 
-## Score-blind synthetic rationale generation
-
-Do **not** supply a hand-authored or arbitrary rationale JSONL to SFT. Run the
-frozen teacher first, on the SFT training partition only:
-
-```bash
-PYTHONPATH=src python scripts/generate_decoder_rationales.py --config /secure/configs/decoder-rationale-teacher-selection.json
+```json
+{"feedback":{"holistic":"...","content_1":"...","content_2":"...","content_3":"...","organization_1":"...","organization_2":"...","expression_1":"...","expression_2":"...","task_1":"..."},"scores":{"content":3.20,"organization":3.50,"expression":3.75,"average":3.48}}
 ```
 
-`decoder_rationale_generate.py` uses only prompt and essay text in its teacher
-request: it never reads scores, IDs, document IDs, prompt numbers, or split
-names. Its teacher revision, tokenizer revision, custom template hash, actual
-loaded tokenizer chat-template hash, deterministic generation (`do_sample=false`,
-`temperature=0.0`, `top_p=1.0`, 512 tokens), seed, and two retry limit are
-pinned by the canonical rationale config. It explicitly requires CUDA and uses
-`cuda:0`; it never silently falls back to CPU. Each response must pass the
-shared exact-schema/offset/no-score-cue validator. Failed records are retained
-as empty local artifacts only; generation stops the protocol if fewer than 85%
-are nonempty valid. The resulting ignored run directory contains
-`synthetic-rationales.jsonl` and aggregate `rationale_provenance.json`.
+The direct target is only the ordered `scores` object. Decoder parsing rejects
+prose/markdown, duplicate or reordered keys, missing/blank feedback, non-numeric
+or non-two-decimal scores, and out-of-range scores. Invalid output gets the
+saved selection-train mean; no partial numeric extraction occurs.
 
-Rationale SFT refers to that **run ID**, not a caller-chosen file path. It
-checks the source-train hash, deterministic partition ID hash/count, validation
-gate, and artifact checksum before use. Synthetic evidence is model-generated
-training scaffolding, not a human label or proof that a generated explanation
-is faithful.
+## Budgets, selection, and final evaluation
+
+Both modes use full pinned chat-template accounting and deterministic 75:25
+head:tail truncation of **input only**. Targets are never truncated. Direct uses
+a 2,048-token rendered-chat budget and `max_new_tokens=256`; human-feedback
+uses 4,096 and `max_new_tokens=1536`. Preparation applies the common
+human-feedback target eligibility gate (`<=1536` pinned-token tokens) before
+splitting, so the four experiments have the same eligible rows.
+
+Selection chooses the lowest source-dev four-score macro-MAE only among
+checkpoints with strict parse validity at least `0.99`; otherwise selection
+fails. Refit must cryptographically bind to that selected update and fallback
+mean. Frozen `eval/validation.jsonl` is used only once after refit; it has no
+feedback, so human-feedback output is schema-validated but never compared to a
+gold explanation. Final metrics report component MAE/RMSE and macro MAE plus
+parse-failure rate.
+
+Use filled, ignored copies of `configs/decoder-direct.template.json` or
+`configs/decoder-human-feedback-score.template.json`. Model/tokenizer revisions
+must be immutable commit SHAs. Runs use BF16 Accelerate/DDP, LoRA rank/alpha/
+dropout `32/64/0.05`, one example/GPU, accumulation 8, and aggregate-only W&B.
+For example after smoke gates:
+
+```bash
+PYTHONPATH=src accelerate launch --num_processes 8 scripts/train_decoder_sft.py --config /secure/configs/decoder-human-feedback-selection.json
+```

@@ -34,7 +34,7 @@ from .decoder_train import SYSTEM_MESSAGE, _directory_sha256, _records_as_mappin
 @dataclass(frozen=True)
 class DecoderEvalConfig:
     run_id: str
-    mode: str
+    mode: str  # direct | human_feedback
     model_id: str
     model_revision: str
     tokenizer_revision: str
@@ -46,9 +46,9 @@ class DecoderEvalConfig:
     refit_run_id: str
     canonical_config_path: str
     evaluation_sha256: str = CANONICAL_VALIDATION_SHA256
-    max_seq_length: int = 3072
+    max_seq_length: int = 2048
     per_device_batch_size: int = 1
-    max_new_tokens: int = 512
+    max_new_tokens: int = 256
     wandb_project: str = "mal2026-korean-writing-scoring"
     wandb_entity: str | None = None
 
@@ -61,14 +61,15 @@ class DecoderEvalConfig:
         return cls(**dict(raw))
 
     def validate(self) -> None:
-        if self.mode not in {"direct", "rationale"}:
-            raise ContractError("mode must be direct or rationale")
+        if self.mode not in {"direct", "human_feedback"}:
+            raise ContractError("mode must be direct or human_feedback")
         require_immutable_revision(self.model_revision, "model_revision")
         require_immutable_revision(self.tokenizer_revision, "tokenizer_revision")
         if not self.selection_run_id or not self.refit_run_id:
             raise ContractError("final evaluation requires separate selection_run_id and refit_run_id")
-        if self.max_seq_length != 3072 or self.per_device_batch_size != 1:
-            raise ContractError("final decoder evaluation uses frozen 3072 cap and batch size 1")
+        expected_sequence, expected_new = (2048, 256) if self.mode == "direct" else (4096, 1536)
+        if (self.max_seq_length, self.max_new_tokens) != (expected_sequence, expected_new) or self.per_device_batch_size != 1:
+            raise ContractError("final decoder evaluation must use the mode-specific frozen token budget and batch size 1")
         run_dir = resolve_run_output_dir(self.run_id, self.output_dir)
         if self.run_id == self.refit_run_id:
             raise ContractError("final evaluation must use a distinct immutable run_id")
@@ -104,14 +105,14 @@ def _validate_canonical_contract(config: DecoderEvalConfig) -> tuple[dict[str, A
         contract, contract_hash = load_experiment_config(config.canonical_config_path)
     except ConfigError as exc:
         raise ContractError(f"invalid canonical decoder config: {exc}") from exc
-    expected_kind = "decoder-direct" if config.mode == "direct" else "decoder-rationale-score"
+    expected_kind = "decoder-direct" if config.mode == "direct" else "decoder-human-feedback-score"
     if contract["run_kind"] != expected_kind:
         raise ContractError("canonical run_kind does not match decoder evaluation mode")
     model, data = contract["model"], contract["data"]
     if (model["id"], model["revision"], model["tokenizer_revision"]) != (config.model_id, config.model_revision, config.tokenizer_revision):
         raise ContractError("evaluation model fields do not match canonical config")
-    if data["max_sequence_length"] != config.max_seq_length:
-        raise ContractError("evaluation sequence length does not match canonical config")
+    if (data["max_sequence_length"], data["max_new_tokens"], data["head_fraction"], data["dev_fraction"]) != (config.max_seq_length, config.max_new_tokens, 0.75, 0.20):
+        raise ContractError("evaluation token/split policy does not match canonical config")
     return contract, contract_hash
 
 
@@ -160,18 +161,18 @@ def _head_tail_prompt(ids: list[int], cap: int) -> list[int]:
     return ids[:head] + ids[len(ids) - (cap - head) :]
 
 
-def build_generation_example(tokenizer: Any, record: Mapping[str, Any], max_seq_length: int) -> dict[str, Any]:
+def build_generation_example(tokenizer: Any, record: Mapping[str, Any], input_token_cap: int) -> dict[str, Any]:
     user = prompt_text(record)
     messages = [{"role": "system", "content": SYSTEM_MESSAGE}, {"role": "user", "content": user}]
     prefix = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     ids = tokenizer(prefix, add_special_tokens=False)["input_ids"]
-    ids = _head_tail_prompt(ids, max_seq_length)
+    ids = _head_tail_prompt(ids, input_token_cap)
     return {"input_ids": ids, "scores": [float(record["score"][key]) for key in SCORE_KEYS], "id": record["id"]}
 
 
 class _GenerationDataset:
-    def __init__(self, tokenizer: Any, records: Sequence[Mapping[str, Any]], max_seq_length: int):
-        self.items = [build_generation_example(tokenizer, record, max_seq_length) for record in records]
+    def __init__(self, tokenizer: Any, records: Sequence[Mapping[str, Any]], input_token_cap: int):
+        self.items = [build_generation_example(tokenizer, record, input_token_cap) for record in records]
 
     def __len__(self) -> int:
         return len(self.items)
@@ -265,7 +266,7 @@ def aggregate_metrics(target: Sequence[Sequence[float]], prediction: Sequence[Se
         result[f"{key}/pearson"] = _pearson(truth, pred)
         result[f"{key}/spearman"] = _pearson(_rankdata(truth), _rankdata(pred))
         result[f"{key}/qwk"] = quadratic_weighted_kappa(truth, pred)
-    result["primary/average_mae"] = result["average/mae"]
+    result["primary/macro_mae"] = sum(result[f"{key}/mae"] for key in SCORE_KEYS) / len(SCORE_KEYS)
     return result
 
 
@@ -294,7 +295,7 @@ def evaluate(config: DecoderEvalConfig) -> None:
     model.config.use_cache = True
     from .data_contract import load_and_validate_jsonl
     records = _records_as_mappings(load_and_validate_jsonl(config.evaluation_path, expected_sha256=config.evaluation_sha256))
-    dataset = _GenerationDataset(tokenizer, records, config.max_seq_length)
+    dataset = _GenerationDataset(tokenizer, records, config.max_seq_length - config.max_new_tokens - 1)
     # Let Accelerator provide the one DDP sharding layer.
     loader = DataLoader(dataset, batch_size=config.per_device_batch_size, shuffle=False, collate_fn=_collator(tokenizer), drop_last=False)
     model, loader = accelerator.prepare(model, loader)
@@ -319,7 +320,7 @@ def evaluate(config: DecoderEvalConfig) -> None:
                 local_predictions: list[list[float]] = []
                 local_valid: list[int] = []
                 for identifier, text, truth in zip(batch["ids"], generated_text, batch["scores"].tolist()):
-                    parsed = parse_decoder_output(text, config.mode, config.fallback_mean, essay=None if config.mode == "direct" else _essay_for_id(records, identifier))
+                    parsed = parse_decoder_output(text, config.mode, config.fallback_mean)
                     local_predictions.append([parsed.scores[key] for key in SCORE_KEYS])
                     local_valid.append(int(parsed.valid))
                     # Restricted prediction file contains no prompt/essay/rationale text.
@@ -339,14 +340,6 @@ def evaluate(config: DecoderEvalConfig) -> None:
         _write_run_manifest(run_dir, config, canonical_config_hash, metrics, accelerator)
     accelerator.wait_for_everyone()
     orderly_distributed_shutdown()
-
-
-def _essay_for_id(records: Sequence[Mapping[str, Any]], identifier: str) -> str:
-    # Deliberately local-only lookup for schema validation; never emitted/logged.
-    for record in records:
-        if record["id"] == identifier:
-            return str(record["essay"])
-    raise ContractError("internal evaluation id lookup failed")
 
 
 def _wandb_log(config: DecoderEvalConfig, metrics: Mapping[str, float], accelerator: Any) -> None:

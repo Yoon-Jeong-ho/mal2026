@@ -30,17 +30,13 @@ RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 CANONICAL_TRAIN_SHA256 = "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737"
 CANONICAL_VALIDATION_SHA256 = "0805445029328848164cf15f34b90b88fb5f7896d7b73f24f1717b733a9a00a4"
 
-# These must match the frozen protocol rather than accepting loosely formatted
-# generation.  Exact ordered output makes assistant-only supervision auditable.
+# These values make assistant targets and generation parsing fully deterministic.
+# `human_feedback` is supervised only from AI-Hub labels; it is never part of a
+# model input and is unavailable in frozen final evaluation.
 DIRECT_KEYS = SCORE_KEYS
-RATIONALE_CRITERIA = frozenset({"CONTENT", "ORGANIZATION", "EXPRESSION"})
-# Excludes numeric offsets: generated evidence prose itself must not carry
-# scores, ratings, or score-proxy wording. Quotes are source text and not scanned.
-SCORE_CUE_RE = re.compile(
-    r"(?:[0-9０-９]+(?:[.,][0-9０-９]+)?\s*(?:점|점수|등급|grade|score|rating))"
-    r"|(?:만점|최고점|최저점|우수|탁월|보통|미흡|낮은\s*점수|높은\s*점수)"
-    r"|(?:\b(?:excellent|good|poor|weak|strong)\b)",
-    re.IGNORECASE,
+HUMAN_FEEDBACK_KEYS: tuple[str, ...] = (
+    "holistic", "content_1", "content_2", "content_3", "organization_1",
+    "organization_2", "expression_1", "expression_2", "task_1",
 )
 
 
@@ -60,7 +56,7 @@ def canonical_dataset_path(split: str) -> Path:
 
 
 def require_canonical_dataset(path: str | Path, split: str, digest: str) -> Path:
-    """Bind a decoder run to its one approved local restricted input file."""
+    """Bind final decoder evaluation to its approved restricted input file."""
     expected_digest = CANONICAL_TRAIN_SHA256 if split == "train" else CANONICAL_VALIDATION_SHA256
     if digest != expected_digest:
         raise ContractError(f"{split}_sha256 must equal the frozen canonical checksum")
@@ -86,12 +82,7 @@ def _path_has_symlink(path: Path) -> bool:
 
 
 def resolve_run_output_dir(run_id: str, output_dir: str | Path, *, must_exist: bool = False) -> Path:
-    """Allow only an unsymlinked ``outputs/runs/<run-id>`` directory.
-
-    The lexical equality check prevents a path such as ``../`` from being
-    accepted, and the symlink checks prevent an ignored output location from
-    silently escaping to a tracked or external location.
-    """
+    """Allow only an unsymlinked ``outputs/runs/<run-id>`` directory."""
     if not isinstance(run_id, str) or not RUN_ID_RE.fullmatch(run_id):
         raise ContractError("run_id must be a safe nonempty immutable run identifier")
     root = project_root()
@@ -103,7 +94,6 @@ def resolve_run_output_dir(run_id: str, output_dir: str | Path, *, must_exist: b
     for path in (root / "outputs", root / "outputs" / "runs", expected):
         if _path_has_symlink(path):
             raise ContractError("output path contains a symlink and is rejected")
-    # resolve(strict=False) also detects a symlink introduced between checks.
     if supplied.resolve(strict=False) != expected.resolve(strict=False):
         raise ContractError("output path resolution escaped the approved run directory")
     if must_exist and not expected.is_dir():
@@ -136,7 +126,7 @@ class ParsedPrediction:
     scores: dict[str, float]
     valid: bool
     error: str | None = None
-    rationale_valid: bool | None = None
+    feedback_valid: bool | None = None
 
 
 def require_immutable_revision(revision: str, field: str = "revision") -> str:
@@ -150,7 +140,7 @@ def format_score(value: float | Decimal) -> str:
     """Canonical two-decimal half-up representation for a source score."""
     try:
         number = Decimal(str(value))
-    except Exception as exc:  # pragma: no cover - Decimal has detailed errors
+    except Exception as exc:
         raise ContractError(f"score is not decimal: {value!r}") from exc
     if not number.is_finite() or not (SCORE_MIN <= number <= SCORE_MAX):
         raise ContractError(f"score must be finite and in [1, 5], got {value!r}")
@@ -170,36 +160,36 @@ def _score_json(score: Mapping[str, Any]) -> str:
 
 
 def direct_target(score: Mapping[str, Any]) -> str:
-    """Create exact, ordered direct-SFT JSON (no prose and no markdown)."""
+    """Create exact, ordered score-only SFT JSON (no prose and no markdown)."""
     return _score_json(score)
 
 
-def validate_rationale(rationale: Any, essay: str) -> list[dict[str, Any]]:
-    """Delegate evidence/leakage validation to the shared rationale contract.
-
-    The decoder stores only the ``rationale`` list inside its SFT output, while
-    the shared validator owns the versioned criterion, prose-cue, and offset
-    policy. Quotes are source evidence and are never score-cue scanned.
-    """
-    if not isinstance(rationale, list) or not isinstance(essay, str):
-        raise ContractError("rationale must be a list and essay must be a string")
-    from .rationale import RationaleValidationError, validate_rationale_payload
-
-    try:
-        validate_rationale_payload({"rationale": rationale}, essay=essay)
-    except RationaleValidationError as exc:
-        raise ContractError(str(exc)) from exc
-    # JSON-normalize only after the shared validator has checked every field.
-    return json.loads(json.dumps(rationale, ensure_ascii=False))
+def _ordered_feedback_object(feedback: Mapping[str, Any]) -> dict[str, str]:
+    if not isinstance(feedback, Mapping) or tuple(feedback) != HUMAN_FEEDBACK_KEYS:
+        raise ContractError("feedback JSON must have exactly ordered human-feedback keys")
+    result: dict[str, str] = {}
+    for key in HUMAN_FEEDBACK_KEYS:
+        value = feedback[key]
+        if not isinstance(value, str) or not value.strip():
+            raise ContractError(f"feedback.{key} must be a nonblank string")
+        result[key] = value
+    return result
 
 
-def rationale_target(rationale: Any, score: Mapping[str, Any], essay: str) -> str:
-    """Create exact rationale-then-score target after structural validation."""
-    checked = validate_rationale(rationale, essay)
-    # ``json.dumps`` cannot preserve two decimal places for floats, so score JSON
-    # is rendered separately while the synthetic evidence remains ordinary JSON.
-    rationale_json = json.dumps(checked, ensure_ascii=False, separators=(",", ":"))
-    return '{"rationale":' + rationale_json + ',"scores":' + _score_json(score) + "}"
+def human_feedback_target(feedback: Mapping[str, Any], score: Mapping[str, Any]) -> str:
+    """Create the fixed ordered human-feedback-then-score assistant target."""
+    checked = _ordered_feedback_object(feedback)
+    feedback_json = json.dumps(checked, ensure_ascii=False, separators=(",", ":"))
+    return '{"feedback":' + feedback_json + ',"scores":' + _score_json(score) + "}"
+
+
+def _no_duplicate_object(items: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in items:
+        if key in result:
+            raise ContractError(f"duplicate JSON key {key!r}")
+        result[key] = value
+    return result
 
 
 def _strict_score_object(obj: Any) -> dict[str, float]:
@@ -208,9 +198,6 @@ def _strict_score_object(obj: Any) -> dict[str, float]:
     result: dict[str, float] = {}
     for key in SCORE_KEYS:
         value = obj[key]
-        # Numeric lexemes are retained by json.loads. Strings, bools, exponent
-        # notation, integers, and any precision other than exactly two decimals
-        # are protocol violations, not candidates for numeric extraction.
         if not isinstance(value, _JsonNumber) or not re.fullmatch(r"[1-5]\.\d{2}", str(value)):
             raise ContractError(f"{key} must be a finite two-decimal JSON number in [1, 5]")
         decimal = Decimal(value)
@@ -220,53 +207,51 @@ def _strict_score_object(obj: Any) -> dict[str, float]:
     return result
 
 
-def parse_decoder_output(text: str, mode: str, fallback_mean: Mapping[str, float], essay: str | None = None) -> ParsedPrediction:
-    """Parse only the protocol JSON; any deviation returns the fixed train mean.
+def _strict_feedback_object(obj: Any) -> dict[str, str]:
+    return _ordered_feedback_object(obj)
 
-    There is intentionally no prose stripping, partial parsing, or number
-    extraction fallback. ``fallback_mean`` must originate from the optimization
-    training partition and is supplied by the caller/manifest.
+
+def parse_decoder_output(text: str, mode: str, fallback_mean: Mapping[str, float]) -> ParsedPrediction:
+    """Accept only the exact protocol JSON, else use the fixed train mean.
+
+    No prose stripping, partial parsing, or numeric extraction is permitted.
+    Generated feedback is schema-checked but never compared to unavailable
+    frozen-evaluation feedback.
     """
-    fallback = {key: float(fallback_mean[key]) for key in SCORE_KEYS}
     try:
-        if mode not in {"direct", "rationale"}:
-            raise ContractError("mode must be direct or rationale")
+        fallback = {key: float(fallback_mean[key]) for key in SCORE_KEYS}
+        if set(fallback_mean) != set(SCORE_KEYS):
+            raise ContractError("fallback_mean must have exactly four score keys")
+        if mode not in {"direct", "human_feedback"}:
+            raise ContractError("mode must be direct or human_feedback")
         if not isinstance(text, str):
             raise ContractError("decoder output must be text")
-        parsed = json.loads(text, parse_float=_JsonNumber)
+        parsed = json.loads(text, parse_float=_JsonNumber, object_pairs_hook=_no_duplicate_object)
         if mode == "direct":
-            return ParsedPrediction(scores=_strict_score_object(parsed), valid=True, rationale_valid=None)
-        if not isinstance(parsed, dict) or tuple(parsed) != ("rationale", "scores"):
-            raise ContractError("rationale output must contain exactly ordered rationale and scores")
-        scores = _strict_score_object(parsed["scores"])
-        if essay is None:
-            raise ContractError("essay is required to validate rationale output")
-        validate_rationale(parsed["rationale"], essay)
-        return ParsedPrediction(scores=scores, valid=True, rationale_valid=bool(parsed["rationale"]))
+            return ParsedPrediction(scores=_strict_score_object(parsed), valid=True, feedback_valid=None)
+        if not isinstance(parsed, dict) or tuple(parsed) != ("feedback", "scores"):
+            raise ContractError("human-feedback output must contain exactly ordered feedback and scores")
+        _strict_feedback_object(parsed["feedback"])
+        return ParsedPrediction(scores=_strict_score_object(parsed["scores"]), valid=True, feedback_valid=True)
     except (ValueError, TypeError, KeyError, ArithmeticError) as exc:
-        return ParsedPrediction(scores=fallback, valid=False, error=str(exc), rationale_valid=False if mode == "rationale" else None)
+        fallback = {key: float(fallback_mean[key]) for key in SCORE_KEYS}
+        return ParsedPrediction(scores=fallback, valid=False, error=str(exc), feedback_valid=False if mode == "human_feedback" else None)
 
 
-
-def target_for_record(record: Mapping[str, Any], mode: str, rationale: Any | None = None) -> str:
-    """Validate only required record fields and build a decoder assistant target."""
+def target_for_record(record: Mapping[str, Any], mode: str) -> str:
+    """Build an assistant target from score-only or source human-feedback labels."""
     score = record.get("score")
     if not isinstance(score, Mapping):
         raise ContractError("record.score must be an object")
     if mode == "direct":
         return direct_target(score)
-    if mode != "rationale":
-        raise ContractError("mode must be direct or rationale")
-    essay = record.get("essay")
-    if not isinstance(essay, str):
-        raise ContractError("record.essay must be a string")
-    if rationale is None:
-        raise ContractError("rationale mode requires a train-only synthetic rationale")
-    return rationale_target(rationale, score, essay)
+    if mode != "human_feedback":
+        raise ContractError("mode must be direct or human_feedback")
+    return human_feedback_target(record.get("feedback"), score)
 
 
 def prompt_text(record: Mapping[str, Any]) -> str:
-    """Build the frozen user message without leaking labels, ids, or split data."""
+    """Build the user message without leaking labels, IDs, or split metadata."""
     prompt, essay = record.get("prompt"), record.get("essay")
     if not isinstance(prompt, str) or not prompt.strip() or not isinstance(essay, str) or not essay.strip():
         raise ContractError("record must include nonempty prompt and essay strings")
@@ -274,7 +259,6 @@ def prompt_text(record: Mapping[str, Any]) -> str:
         "다음 글을 채점하세요. 출력은 지시된 JSON 형식만 사용하세요.\n\n"
         f"[문제]\n{prompt}\n\n[학생 글]\n{essay}"
     )
-
 
 def template_sha256(system_message: str, user_instruction: str) -> str:
     return hashlib.sha256((system_message + "\n" + user_instruction).encode("utf-8")).hexdigest()

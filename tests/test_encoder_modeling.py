@@ -247,7 +247,7 @@ class RunnerStaticSafetyTest(unittest.TestCase):
         with self.assertRaises(runner.TrainingContractError):
             runner._require_final_validation("/tmp/look-alike.jsonl", "0" * 64)
         with self.assertRaises(runner.TrainingContractError):
-            runner._require_prepared_path("/tmp/not-prepared/manifest.json")
+            runner._load_prepared_manifest("/tmp/not-prepared/manifest.json")
 
     def test_single_accelerate_shard_has_rank_coverage_and_post_prepare_updates(self) -> None:
         runner = self._runner_module()
@@ -268,7 +268,7 @@ class RunnerStaticSafetyTest(unittest.TestCase):
         self.assertIn("_prepared_update_count(len(train_loader)", source)
         self.assertIn("_require_final_validation", source)
         self.assertIn("_load_prepared_manifest", source)
-        self.assertIn("_PREPARED_PROTOCOL", source)
+        self.assertIn("_PREPARED_DATASET_ID", source)
         self.assertNotIn("eval/train.jsonl", source)
         self.assertIn("_require_prior_run_artifact", source)
         self.assertIn("selection_metadata", source)
@@ -283,44 +283,45 @@ class RunnerStaticSafetyTest(unittest.TestCase):
 
     def test_prepared_manifest_accepts_only_named_human_feedback_partitions(self) -> None:
         runner = self._runner_module()
-        prepared_root = ROOT / "data" / "processed" / "_encoder_manifest_static_test"
-        prepared_root.mkdir(parents=True, exist_ok=False)
+        processed_root = ROOT / "data" / "processed" / "aihub_human_feedback_v1"
+        manifest_path = ROOT / "data" / "manifests" / "aihub_human_feedback_v1.json"
+        self.assertFalse(processed_root.exists())
+        self.assertFalse(manifest_path.exists())
+        processed_root.mkdir(parents=True)
         try:
             row = {
-                "id": "synthetic-test-id",
-                "prompt": "p",
-                "essay": "e",
+                "id": "synthetic-test-id", "prompt": "p", "essay": "e",
                 "score": {"content": 1.0, "organization": 2.0, "expression": 3.0, "average": 2.0},
                 "feedback": {"holistic": "h", "content_1": "a", "content_2": "b", "content_3": "c", "organization_1": "d", "organization_2": "e", "expression_1": "f", "expression_2": "g", "task_1": "i"},
             }
             encoded = json.dumps(row, ensure_ascii=False) + "\n"
-            digests = {}
-            for name in ("selection_train.jsonl", "selection_dev.jsonl", "refit_train.jsonl"):
-                path = prepared_root / name
+            files = {}
+            for key, filename in (("selection_train", "selection_train.jsonl"), ("selection_dev", "selection_dev.jsonl"), ("refit_train", "refit_train.jsonl")):
+                path = processed_root / filename
                 path.write_text(encoded, encoding="utf-8")
-                digests[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-            group_hash = "b" * 64
+                files[key] = {"filename": filename, "record_count": 1, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
             manifest = {
-                "schema_version": 1,
-                "protocol": "aihub_human_feedback_score_v1",
-                "source_fingerprint": "a" * 64,
-                "eligibility": {"eligible_count": 1},
-                "split": {"normalized_question_hashes": [group_hash]},
-                "files": {key: {"path": filename, "sha256": digests[filename], "record_count": 1} for key, filename in (("selection_train", "selection_train.jsonl"), ("selection_dev", "selection_dev.jsonl"), ("refit_train", "refit_train.jsonl"))},
+                "schema_version": 1, "dataset_id": "aihub_human_feedback_v1",
+                "source": {"archive_list_sha256": "a" * 64, "source_records": 1},
+                "eligibility": {"eligible_records": 1},
+                "score_contract": {"fields": ["content", "organization", "expression", "average"]},
+                "feedback_contract": {"field_count": 9},
+                "split": {"normalized_question_group_hashes": ["b" * 64]},
+                "files": files,
             }
-            manifest_path = prepared_root / "manifest.json"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             loaded = runner._load_prepared_manifest(str(manifest_path.resolve()))
             rows = runner._load_prepared_records(loaded.selection_train)
             self.assertEqual(len(rows), 1)
             self.assertFalse(hasattr(rows[0], "feedback"))
-            manifest["files"]["selection_train"]["path"] = "wrong.jsonl"
+            manifest["files"]["selection_train"]["filename"] = "wrong.jsonl"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaises(runner.TrainingContractError):
                 runner._load_prepared_manifest(str(manifest_path.resolve()))
         finally:
             import shutil
-            shutil.rmtree(prepared_root)
+            shutil.rmtree(processed_root)
+            manifest_path.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

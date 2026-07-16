@@ -14,7 +14,7 @@ class ConfigError(ValueError):
 
 _IMMUTABLE_REVISION = re.compile(r"^[0-9a-f]{40,64}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_ALLOWED_KINDS = frozenset({"decoder-direct", "decoder-rationale-score", "encoder-qwen3", "encoder-nvembed"})
+_ALLOWED_KINDS = frozenset({"decoder-direct", "decoder-human-feedback-score", "encoder-qwen3", "encoder-nvembed"})
 
 
 def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -85,6 +85,16 @@ def validate_experiment_config(raw: Mapping[str, Any]) -> dict[str, Any]:
     fraction = data.get("dev_fraction")
     if not isinstance(fraction, (int, float)) or not 0 < float(fraction) < 1:
         raise ConfigError("data.dev_fraction must be between zero and one")
+    if kind.startswith("decoder"):
+        if data.get("head_fraction") != 0.75 or data.get("dev_fraction") != 0.20:
+            raise ConfigError("decoder requires head_fraction=0.75 and dev_fraction=0.20")
+        expected_length, expected_new = (2048, 256) if kind == "decoder-direct" else (4096, 1536)
+        if data["max_sequence_length"] != expected_length or data.get("max_new_tokens") != expected_new:
+            raise ConfigError("decoder token budgets do not match the frozen mode contract")
+        if data.get("prepared_schema_version") != 1:
+            raise ConfigError("decoder must bind prepared_schema_version=1")
+        if kind == "decoder-human-feedback-score" and data.get("feedback_target_max_tokens") != 1536:
+            raise ConfigError("human-feedback decoder requires feedback_target_max_tokens=1536")
 
     optimization = _mapping(raw.get("optimization"), "optimization")
     for name in ("seed", "epochs", "per_device_batch_size", "gradient_accumulation_steps"):
@@ -106,14 +116,6 @@ def validate_experiment_config(raw: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(patience, bool) or not isinstance(patience, int) or patience <= 0:
             raise ConfigError("optimization.early_stopping_patience must be a positive integer")
 
-    if kind == "decoder-rationale-score":
-        teacher = _mapping(raw.get("teacher"), "teacher")
-        _required_text(teacher.get("id"), "teacher.id")
-        _immutable_revision(teacher.get("revision"), "teacher.revision")
-        _sha256(teacher.get("prompt_template_sha256"), "teacher.prompt_template_sha256")
-        for name in ("seed", "max_new_tokens", "max_retries"):
-            if not isinstance(teacher.get(name), int) or teacher[name] < 0:
-                raise ConfigError(f"teacher.{name} must be a nonnegative integer")
     if kind == "encoder-nvembed":
         review = _mapping(raw.get("remote_code_review"), "remote_code_review")
         acknowledgement = _required_text(review.get("license_acknowledgement"), "remote_code_review.license_acknowledgement")
