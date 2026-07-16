@@ -42,6 +42,8 @@ class StandardSFTConfig:
     lora_r: int = 32
     lora_alpha: int = 64
     lora_dropout: float = 0.05
+    selection_summary_path: str | None = None
+    selected_global_step: int | None = None
     wandb_project: str = "mal2026-korean-writing-scoring"
     wandb_entity: str | None = None
 
@@ -67,15 +69,50 @@ class StandardSFTConfig:
             raise StandardDecoderContractError("mode-specific max_length is frozen")
         if min(self.learning_rate, self.num_train_epochs) <= 0 or min(self.per_device_train_batch_size, self.gradient_accumulation_steps) <= 0:
             raise StandardDecoderContractError("training hyperparameters must be positive")
-        if self.phase == "selection" and (self.eval_steps <= 0 or self.save_steps != self.eval_steps or self.early_stopping_patience <= 0):
-            raise StandardDecoderContractError("selection requires matched positive eval/save steps and early stopping")
+        if self.phase == "selection":
+            if self.eval_steps <= 0 or self.save_steps != self.eval_steps or self.early_stopping_patience <= 0:
+                raise StandardDecoderContractError("selection requires matched positive eval/save steps and early stopping")
+            if self.selection_summary_path is not None or self.selected_global_step is not None:
+                raise StandardDecoderContractError("selection must not receive an external checkpoint selection")
+        else:
+            if not isinstance(self.selected_global_step, int) or self.selected_global_step <= 0:
+                raise StandardDecoderContractError("refit requires a positive vLLM-selected global step")
+            if not self.selection_summary_path:
+                raise StandardDecoderContractError("refit requires the immutable vLLM checkpoint selection summary")
+            _verify_refit_selection(self)
 
 
-def _conversation_dataset(rows, mode: str):
+def _verify_refit_selection(config: StandardSFTConfig) -> dict[str, Any]:
+    """Bind refit step count to the aggregate-only source-dev vLLM selector."""
+    path = Path(config.selection_summary_path).resolve()
+    standard_runs = (ROOT / "outputs" / "standard-runs").resolve()
+    if not path.is_file() or not path.is_relative_to(standard_runs) or path.name != "selected_checkpoint.json":
+        raise StandardDecoderContractError("refit selection summary must be a standard-run selected_checkpoint.json")
+    try:
+        summary = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise StandardDecoderContractError("refit selection summary is unreadable") from exc
+    if not isinstance(summary, dict) or summary.get("status") != "completed":
+        raise StandardDecoderContractError("refit selection summary is incomplete")
+    expected = {"phase": "selection", "mode": config.mode, "model_revision": config.model_revision, "selected_global_step": config.selected_global_step}
+    if any(summary.get(key) != value for key, value in expected.items()):
+        raise StandardDecoderContractError("refit selection summary does not match model/mode/selected step")
+    return summary
+
+
+def _prompt_completion_dataset(rows, mode: str):
+    """TRL conversational prompt-completion form, independent of template masks.
+
+    Qwen2.5's chat template does not implement the Jinja `{% generation %}`
+    block required by `assistant_only_loss`; TRL's maintained prompt/completion
+    preprocessing instead derives labels from the explicit completion boundary.
+    """
     from datasets import Dataset
-    # Dataset.from_list requires a concrete list; a generator can silently fail
-    # before Trainer sees the restricted split.
-    return Dataset.from_list([{"messages": messages_for_sft(row, mode)} for row in rows])
+    examples = []
+    for row in rows:
+        messages = messages_for_sft(row, mode)
+        examples.append({"prompt": messages[:-1], "completion": [messages[-1]]})
+    return Dataset.from_list(examples)
 
 
 def run_sft(config: StandardSFTConfig) -> None:
@@ -106,7 +143,7 @@ def run_sft(config: StandardSFTConfig) -> None:
     )
     args = SFTConfig(
         output_dir=config.output_dir, run_name=config.run_id, seed=config.seed,
-        max_length=config.max_length, packing=False, assistant_only_loss=True,
+        max_length=config.max_length, packing=False, completion_only_loss=True, assistant_only_loss=False,
         learning_rate=config.learning_rate, num_train_epochs=config.num_train_epochs,
         per_device_train_batch_size=config.per_device_train_batch_size,
         per_device_eval_batch_size=config.per_device_eval_batch_size,
@@ -114,26 +151,39 @@ def run_sft(config: StandardSFTConfig) -> None:
         logging_steps=config.logging_steps, logging_strategy="steps",
         eval_strategy="steps" if eval_rows else "no", save_strategy="steps" if eval_rows else "epoch",
         eval_steps=config.eval_steps if eval_rows else None, save_steps=config.save_steps if eval_rows else None,
+        # Trainer's lifecycle monitor is eval_loss only. It may stop loss-
+        # converged selection runs, but it never selects the research winner.
+        # Retain every candidate checkpoint; vLLM source-dev macro MAE selects
+        # a checkpoint afterwards and refit receives that exact update count.
         load_best_model_at_end=bool(eval_rows), metric_for_best_model="eval_loss" if eval_rows else None,
-        greater_is_better=False if eval_rows else None, save_total_limit=2 if eval_rows else 1,
+        greater_is_better=False if eval_rows else None, save_total_limit=None if eval_rows else 1,
+        max_steps=config.selected_global_step if config.phase == "refit" else -1,
         bf16=True, tf32=True, gradient_checkpointing=True, report_to=["wandb"],
         remove_unused_columns=False, dataset_num_proc=1,
     )
     callbacks = [EarlyStoppingCallback(early_stopping_patience=config.early_stopping_patience)] if eval_rows else []
     trainer = SFTTrainer(
-        model=model, args=args, train_dataset=_conversation_dataset(train_rows, config.mode),
-        eval_dataset=_conversation_dataset(eval_rows, config.mode) if eval_rows else None,
+        model=model, args=args, train_dataset=_prompt_completion_dataset(train_rows, config.mode),
+        eval_dataset=_prompt_completion_dataset(eval_rows, config.mode) if eval_rows else None,
         processing_class=tokenizer, peft_config=peft_config, callbacks=callbacks,
     )
     trainer.train()
     trainer.save_model(str(Path(config.output_dir) / "adapter"))
     tokenizer.save_pretrained(str(Path(config.output_dir) / "adapter"))
     # Only aggregate/provenance metadata. Do not write row predictions, source text, or outputs.
+    checkpoint_steps = sorted(
+        int(path.name.removeprefix("checkpoint-"))
+        for path in Path(config.output_dir).glob("checkpoint-*")
+        if path.is_dir() and path.name.removeprefix("checkpoint-").isdigit()
+    )
     completion = {
         "status": "completed", "run_id": config.run_id, "phase": config.phase, "mode": config.mode,
         "global_step": int(trainer.state.global_step), "best_metric": trainer.state.best_metric,
         "model_revision": config.model_revision, "tokenizer_revision": config.tokenizer_revision,
         "train_records": len(train_rows), "eval_records": len(eval_rows or []),
-        "fallback_mean": score_mean(train_rows), "config": asdict(config),
+        "fallback_mean": score_mean(train_rows), "selection_candidate_steps": checkpoint_steps if config.phase == "selection" else [],
+        "selection_lifecycle": "Trainer eval_loss early-stopping/checkpointing; external vLLM source-dev macro-MAE selects refit step" if config.phase == "selection" else "refit uses selected_global_step from aggregate vLLM summary",
+        "selected_global_step": config.selected_global_step, "selection_summary_path": config.selection_summary_path,
+        "config": asdict(config),
     }
     (Path(config.output_dir) / "standard_training_complete.json").write_text(json.dumps(completion, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

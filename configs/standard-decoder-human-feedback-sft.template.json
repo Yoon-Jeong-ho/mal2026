@@ -12,5 +12,6 @@
   "per_device_train_batch_size": 1, "per_device_eval_batch_size": 1, "gradient_accumulation_steps": 8,
   "eval_steps": 100, "save_steps": 100, "logging_steps": 5, "early_stopping_patience": 4,
   "lora_r": 32, "lora_alpha": 64, "lora_dropout": 0.05,
+  "selection_summary_path": null, "selected_global_step": null,
   "wandb_project": "mal2026-korean-writing-scoring", "wandb_entity": null
 }

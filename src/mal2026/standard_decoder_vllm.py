@@ -84,32 +84,48 @@ class VLLMEvalConfig:
         config.validate()
         return config
 
-    def validate(self) -> None:
+    def validate(self) -> int:
         if self.mode not in {"direct", "human_feedback"} or self.source not in {"selection_dev", "frozen_validation"}:
             raise StandardDecoderContractError("invalid vLLM mode or source")
         if Path(self.prepared_manifest).resolve() != DEFAULT_MANIFEST.resolve():
             raise StandardDecoderContractError("vLLM must use canonical aggregate prepared manifest")
         if Path(self.output_dir).resolve().parent != (ROOT / "outputs" / "standard-evals").resolve() or Path(self.output_dir).exists():
             raise StandardDecoderContractError("evaluator output must be a new direct child of ignored outputs/standard-evals")
-        adapter = Path(self.adapter_path)
+        adapter = Path(self.adapter_path).resolve()
         standard_runs = (ROOT / "outputs" / "standard-runs").resolve()
-        if not adapter.is_dir() or not adapter.resolve().is_relative_to(standard_runs):
+        if not adapter.is_dir() or not adapter.is_relative_to(standard_runs):
             raise StandardDecoderContractError("adapter must be inside a standard training output")
-        # Bind the adapter to a completed standard-Trainer run. Selection-dev
-        # evaluation may use its selection adapter; frozen validation accepts
-        # only a refit adapter, preventing selection/final lineage swaps.
-        completion_path = adapter.parent / "standard_training_complete.json"
+        relative = adapter.relative_to(standard_runs)
+        if len(relative.parts) < 2:
+            raise StandardDecoderContractError("adapter must be nested under one standard training run")
+        run_root = standard_runs / relative.parts[0]
+        completion_path = run_root / "standard_training_complete.json"
         try:
             completion = json.loads(completion_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
             raise StandardDecoderContractError("adapter is missing standard training completion provenance") from exc
         if not isinstance(completion, dict) or completion.get("status") != "completed":
             raise StandardDecoderContractError("adapter training completion status is invalid")
-        if completion.get("mode") != self.mode or completion.get("model_revision") not in {None, self.model_revision}:
+        if completion.get("mode") != self.mode or completion.get("model_revision") != self.model_revision:
             raise StandardDecoderContractError("adapter completion does not match evaluation mode/model revision")
         expected_phase = "selection" if self.source == "selection_dev" else "refit"
         if completion.get("phase") != expected_phase:
             raise StandardDecoderContractError("evaluation source requires matching selection/refit adapter provenance")
+        if self.source == "selection_dev":
+            # Candidate adapters are standard Trainer checkpoints, not the
+            # eval-loss-best convenience export at run_root/adapter.
+            if adapter.parent != run_root or not adapter.name.startswith("checkpoint-"):
+                raise StandardDecoderContractError("source-dev vLLM evaluation requires a retained Trainer checkpoint")
+            try:
+                checkpoint_step = int(adapter.name.removeprefix("checkpoint-"))
+            except ValueError as exc:
+                raise StandardDecoderContractError("selection checkpoint name lacks global step") from exc
+            if checkpoint_step not in completion.get("selection_candidate_steps", []):
+                raise StandardDecoderContractError("selection checkpoint is not a recorded Trainer candidate")
+        else:
+            checkpoint_step = int(completion.get("selected_global_step", -1))
+            if adapter != run_root / "adapter":
+                raise StandardDecoderContractError("frozen validation requires the refit run's adapter export")
         if not (adapter / "adapter_config.json").is_file():
             raise StandardDecoderContractError("adapter directory lacks adapter_config.json")
         expected_len, expected_new = (2048, 256) if self.mode == "direct" else (4096, 1536)
@@ -119,10 +135,11 @@ class VLLMEvalConfig:
             raise StandardDecoderContractError("invalid vLLM parallelism/memory utilization")
         if self.source == "frozen_validation" and not self.validation_sha256:
             raise StandardDecoderContractError("frozen final evaluation requires a pinned validation SHA-256")
+        return checkpoint_step
 
 
 def run_vllm_evaluation(config: VLLMEvalConfig) -> dict[str, Any]:
-    config.validate()
+    checkpoint_step = config.validate()
     rows = load_prepared_split("selection_dev", Path(config.prepared_manifest)) if config.source == "selection_dev" else load_frozen_validation(config.validation_sha256)
     fallback_rows = load_prepared_split("selection_train", Path(config.prepared_manifest))
     fallback = score_mean(fallback_rows)
@@ -152,6 +169,7 @@ def run_vllm_evaluation(config: VLLMEvalConfig) -> dict[str, Any]:
     result = {
         "status": "completed", "run_id": config.run_id, "source": config.source, "mode": config.mode,
         "model_revision": config.model_revision, "adapter_path": str(Path(config.adapter_path).resolve()),
+        "adapter_global_step": checkpoint_step,
         "metrics": metrics, "config": asdict(config),
         "privacy": "aggregate_only_no_rows_prompts_essays_feedback_ids_or_model_outputs_persisted",
     }

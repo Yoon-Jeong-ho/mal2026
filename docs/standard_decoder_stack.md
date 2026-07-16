@@ -55,3 +55,25 @@ only `aggregate_metrics.json` and aggregate W&B scalars. The selection
 criterion is `primary_macro_mae`; Trainer's `eval_loss` drives its standard
 checkpoint/early-stopping lifecycle. Do not use frozen final validation for
 model selection or early stopping.
+
+## Two-stage selection/refit lifecycle
+
+`SFTTrainer` uses `eval_loss` only for its maintained checkpointing and
+loss-convergence early-stopping callback. That value is **not** the model
+selection metric. Every retained `checkpoint-N` is subsequently evaluated by
+the vLLM source-dev evaluator. `select_standard_decoder_checkpoint.py` requires
+one aggregate result for every retained checkpoint and deterministically selects
+the lowest `primary_macro_mae` (lower update count breaks ties). It writes the
+ignored, aggregate-only `selected_checkpoint.json`.
+
+The refit config must set both `selected_global_step` and
+`selection_summary_path` from that summary. The TRL refit run uses
+`max_steps=selected_global_step`, `refit_train`, and no dev split; final vLLM
+evaluation accepts only its `adapter/` export. Thus final validation is never
+used for selection, training loss early stopping, or checkpoint choice.
+
+Qwen2.5's chat template lacks TRL's Jinja `generation` mask. The dataset is
+therefore represented in TRL's maintained **conversational prompt-completion**
+form (`prompt=[system,user]`, `completion=[assistant]`) with
+`completion_only_loss=True`; it does not use `assistant_only_loss` or a custom
+loss loop.
