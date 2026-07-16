@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import random
 import sys
 from dataclasses import asdict
@@ -314,8 +313,8 @@ def run(args: argparse.Namespace) -> None:
             run_id=args.run_id,
             config_hash=config_hash,
             data_contract={
-                "train_sha256": args.train_sha256 or "unverified",
-                "development_sha256": args.dev_sha256 or "unverified",
+                "train_sha256": args.train_sha256,
+                "development_sha256": args.dev_sha256,
                 "train_records": len(train_records),
                 "development_records": len(dev_records),
             },
@@ -384,17 +383,23 @@ def run(args: argparse.Namespace) -> None:
             metrics = _metric_payload(true_values, predicted_values)
             dev_mae = metrics["average_mae"]
             improved = (best_dev_mae - dev_mae) > training["early_stopping_min_delta"]
+            should_save = improved
             if improved:
                 best_dev_mae, stale_epochs = dev_mae, 0
-                accelerator.save_state(output_dir / "best_checkpoint")
             else:
                 stale_epochs += 1
             wandb_log_aggregates(wandb_run, {f"dev/{key}": value for key, value in metrics.items()} | {"train/epoch": epoch}, step=global_step)
         else:
             stale_epochs = 0
+            should_save = False
+        save_flag = torch.tensor([int(should_save)], device=accelerator.device)
         stop_flag = torch.tensor([int(stale_epochs >= training["early_stopping_patience"])], device=accelerator.device)
         if accelerator.num_processes > 1:
+            torch.distributed.broadcast(save_flag, src=0)
             torch.distributed.broadcast(stop_flag, src=0)
+        if bool(save_flag.item()):
+            accelerator.save_state(output_dir / "best_checkpoint")
+        accelerator.wait_for_everyone()
         if bool(stop_flag.item()):
             break
     if wandb_run is not None:
@@ -407,8 +412,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True, help="frozen encoder JSON config")
     parser.add_argument("--train-jsonl", required=True, help="restricted optimization-train JSONL path")
     parser.add_argument("--dev-jsonl", required=True, help="restricted development JSONL path")
-    parser.add_argument("--train-sha256", default=None, help="expected train partition SHA-256")
-    parser.add_argument("--dev-sha256", default=None, help="expected development partition SHA-256")
+    parser.add_argument("--train-sha256", required=True, help="expected train partition SHA-256")
+    parser.add_argument("--dev-sha256", required=True, help="expected development partition SHA-256")
     parser.add_argument("--output-dir", required=True, help="new ignored outputs/runs/<run-id> directory")
     parser.add_argument("--run-id", required=True, help="unique non-secret run identifier")
     parser.add_argument("--nv-snapshot-dir", default=None, help="reviewed local NV model snapshot; mandatory for NV only")
