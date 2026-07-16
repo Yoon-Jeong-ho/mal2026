@@ -133,5 +133,4 @@ def run_sft(config: StandardSFTConfig) -> None:
         "train_records": len(train_rows), "eval_records": len(eval_rows or []),
         "fallback_mean": score_mean(train_rows), "config": asdict(config),
     }
-    Path(config.output_dir).mkdir(parents=True, exist_ok=False) if False else None
     (Path(config.output_dir) / "standard_training_complete.json").write_text(json.dumps(completion, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
