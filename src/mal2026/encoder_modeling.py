@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -21,6 +22,12 @@ QWEN3_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B"
 NV_EMBED_MODEL = "nvidia/NV-Embed-v2"
 SCORE_FIELDS = ("content", "organization", "expression", "average")
 _IMMUTABLE_REVISION_LENGTHS = frozenset((40, 64))
+NV_EMBEDDING_DIMENSION = 4096
+# NV-Embed-v2 uses a Mistral-derived backbone.  This frozen policy allows only
+# reviewed Mistral projection leaves; latent-attention adaptation needs a
+# separately reviewed policy rather than silently accepting arbitrary leaves.
+MISTRAL_LORA_CANDIDATES = frozenset({"q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"})
+_NV_OFFLINE_ENVIRONMENT = {"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"}
 
 
 class EncoderContractError(ValueError):
@@ -125,6 +132,22 @@ def load_nv_remote_code_review(path: str | Path) -> NVRemoteCodeReview:
     return NVRemoteCodeReview.from_mapping(raw)
 
 
+def enforce_nv_offline_runtime(snapshot_dir: str | Path) -> None:
+    """Set and verify the minimum offline guard before executing remote code.
+
+    ``trust_remote_code`` cannot sandbox arbitrary reviewed Python, but this
+    closes Hugging Face/Transformers network paths and requires all tokenizer
+    and config assets to already be present in the reviewed local snapshot.
+    """
+    for name, expected in _NV_OFFLINE_ENVIRONMENT.items():
+        os.environ[name] = expected
+        _require(os.environ.get(name) == expected, f"unable to enforce {name}=1 for NV remote code")
+    root = Path(snapshot_dir)
+    _require((root / "config.json").is_file(), "NV snapshot is missing local config.json")
+    _require((root / "tokenizer_config.json").is_file(), "NV snapshot is missing local tokenizer_config.json")
+    _require(any((root / name).is_file() for name in ("tokenizer.json", "tokenizer.model", "vocab.json")), "NV snapshot is missing a local tokenizer vocabulary")
+
+
 def verify_nv_snapshot(snapshot_dir: str | Path, review: NVRemoteCodeReview) -> None:
     """Fail closed unless the reviewed file list exactly covers local Python code.
 
@@ -208,6 +231,7 @@ class EncoderModelSpec:
         _require(self.normalize_embeddings is True, "L2 normalization must be explicit and enabled")
         _require(bool(self.lora_target_modules), "explicit LoRA target modules are required")
         _require(all(target and "." not in target for target in self.lora_target_modules), "LoRA targets must be leaf module names")
+        _require(set(self.lora_target_modules) <= MISTRAL_LORA_CANDIDATES, "LoRA targets must use only reviewed Mistral q/k/v/o/gate/up/down projections")
         _require(len(set(self.lora_target_modules)) == len(self.lora_target_modules), "LoRA target modules must be unique")
         _require(self.lora_rank > 0 and self.lora_alpha > 0 and 0 <= self.lora_dropout < 1, "invalid LoRA hyperparameters")
         _require(self.regression_loss == "mse", "encoder regression_loss must explicitly be mse")
@@ -224,12 +248,14 @@ class EncoderModelSpec:
         """Validate the local reviewed snapshot immediately before remote code."""
         _require(self.backbone == "nv_embed_v2", "NV runtime validation applies only to NV-Embed-v2")
         assert self.nv_snapshot_dir is not None and self.nv_remote_code_review is not None
+        enforce_nv_offline_runtime(self.nv_snapshot_dir)
         verify_nv_snapshot(self.nv_snapshot_dir, self.nv_remote_code_review)
 
 
 def validate_lora_targets(model: Any, targets: Sequence[str]) -> None:
     """Require every configured target to match at least one actual leaf module."""
 
+    _require(set(targets) <= MISTRAL_LORA_CANDIDATES, "LoRA targets include an unreviewed non-Mistral projection")
     available = {name.rsplit(".", maxsplit=1)[-1] for name, _ in model.named_modules()}
     missing = sorted(set(targets) - available)
     _require(not missing, f"configured LoRA target modules are absent: {', '.join(missing)}")
@@ -249,15 +275,14 @@ def _last_nonpad_pool(last_hidden_state: Any, attention_mask: Any) -> Any:
     return last_hidden_state[torch.arange(last_hidden_state.shape[0], device=last_hidden_state.device), final_positions]
 
 
-def _remote_sentence_embedding(outputs: Any) -> Any:
-    """Extract only NV's explicit remote-code sentence embedding output."""
-
-    if isinstance(outputs, Mapping):
-        embedding = outputs.get("sentence_embedding")
-    else:
-        embedding = getattr(outputs, "sentence_embedding", None)
-    _require(embedding is not None, "NV remote model must return sentence_embedding explicitly")
-    _require(getattr(embedding, "ndim", None) == 2, "NV sentence_embedding must be [batch, hidden]")
+def _remote_sentence_embeddings(outputs: Any, batch_size: int) -> Any:
+    """Accept exactly NV's plural [B, 4096] sentence embedding contract."""
+    embedding = outputs.get("sentence_embeddings") if isinstance(outputs, Mapping) else getattr(outputs, "sentence_embeddings", None)
+    _require(embedding is not None, "NV remote model must return sentence_embeddings explicitly")
+    _require(getattr(embedding, "ndim", None) == 2, "NV sentence_embeddings must be rank [batch, 4096]")
+    shape = getattr(embedding, "shape", None)
+    _require(shape is not None and len(shape) == 2, "NV sentence_embeddings must expose two dimensions")
+    _require(int(shape[0]) == batch_size and int(shape[1]) == NV_EMBEDDING_DIMENSION, "NV sentence_embeddings must be [batch, 4096]")
     return embedding
 
 
@@ -314,11 +339,14 @@ def build_encoder_regressor(spec: EncoderModelSpec) -> Any:
             self.regression_head = nn.Linear(hidden_size, len(SCORE_FIELDS))
 
         def forward(self, input_ids: Any, attention_mask: Any, labels: Any | None = None) -> Mapping[str, Any]:
-            outputs = self.backbone(input_ids=input_ids, attention_mask=attention_mask, return_dict=True)
-            if spec.pooling == "last_nonpad":
+            if spec.pooling == "remote_sentence_embedding":
+                # NV's reviewed API consumes pool_mask and returns plural
+                # sentence_embeddings; no generic hidden-state fallback exists.
+                outputs = self.backbone(input_ids=input_ids, attention_mask=attention_mask, pool_mask=attention_mask, return_dict=True)
+                embedding = _remote_sentence_embeddings(outputs, batch_size=int(input_ids.shape[0]))
+            elif spec.pooling == "last_nonpad":
+                outputs = self.backbone(input_ids=input_ids, attention_mask=attention_mask, return_dict=True)
                 embedding = _last_nonpad_pool(outputs.last_hidden_state, attention_mask)
-            elif spec.pooling == "remote_sentence_embedding":
-                embedding = _remote_sentence_embedding(outputs)
             else:  # Config validation makes this unreachable; retain fail-closed behavior.
                 raise EncoderContractError(f"unsupported pooling: {spec.pooling}")
             embedding = functional.normalize(embedding, p=2, dim=-1)

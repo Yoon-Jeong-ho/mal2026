@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -17,6 +18,9 @@ from mal2026.encoder_modeling import (  # noqa: E402
     EncoderContractError,
     EncoderModelSpec,
     NVRemoteCodeReview,
+    NV_EMBEDDING_DIMENSION,
+    _remote_sentence_embeddings,
+    enforce_nv_offline_runtime,
     verify_nv_snapshot,
 )
 
@@ -139,6 +143,51 @@ class NVReviewTest(unittest.TestCase):
             NVRemoteCodeReview.from_mapping(payload)
 
 
+class NVInterfaceTest(unittest.TestCase):
+    class _Embedding:
+        def __init__(self, batch: int, width: int, rank: int = 2) -> None:
+            self.shape = (batch, width) if rank == 2 else (batch, 1, width)
+            self.ndim = rank
+
+    def test_nv_accepts_only_plural_rank_b_4096_embeddings(self) -> None:
+        valid = self._Embedding(batch=2, width=NV_EMBEDDING_DIMENSION)
+        self.assertIs(_remote_sentence_embeddings({"sentence_embeddings": valid}, batch_size=2), valid)
+        for output in (
+            {"sentence_embedding": valid},
+            {"sentence_embeddings": self._Embedding(batch=2, width=1024)},
+            {"sentence_embeddings": self._Embedding(batch=1, width=NV_EMBEDDING_DIMENSION)},
+            {"sentence_embeddings": self._Embedding(batch=2, width=NV_EMBEDDING_DIMENSION, rank=3)},
+        ):
+            with self.subTest(output=tuple(output)):
+                with self.assertRaises(EncoderContractError):
+                    _remote_sentence_embeddings(output, batch_size=2)
+
+    def test_nv_offline_gate_requires_local_config_and_tokenizer_before_remote_code(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / REVISION
+            root.mkdir()
+            with self.assertRaises(EncoderContractError):
+                enforce_nv_offline_runtime(root)
+            (root / "config.json").write_text("{}", encoding="utf-8")
+            (root / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+            (root / "tokenizer.json").write_text("{}", encoding="utf-8")
+            old_hf, old_transformers = os.environ.get("HF_HUB_OFFLINE"), os.environ.get("TRANSFORMERS_OFFLINE")
+            try:
+                enforce_nv_offline_runtime(root)
+                self.assertEqual(os.environ["HF_HUB_OFFLINE"], "1")
+                self.assertEqual(os.environ["TRANSFORMERS_OFFLINE"], "1")
+            finally:
+                for name, old in (("HF_HUB_OFFLINE", old_hf), ("TRANSFORMERS_OFFLINE", old_transformers)):
+                    if old is None:
+                        os.environ.pop(name, None)
+                    else:
+                        os.environ[name] = old
+
+    def test_lora_rejects_unreviewed_latent_target(self) -> None:
+        with self.assertRaises(EncoderContractError):
+            EncoderModelSpec.from_mapping(qwen_spec(lora_target_modules=["q_proj", "latent_attention"]))
+
+
 class RunnerStaticSafetyTest(unittest.TestCase):
     @staticmethod
     def _runner_module():
@@ -181,6 +230,10 @@ class RunnerStaticSafetyTest(unittest.TestCase):
         self.assertIn("_require_prior_run_artifact", source)
         self.assertIn("selection_metadata", source)
         self.assertIn("refit_adapter", source)
+        modeling = (ROOT / "src" / "mal2026" / "encoder_modeling.py").read_text(encoding="utf-8")
+        self.assertIn("pool_mask=attention_mask", modeling)
+        self.assertIn("sentence_embeddings", modeling)
+        self.assertNotIn('outputs.get("sentence_embedding")', modeling)
 
 
 if __name__ == "__main__":
