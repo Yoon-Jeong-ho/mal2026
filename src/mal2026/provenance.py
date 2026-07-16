@@ -15,7 +15,7 @@ class TelemetrySafetyError(ValueError):
 
 
 _FORBIDDEN_KEYS = frozenset({
-    "essay", "prompt", "text", "id", "document_id", "rationale", "raw_output",
+    "essay", "prompt", "text", "id", "document_id", "feedback", "rationale", "raw_output",
     "tokens", "input_ids", "labels", "dataset", "api_key", "token", "password",
 })
 

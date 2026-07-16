@@ -117,7 +117,7 @@ def train_mean_vector(rows: Sequence[ScoreVector | Mapping[str, float]]) -> Scor
 
 def aggregate_prediction_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Accept only score vectors, then return metrics; reject private raw fields."""
-    forbidden = {"essay", "prompt", "id", "document_id", "rationale", "text", "tokens", "raw_output"}
+    forbidden = {"essay", "prompt", "id", "document_id", "feedback", "rationale", "text", "tokens", "raw_output"}
     targets: list[Mapping[str, float]] = []
     predictions: list[Mapping[str, float]] = []
     for row in rows:

@@ -8,9 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-import json
 import re
-from typing import Any, Mapping
+from typing import Mapping
 
 from .constants import SCORE_FIELDS, SCORE_MAX, SCORE_MIN
 from .data_contract import DatasetRecord, ScoreVector
@@ -77,25 +76,6 @@ def format_encoder_input(record: DatasetRecord, max_chars: int | None = None) ->
     return text
 
 
-def format_teacher_rationale_input(record: DatasetRecord) -> str:
-    """Frozen teacher input for synthetic evidence only; intentionally score-free."""
-    return (
-        "다음 과제와 학생 글에서 근거를 찾으십시오. CONTENT, ORGANIZATION, "
-        "EXPRESSION 각각에 대해 글의 원문 인용과 시작/끝 문자 오프셋을 JSON으로 "
-        "제시하십시오. 숫자, 등급, 우열, 채점 관련 표현은 observation에 쓰지 마십시오. "
-        "식별자나 분할 정보는 제공되지 않으며 추론하지 마십시오.\n"
-        + _safe_prompt_and_essay(record)
-    )
-
-
-def assert_teacher_input_safe(text: str) -> None:
-    """Guard accidental construction from a record dict containing protected fields."""
-    protected = ("\"score\"", "\"scores\"", "document_id", "prompt_num", "split", "train", "validation")
-    lowered = text.casefold()
-    if any(token in lowered for token in protected):
-        raise ValueError("teacher input contains a protected score, ID, or split token")
-
-
 def parse_score_json(text: str, fallback: ScoreVector) -> ScoreParseResult:
     """Strict parser: no prose/number-extraction fallback; invalid uses train mean."""
     if not isinstance(text, str):
@@ -108,13 +88,3 @@ def parse_score_json(text: str, fallback: ScoreVector) -> ScoreParseResult:
     if out_of_range:
         return ScoreParseResult(fallback, False, True, "score is outside [1, 5]")
     return ScoreParseResult(ScoreVector(**values), True, False, None)
-
-
-def render_rationale_score_target(rationale: Mapping[str, Any], scores: ScoreVector) -> str:
-    """Serialize a validated synthetic rationale followed by the exact score object."""
-    # The leakage validator owns schema validation; importing lazily avoids a
-    # formatting/rationale circular import while preserving a single authority.
-    from .rationale import validate_rationale_payload
-
-    validate_rationale_payload(rationale, essay=None)
-    return json.dumps({"rationale": rationale["rationale"], "scores": scores.as_dict()}, ensure_ascii=False, separators=(",", ":"))
