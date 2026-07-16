@@ -24,6 +24,7 @@ from mal2026.decoder_train import (
     accelerator_batch_assignment,
     build_sft_example,
     head_tail_truncate,
+    score_mean,
     updates_for_prepared_loader,
 )
 from mal2026.data_contract import DatasetRecord, ScoreVector
@@ -176,6 +177,18 @@ class DecoderContractTests(unittest.TestCase):
         self.assertEqual(require_tokenizer_chat_template(tokenizer, digest), digest)
         with self.assertRaises(ContractError):
             require_tokenizer_chat_template(tokenizer, "0" * 64)
+
+    def test_selection_fallback_mean_is_partition_only_not_refit_all_records(self):
+        optimization_partition = [
+            {"score": {"content": 1.0, "organization": 1.0, "expression": 1.0, "average": 1.0}},
+            {"score": {"content": 3.0, "organization": 3.0, "expression": 3.0, "average": 3.0}},
+        ]
+        refit_all_records = optimization_partition + [
+            {"score": {"content": 5.0, "organization": 5.0, "expression": 5.0, "average": 5.0}},
+        ]
+        selection_mean = score_mean(optimization_partition)
+        self.assertEqual(selection_mean, {key: 2.0 for key in SCORE_KEYS})
+        self.assertNotEqual(selection_mean, score_mean(refit_all_records))
 
 
 if __name__ == "__main__":

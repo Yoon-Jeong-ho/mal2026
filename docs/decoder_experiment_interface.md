@@ -37,8 +37,12 @@ config derives its internal development partition deterministically from
 prompt groups in canonical training data. A refit config requires the selected
 optimizer-update count and uses all canonical training records. Final
 evaluation requires both selection/refit run IDs, a completed refit adapter
-located inside `outputs/runs/<refit-run-id>/`, and the exact saved refit train
-mean; it cannot select checkpoints or fit calibration.
+located inside `outputs/runs/<refit-run-id>/`, and the exact parser fallback
+mean originally computed from the frozen selection optimization partition. The
+refit copies this checksum-verified value; it never recomputes a mean over all
+canonical training records. Final evaluation also requires the named adapter
+checkpoint's optimizer update to equal the completed refit selected-update
+count. It cannot select checkpoints or fit calibration.
 
 Every decoder artifact must use exactly
 `outputs/runs/<run-id>`; symlinks anywhere in this path are rejected. Each

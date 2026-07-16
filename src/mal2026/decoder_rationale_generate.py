@@ -273,7 +273,9 @@ def _write_manifest(run_dir: Path, config: TeacherRationaleConfig, canonical_con
             "nonempty_valid_rate": provenance["nonempty_valid_rate"],
             "nonempty_valid_rate_gate": 0.85,
             "status": provenance["status"],
-            "deviations": "none",
+            "protocol_amendment": "pre-result deterministic decode policy: do_sample=false, temperature=0.0, top_p=1.0",
+            "resource_decision": "pre-result single-GPU CUDA decision: cuda:0 only; no CPU fallback",
+            "deviations": "pre-result protocol/resource amendment recorded before generation",
         },
     )
     (run_dir / "run_manifest.json").write_text(json.dumps(aggregate_only_payload(manifest), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")

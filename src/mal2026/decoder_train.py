@@ -189,6 +189,40 @@ def _verify_refit_selection_binding(config: DecoderTrainConfig) -> None:
         raise ContractError("refit binding does not match verified selection metadata")
 
 
+def _mean_sha256(mean: Mapping[str, float]) -> str:
+    if set(mean) != set(SCORE_KEYS):
+        raise ContractError("fallback mean must contain exactly the four score keys")
+    normalized = {key: float(mean[key]) for key in SCORE_KEYS}
+    return hashlib.sha256(json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def _verified_selection_fallback_mean(config: DecoderTrainConfig) -> dict[str, float]:
+    """Load the selection-only parser fallback after its metadata hash check."""
+    if config.phase != "refit" or config.selection_run_id is None:
+        raise ContractError("only a refit may load a prior selection fallback mean")
+    selection_dir = resolve_run_output_dir(
+        config.selection_run_id, Path(config.output_dir).parent / config.selection_run_id, must_exist=True
+    )
+    try:
+        metadata = json.loads((selection_dir / "selection_metadata.json").read_text(encoding="utf-8"))
+        raw_mean = json.loads((selection_dir / "fallback_mean.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ContractError("selection fallback mean/provenance is unavailable") from exc
+    if not isinstance(raw_mean, Mapping):
+        raise ContractError("selection fallback mean must be an object")
+    mean = {key: float(raw_mean[key]) for key in SCORE_KEYS}
+    if _mean_sha256(mean) != metadata.get("fallback_mean_sha256"):
+        raise ContractError("selection fallback mean checksum does not match selection metadata")
+    return mean
+
+
+def score_mean(records: list[dict[str, Any]]) -> dict[str, float]:
+    """Compute a parser fallback only from the caller-selected train records."""
+    if not records:
+        raise ContractError("cannot compute a fallback mean from no records")
+    return {key: sum(float(record["score"][key]) for record in records) / len(records) for key in SCORE_KEYS}
+
+
 def updates_for_prepared_loader(loader_length: int, gradient_accumulation_steps: int) -> int:
     """One pure source of truth for post-prepare optimizer-step accounting."""
     if not isinstance(loader_length, int) or loader_length < 1:
@@ -433,6 +467,7 @@ def train(config: DecoderTrainConfig) -> None:
     model = get_peft_model(model, LoraConfig(r=config.lora_rank, lora_alpha=config.lora_alpha, lora_dropout=config.lora_dropout, target_modules=list(targets), task_type=TaskType.CAUSAL_LM, bias="none"))
 
     train_records, dev_records, split_manifest = _load_train_partitions(config)
+    fallback_mean = _verified_selection_fallback_mean(config) if config.phase == "refit" else score_mean(train_records)
     rationales = _read_rationale_map(config.rationale_run_id, train_records, split_manifest, config) if config.rationale_run_id else None
     train_dataset = _SFTDataset(tokenizer, train_records, config.mode, rationales, config.max_seq_length)
     # Ordinary loaders are intentionally passed to ``Accelerator.prepare``.
@@ -459,7 +494,9 @@ def train(config: DecoderTrainConfig) -> None:
     if accelerator.is_main_process:
         run_dir.mkdir(parents=True, exist_ok=False)
         _write_json(run_dir / "config.json", asdict(config))
-        _write_json(run_dir / "train_partition_mean.json", {k: sum(float(x["score"][k]) for x in train_records) / len(train_records) for k in SCORE_KEYS})
+        # Selection derives this only from its frozen optimization partition;
+        # refit copies that verified value rather than averaging all 2,000 rows.
+        _write_json(run_dir / "fallback_mean.json", fallback_mean)
     accelerator.wait_for_everyone()
     wandb_run = _wandb_init(accelerator, config)
     updates = 0
@@ -516,7 +553,8 @@ def train(config: DecoderTrainConfig) -> None:
         if config.phase == "selection" and best_updates is None:
             raise RuntimeError("selection produced no development checkpoint")
         if accelerator.is_main_process:
-            summary = {"status": "completed", "updates": updates, "selected_updates": best_updates, "best_dev_average_mae": best_dev_mae if best_updates is not None else None, "ended_at": datetime.now(UTC).isoformat()}
+            completed_selected_updates = best_updates if config.phase == "selection" else config.selected_updates
+            summary = {"status": "completed", "updates": updates, "selected_updates": completed_selected_updates, "best_dev_average_mae": best_dev_mae if best_updates is not None else None, "ended_at": datetime.now(UTC).isoformat()}
             _write_json(run_dir / "training_complete.json", summary)
             if config.phase == "selection":
                 _write_json(run_dir / "selection_metadata.json", {
@@ -524,6 +562,7 @@ def train(config: DecoderTrainConfig) -> None:
                     "config_hash": _runtime_config_hash(config), "selected_updates": best_updates,
                     "mode": config.mode, "model_revision": config.model_revision,
                     "tokenizer_revision": config.tokenizer_revision, "train_sha256": config.train_sha256,
+                    "fallback_mean_sha256": _mean_sha256(fallback_mean),
                 })
             _write_run_manifest(
                 run_dir, config, canonical_config_hash, split_manifest,
@@ -544,7 +583,7 @@ def _evaluate_selection_dev(accelerator: Any, model: Any, tokenizer: Any, loader
     count = 0
     invalid = 0
     fallback = None  # initialized from local optimization train mean after directory exists
-    with open(Path(config.output_dir) / "train_partition_mean.json", encoding="utf-8") as handle:
+    with open(Path(config.output_dir) / "fallback_mean.json", encoding="utf-8") as handle:
         fallback = json.load(handle)
     with torch.inference_mode():
         for batch in loader:

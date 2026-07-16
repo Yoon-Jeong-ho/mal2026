@@ -119,7 +119,7 @@ def _require_completed_refit(config: DecoderEvalConfig, adapter: Path) -> None:
     try:
         completed = json.loads((refit_dir / "training_complete.json").read_text(encoding="utf-8"))
         saved_config = json.loads((refit_dir / "config.json").read_text(encoding="utf-8"))
-        saved_mean = json.loads((refit_dir / "train_partition_mean.json").read_text(encoding="utf-8"))
+        saved_mean = json.loads((refit_dir / "fallback_mean.json").read_text(encoding="utf-8"))
         adapter_metadata = json.loads((adapter.parent / "metadata.json").read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ContractError("refit output is missing required completion provenance") from exc
@@ -133,18 +133,20 @@ def _require_completed_refit(config: DecoderEvalConfig, adapter: Path) -> None:
         raise ContractError("final evaluation model fields do not match the completed refit output")
     # Re-check the persisted refit-to-selection cryptographic binding rather
     # than trusting that the refit process happened to check it at launch.
-    from .decoder_train import DecoderTrainConfig, _verify_refit_selection_binding
+    from .decoder_train import DecoderTrainConfig, _verified_selection_fallback_mean, _verify_refit_selection_binding
 
     try:
         persisted_refit = DecoderTrainConfig.from_mapping(saved_config)
         persisted_refit.validate()
         _verify_refit_selection_binding(persisted_refit)
+        if saved_mean != _verified_selection_fallback_mean(persisted_refit):
+            raise ContractError("refit fallback mean was not carried from the verified selection partition")
     except (ContractError, TypeError) as exc:
         raise ContractError("completed refit has no valid immutable selection binding") from exc
     if saved_mean != config.fallback_mean:
         raise ContractError("fallback_mean must exactly equal the completed refit train mean")
-    if not isinstance(adapter_metadata.get("optimizer_updates"), int) or adapter_metadata["optimizer_updates"] > completed.get("updates", -1):
-        raise ContractError("named refit adapter metadata has invalid optimizer update provenance")
+    if adapter_metadata.get("optimizer_updates") != completed.get("selected_updates"):
+        raise ContractError("named refit adapter must equal the completed selected-update count")
     if adapter_metadata.get("adapter_sha256") != _directory_sha256(adapter):
         raise ContractError("named refit adapter checksum does not match checkpoint metadata")
 
