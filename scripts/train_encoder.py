@@ -2,11 +2,11 @@
 """DDP-safe lifecycle runner for the two four-target encoder regressors.
 
 This runner has three intentionally separate phases:
-``selection`` chooses an update count on a deterministic prompt-disjoint
-internal development partition derived from ``eval/train.jsonl``;
-``refit`` trains on every record in that same hash-bound train file for the
-selected count; and ``final-eval`` loads only that refit adapter and evaluates
-the fixed, separately hash-bound ``eval/validation.jsonl``.  No phase writes
+``selection`` uses the precomputed human-feedback source train/development
+partitions named by an aggregate-only ignored manifest; ``refit`` uses the
+manifest's full eligible source-training partition for the selected count; and
+``final-eval`` loads only that refit adapter and evaluates the fixed,
+separately hash-bound ``eval/validation.jsonl``. No phase writes
 private text, IDs, predictions, or rationales to W&B or disk outside ignored
 ``outputs/runs/<run-id>``.
 """
@@ -18,7 +18,7 @@ import json
 import math
 import random
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -26,7 +26,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from mal2026.decoder import (  # noqa: E402
-    CANONICAL_TRAIN_SHA256,
     CANONICAL_VALIDATION_SHA256,
     ContractError,
     require_canonical_dataset,
@@ -125,6 +124,7 @@ def _validate_training(value: Mapping[str, Any]) -> dict[str, Any]:
     _need(config["learning_rate"] > 0 and config["weight_decay"] >= 0, "invalid optimizer settings")
     _need(0 <= config["warmup_ratio"] < 1 and 0 < config["dev_fraction"] < 1, "invalid warmup or dev fraction")
     _need(config["max_length"] == 2048 and config["head_fraction"] == 0.75, "frozen encoder input policy is 2048/75:25")
+    _need(config["dev_fraction"] == 0.20, "human-feedback source development fraction is frozen at 0.20")
     _need(config["num_workers"] >= 0 and config["early_stopping_min_delta"] >= 0 and config["early_stopping_patience"] > 0, "invalid convergence policy")
     return config
 
@@ -139,16 +139,15 @@ def _resolve_run_dir(output_dir: str, run_id: str) -> Path:
     return run_dir
 
 
-def _require_canonical_dataset(path: str, digest: str, split: str) -> tuple[str, str]:
-    """Reject look-alike paths/checksums; caller values never choose the split."""
-    expected_digest = CANONICAL_TRAIN_SHA256 if split == "train" else CANONICAL_VALIDATION_SHA256
-    _need(Path(path).is_absolute(), f"canonical eval/{split}.jsonl path must be absolute")
+def _require_final_validation(path: str, digest: str) -> tuple[str, str]:
+    """Admit only the frozen canonical final-validation input."""
+    _need(Path(path).is_absolute(), "canonical eval/validation.jsonl path must be absolute")
     try:
-        resolved = require_canonical_dataset(path, split, digest)
+        resolved = require_canonical_dataset(path, "validation", digest)
     except ContractError as error:
         raise TrainingContractError(str(error)) from error
-    _need(resolved.is_absolute(), "canonical dataset path must be absolute")
-    return str(resolved), expected_digest
+    _need(resolved.is_absolute(), "canonical validation dataset path must be absolute")
+    return str(resolved), CANONICAL_VALIDATION_SHA256
 
 
 def _require_prior_run_dir(path: str) -> Path:
@@ -214,7 +213,140 @@ def _format_encoder_input(record: Any) -> str:
     return format_encoder_input(record)
 
 
-def _load_records(path: str, expected_sha256: str) -> list[Any]:
+@dataclass(frozen=True)
+class PreparedEncoderRecord:
+    """In-memory restricted source record; feedback is intentionally excluded."""
+
+    prompt: str
+    essay: str
+    scores: Any
+
+
+@dataclass(frozen=True)
+class PreparedPartition:
+    path: Path
+    sha256: str
+    record_count: int
+
+
+@dataclass(frozen=True)
+class PreparedHumanFeedbackManifest:
+    manifest_path: Path
+    manifest_sha256: str
+    source_fingerprint: str
+    selection_train: PreparedPartition
+    selection_dev: PreparedPartition
+    refit_train: PreparedPartition
+
+
+_FORBIDDEN_MANIFEST_KEYS = frozenset({"id", "document_id", "prompt", "essay", "response", "feedback", "records"})
+_PREPARED_PROTOCOL = "aihub_human_feedback_score_v1"
+
+
+def _require_prepared_path(path: str | Path, *, must_exist: bool = True) -> Path:
+    """Resolve a local ignored prepared-data path without allowing escapes."""
+    candidate = Path(path)
+    _need(candidate.is_absolute(), "prepared manifest/data paths must be absolute")
+    try:
+        resolved = candidate.resolve(strict=must_exist)
+        base = (PROJECT_ROOT / "data" / "processed").resolve(strict=True)
+    except OSError as error:
+        raise TrainingContractError("prepared manifest/data path does not exist") from error
+    try:
+        resolved.relative_to(base)
+    except ValueError as error:
+        raise TrainingContractError("prepared manifest/data must remain under ignored data/processed") from error
+    return resolved
+
+
+def _assert_aggregate_manifest(value: Any, path: str = "manifest") -> None:
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            _need(isinstance(key, str), f"{path} uses non-string key")
+            _need(key.casefold() not in _FORBIDDEN_MANIFEST_KEYS, f"{path} contains restricted raw-data field {key}")
+            _assert_aggregate_manifest(nested, f"{path}.{key}")
+    elif isinstance(value, list):
+        # Only non-sensitive normalized-question/checksum hashes may be lists;
+        # row objects, IDs, prompts, feedback, and free text remain forbidden.
+        _need(all(isinstance(item, str) and len(item) == 64 and all(char in "0123456789abcdef" for char in item) for item in value), f"{path} list must contain only SHA-256 hashes")
+    elif value is None or isinstance(value, (str, int, float, bool)):
+        return
+    else:
+        raise TrainingContractError(f"{path} contains unsupported value")
+
+
+def _parse_partition(manifest_dir: Path, value: Any, expected_name: str) -> PreparedPartition:
+    _need(isinstance(value, Mapping) and set(value) == {"path", "sha256", "record_count"}, f"prepared partition {expected_name} has invalid fields")
+    relative, digest, count = value["path"], value["sha256"], value["record_count"]
+    _need(isinstance(relative, str) and Path(relative).name == expected_name and not Path(relative).is_absolute() and ".." not in Path(relative).parts, f"prepared partition must be named {expected_name}")
+    _need(isinstance(digest, str) and len(digest) == 64 and all(char in "0123456789abcdef" for char in digest), "prepared partition sha256 is invalid")
+    _need(isinstance(count, int) and count > 0, "prepared partition record_count must be positive")
+    path = _require_prepared_path(str((manifest_dir / relative).resolve()))
+    _need(_sha256_file(path) == digest, f"prepared partition checksum mismatch: {expected_name}")
+    return PreparedPartition(path=path, sha256=digest, record_count=count)
+
+
+def _load_prepared_manifest(path: str) -> PreparedHumanFeedbackManifest:
+    location = _require_prepared_path(path)
+    _need(location.name == "manifest.json", "prepared manifest must be named manifest.json")
+    try:
+        raw = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise TrainingContractError("unable to read prepared human-feedback manifest") from error
+    _need(isinstance(raw, Mapping), "prepared manifest must be an object")
+    _assert_aggregate_manifest(raw)
+    required = {"schema_version", "protocol", "source_fingerprint", "eligibility", "split", "files"}
+    _need(set(raw) == required, "prepared manifest has unknown or missing top-level fields")
+    _need(raw["schema_version"] == 1 and raw["protocol"] == _PREPARED_PROTOCOL, "unsupported prepared human-feedback manifest protocol")
+    _need(isinstance(raw["source_fingerprint"], str) and len(raw["source_fingerprint"]) == 64 and all(char in "0123456789abcdef" for char in raw["source_fingerprint"]), "prepared manifest source fingerprint is invalid")
+    _need(isinstance(raw["eligibility"], Mapping) and isinstance(raw["split"], Mapping), "prepared manifest requires aggregate eligibility and split mappings")
+    files = raw["files"]
+    _need(isinstance(files, Mapping) and set(files) == {"selection_train", "selection_dev", "refit_train"}, "prepared manifest must name exactly the three frozen partitions")
+    return PreparedHumanFeedbackManifest(
+        manifest_path=location,
+        manifest_sha256=_sha256_file(location),
+        source_fingerprint=raw["source_fingerprint"],
+        selection_train=_parse_partition(location.parent, files["selection_train"], "selection_train.jsonl"),
+        selection_dev=_parse_partition(location.parent, files["selection_dev"], "selection_dev.jsonl"),
+        refit_train=_parse_partition(location.parent, files["refit_train"], "refit_train.jsonl"),
+    )
+
+
+def _load_prepared_records(partition: PreparedPartition) -> list[PreparedEncoderRecord]:
+    from mal2026.data_contract import ScoreVector
+
+    rows: list[PreparedEncoderRecord] = []
+    seen: set[str] = set()
+    with partition.path.open(encoding="utf-8") as handle:
+        for number, line in enumerate(handle, 1):
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError as error:
+                raise TrainingContractError(f"prepared partition has invalid JSON at local line {number}") from error
+            _need(isinstance(raw, Mapping), "prepared records must be objects")
+            # Feedback is retained in restricted prepared rows for decoder SFT,
+            # but never read or passed to this encoder input path.
+            required = {"id", "prompt", "essay", "score", "feedback"}
+            _need(required <= set(raw), "prepared record lacks required human-feedback contract fields")
+            feedback = raw["feedback"]
+            feedback_fields = {"holistic", "content_1", "content_2", "content_3", "organization_1", "organization_2", "expression_1", "expression_2", "task_1"}
+            _need(isinstance(feedback, Mapping) and set(feedback) == feedback_fields and all(isinstance(item, str) and item.strip() for item in feedback.values()), "prepared human feedback must be complete and nonblank")
+            identifier, prompt, essay, score = raw["id"], raw["prompt"], raw["essay"], raw["score"]
+            _need(isinstance(identifier, str) and identifier and identifier not in seen, "prepared record id is blank or duplicate")
+            _need(isinstance(prompt, str) and prompt.strip() and isinstance(essay, str) and essay.strip(), "prepared record prompt/essay must be nonblank")
+            _need(isinstance(score, Mapping) and set(score) == set(SCORE_FIELDS), "prepared record scores must have four fields")
+            values: dict[str, float] = {}
+            for name in SCORE_FIELDS:
+                value = score[name]
+                _need(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value)) and 1.0 <= float(value) <= 5.0, "prepared score must be finite in [1,5]")
+                values[name] = float(value)
+            seen.add(identifier)
+            rows.append(PreparedEncoderRecord(prompt=prompt, essay=essay, scores=ScoreVector(**values)))
+    _need(len(rows) == partition.record_count, "prepared partition record_count mismatch")
+    return rows
+
+
+def _load_final_records(path: str, expected_sha256: str) -> list[Any]:
     from mal2026.data_contract import load_and_validate_jsonl
     return load_and_validate_jsonl(path, expected_sha256=expected_sha256)
 
@@ -278,7 +410,8 @@ def _metric_payload(true_values: Any, predicted_values: Any) -> dict[str, float]
         for name, value in target_metrics.items():
             if value is not None:
                 flattened[f"{target}_{name}"] = float(value)
-    _need("average_mae" in flattened, "aggregate metric contract lacks average_mae")
+    _need(all(f"{field}_mae" in flattened for field in SCORE_FIELDS), "aggregate metric contract lacks per-score MAE")
+    flattened["macro_mae"] = sum(flattened[f"{field}_mae"] for field in SCORE_FIELDS) / len(SCORE_FIELDS)
     return flattened
 
 
@@ -296,12 +429,12 @@ def _read_json(path: Path) -> Mapping[str, Any]:
     return value
 
 
-def _selection_metadata(path: str, *, config_hash: str, train_sha256: str) -> tuple[Mapping[str, Any], str]:
+def _selection_metadata(path: str, *, config_hash: str, prepared_manifest_sha256: str, source_fingerprint: str) -> tuple[Mapping[str, Any], str]:
     location, run_id = _require_prior_run_artifact(path, "selection_metadata.json")
     payload = _read_json(location)
     _need(payload.get("phase") == "selection", "selection metadata is not from selection phase")
     _need(payload.get("run_id") == run_id, "selection metadata run_id does not bind its containing run")
-    _need(payload.get("config_hash") == config_hash and payload.get("train_sha256") == train_sha256, "selection metadata config/data binding mismatch")
+    _need(payload.get("config_hash") == config_hash and payload.get("prepared_manifest_sha256") == prepared_manifest_sha256 and payload.get("source_fingerprint") == source_fingerprint, "selection metadata config/data binding mismatch")
     _need(isinstance(payload.get("selected_updates"), int) and payload["selected_updates"] > 0, "selection metadata lacks selected_updates")
     return payload, _sha256_file(location)
 
@@ -400,9 +533,11 @@ def _run_training(*, accelerator: Any, model: Any, optimizer: Any, train_loader:
         metrics = _evaluate(accelerator, model, dev_loader)
         if accelerator.is_main_process:
             assert metrics is not None
-            improved = (best_mae - metrics["average_mae"]) > training["early_stopping_min_delta"]
+            # Human-feedback source selection is frozen to four-score macro MAE,
+            # not the independently-defined final-validation average field.
+            improved = (best_mae - metrics["macro_mae"]) > training["early_stopping_min_delta"]
             if improved:
-                best_mae, best_updates, best_metrics, stale = metrics["average_mae"], updates, metrics, 0
+                best_mae, best_updates, best_metrics, stale = metrics["macro_mae"], updates, metrics, 0
             else:
                 stale += 1
             from mal2026.provenance import wandb_log_aggregates
@@ -437,16 +572,15 @@ def run(args: argparse.Namespace) -> None:
     assert isinstance(data, Mapping) and isinstance(optimization, Mapping)
     training = _validate_training(dict(optimization) | {"max_sequence_length": data.get("max_sequence_length"), "head_fraction": data.get("head_fraction"), "dev_fraction": data.get("dev_fraction")})
     run_dir = _resolve_run_dir(args.output_dir, args.run_id)
-    canonical_train_path: str | None = None
-    canonical_train_sha: str | None = None
+    prepared: PreparedHumanFeedbackManifest | None = None
     canonical_eval_path: str | None = None
     canonical_eval_sha: str | None = None
     if args.phase == "final-eval":
-        _need(args.eval_jsonl and args.eval_sha256 and args.refit_dir, "final-eval requires eval JSONL/hash and refit directory")
-        canonical_eval_path, canonical_eval_sha = _require_canonical_dataset(args.eval_jsonl, args.eval_sha256, "validation")
+        _need(args.eval_jsonl and args.eval_sha256 and args.refit_dir, "final-eval requires frozen validation JSONL/hash and refit directory")
+        canonical_eval_path, canonical_eval_sha = _require_final_validation(args.eval_jsonl, args.eval_sha256)
     else:
-        _need(args.train_jsonl and args.train_sha256, "selection/refit requires train JSONL/hash")
-        canonical_train_path, canonical_train_sha = _require_canonical_dataset(args.train_jsonl, args.train_sha256, "train")
+        _need(args.prepared_manifest, "selection/refit requires the ignored human-feedback prepared manifest")
+        prepared = _load_prepared_manifest(args.prepared_manifest)
         if args.phase == "refit":
             _need(args.selection_metadata, "refit requires selection metadata")
 
@@ -460,19 +594,29 @@ def run(args: argparse.Namespace) -> None:
 
     lifecycle: dict[str, Any] = {"phase": args.phase, "model": {"model_id": spec.model_id, "revision": spec.revision, "tokenizer_revision": spec.tokenizer_revision}, "config_hash": config_hash}
     if args.phase in {"selection", "refit"}:
-        assert canonical_train_path is not None and canonical_train_sha is not None
-        all_train = _load_records(canonical_train_path, canonical_train_sha)
-        _need(len(all_train) == 2000, "selection/refit must bind all 2,000 canonical training records")
-        from mal2026.data_contract import split_prompt_groups
+        assert prepared is not None
         if args.phase == "selection":
-            split = split_prompt_groups(all_train, training["dev_fraction"])
-            train_records, dev_records = list(split.optimization_train), list(split.development)
-            lifecycle["internal_development"] = split.manifest
+            train_records = _load_prepared_records(prepared.selection_train)
+            dev_records = _load_prepared_records(prepared.selection_dev)
+            lifecycle["prepared_source"] = {
+                "manifest_sha256": prepared.manifest_sha256,
+                "source_fingerprint": prepared.source_fingerprint,
+                "selection_train_sha256": prepared.selection_train.sha256,
+                "selection_train_records": prepared.selection_train.record_count,
+                "selection_dev_sha256": prepared.selection_dev.sha256,
+                "selection_dev_records": prepared.selection_dev.record_count,
+            }
         else:
-            metadata, metadata_sha = _selection_metadata(args.selection_metadata, config_hash=config_hash, train_sha256=canonical_train_sha)
-            train_records, dev_records = all_train, None
+            metadata, metadata_sha = _selection_metadata(args.selection_metadata, config_hash=config_hash, prepared_manifest_sha256=prepared.manifest_sha256, source_fingerprint=prepared.source_fingerprint)
+            train_records, dev_records = _load_prepared_records(prepared.refit_train), None
             training["selected_updates"] = metadata["selected_updates"]
             lifecycle["selection_link"] = {"selection_metadata_sha256": metadata_sha, "selection_run_id": metadata.get("run_id"), "selected_updates": metadata["selected_updates"]}
+            lifecycle["prepared_source"] = {
+                "manifest_sha256": prepared.manifest_sha256,
+                "source_fingerprint": prepared.source_fingerprint,
+                "refit_train_sha256": prepared.refit_train.sha256,
+                "refit_train_records": prepared.refit_train.record_count,
+            }
         tokenizer = _build_tokenizer(spec)
         from mal2026.encoder_modeling import build_encoder_regressor
         model = build_encoder_regressor(spec)
@@ -486,12 +630,12 @@ def run(args: argparse.Namespace) -> None:
         updates, selected_updates, best_metrics = _run_training(accelerator=accelerator, model=model, optimizer=optimizer, train_loader=train_loader, dev_loader=dev_loader, training=training, output_dir=run_dir, phase=args.phase, wandb_run=wandb_run)
         if args.phase == "refit":
             adapter_files = _save_trainable_adapter(accelerator, model, run_dir / "refit_adapter")
-            lifecycle["refit"] = {"all_train_records": len(all_train), "updates": updates, "adapter_files": adapter_files}
+            lifecycle["refit"] = {"all_source_train_records": len(train_records), "updates": updates, "adapter_files": adapter_files}
         elif accelerator.is_main_process:
-            metadata = {"schema_version": 1, "phase": "selection", "run_id": args.run_id, "config_hash": config_hash, "train_sha256": canonical_train_sha, "selected_updates": selected_updates, "observed_updates": updates, "internal_development": lifecycle["internal_development"], "best_metrics": best_metrics}
+            metadata = {"schema_version": 1, "phase": "selection", "run_id": args.run_id, "config_hash": config_hash, "prepared_manifest_sha256": prepared.manifest_sha256, "source_fingerprint": prepared.source_fingerprint, "selected_updates": selected_updates, "observed_updates": updates, "prepared_source": lifecycle["prepared_source"], "best_metrics": best_metrics}
             _write_json(run_dir / "selection_metadata.json", metadata)
             lifecycle["selection"] = {"selected_updates": selected_updates, "selection_metadata_sha256": _sha256_file(run_dir / "selection_metadata.json")}
-        data_contract = {"train_sha256": canonical_train_sha, "train_records": len(all_train), "optimization_records": len(train_records), "development_records": len(dev_records) if dev_records else 0}
+        data_contract = {"prepared_manifest_sha256": prepared.manifest_sha256, "source_fingerprint": prepared.source_fingerprint, "source_train_records": len(train_records), "source_development_records": len(dev_records) if dev_records else 0}
     else:
         refit_dir = _require_prior_run_dir(args.refit_dir)
         refit_manifest_path, refit_run_id = _require_prior_run_artifact(str(refit_dir / "run_manifest.json"), "run_manifest.json")
@@ -506,14 +650,15 @@ def run(args: argparse.Namespace) -> None:
         _need(isinstance(selection_link.get("selection_metadata_sha256"), str) and len(selection_link["selection_metadata_sha256"]) == 64, "refit selection link lacks metadata checksum")
         _need(isinstance(selection_link.get("selected_updates"), int) and selection_link["selected_updates"] > 0, "refit selection link lacks selected updates")
         refit_data = refit_manifest.get("data_contract")
-        _need(isinstance(refit_data, Mapping) and refit_data.get("train_sha256") == CANONICAL_TRAIN_SHA256, "refit manifest is not bound to canonical eval/train")
+        _need(isinstance(refit_data, Mapping) and isinstance(refit_data.get("prepared_manifest_sha256"), str) and len(refit_data["prepared_manifest_sha256"]) == 64, "refit manifest is not bound to a prepared human-feedback manifest")
+        _need(isinstance(refit_data.get("source_fingerprint"), str) and len(refit_data["source_fingerprint"]) == 64, "refit manifest lacks source fingerprint")
         refit_model = refit_lifecycle.get("model")
         _need(refit_model == lifecycle["model"], "refit manifest model/tokenizer binding mismatch")
         refit_info = refit_lifecycle["refit"]
-        _need(refit_info.get("all_train_records") == 2000, "refit manifest is not an all-2000-record refit")
+        _need(isinstance(refit_info.get("all_source_train_records"), int) and refit_info["all_source_train_records"] > 0, "refit manifest is not a full eligible source-data refit")
         _need(isinstance(refit_info.get("adapter_files"), Mapping), "refit manifest lacks adapter checksums")
         assert canonical_eval_path is not None and canonical_eval_sha is not None
-        eval_records = _load_records(canonical_eval_path, canonical_eval_sha)
+        eval_records = _load_final_records(canonical_eval_path, canonical_eval_sha)
         _need(len(eval_records) == 400, "final evaluation must use all 400 canonical validation records")
         tokenizer = _build_tokenizer(spec)
         from mal2026.encoder_modeling import build_encoder_regressor
@@ -528,7 +673,7 @@ def run(args: argparse.Namespace) -> None:
             assert metrics is not None
             _write_json(run_dir / "final_metrics.json", {"schema_version": 1, "phase": "final-eval", "record_count": len(eval_records), "metrics": metrics})
         lifecycle["final_evaluation"] = {"validation_sha256": canonical_eval_sha, "validation_records": len(eval_records), "refit_run_id": refit_run_id, "refit_manifest_sha256": _sha256_file(refit_manifest_path), "refit_adapter_files": dict(refit_info["adapter_files"]), "selection_link": refit_lifecycle.get("selection_link")}
-        data_contract = {"validation_sha256": canonical_eval_sha, "validation_records": len(eval_records)}
+        data_contract = {"validation_sha256": canonical_eval_sha, "validation_records": len(eval_records), "refit_prepared_manifest_sha256": refit_data["prepared_manifest_sha256"], "refit_source_fingerprint": refit_data["source_fingerprint"]}
     if accelerator.is_main_process:
         manifest = build_run_manifest(run_id=args.run_id, config_hash=config_hash, data_contract=data_contract, command=" ".join(sys.argv), output_path=str(run_dir), extra={"phase": args.phase, "backbone": spec.backbone, "model_spec": asdict(spec), "lifecycle": lifecycle})
         # Promote lifecycle fields to top level so final-eval linkage is easily auditable.
@@ -547,8 +692,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--config", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--output-dir", required=True, help="new ignored outputs/runs/<run-id>")
-    parser.add_argument("--train-jsonl", help="restricted eval/train.jsonl")
-    parser.add_argument("--train-sha256", help="expected SHA-256 for eval/train.jsonl")
+    parser.add_argument("--prepared-manifest", help="absolute ignored data/processed/.../manifest.json for human-feedback source partitions")
     parser.add_argument("--selection-metadata", help="selection output selection_metadata.json (refit only)")
     parser.add_argument("--eval-jsonl", help="restricted eval/validation.jsonl (final-eval only)")
     parser.add_argument("--eval-sha256", help="expected SHA-256 for eval/validation.jsonl")

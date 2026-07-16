@@ -232,6 +232,7 @@ class RunnerStaticSafetyTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("train_encoder_static", ROOT / "scripts" / "train_encoder.py")
         assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module
 
@@ -241,11 +242,12 @@ class RunnerStaticSafetyTest(unittest.TestCase):
             runner._resolve_run_dir("/tmp/not-a-run", "safe-run")
         with self.assertRaises(runner.TrainingContractError):
             runner._require_prior_run_dir("/tmp/not-a-run")
-        # Check the immutable checksum gate before any data path is resolved/read.
+        # Selection/refit reject canonical eval/train and require a prepared
+        # manifest rooted under ignored data/processed instead.
         with self.assertRaises(runner.TrainingContractError):
-            runner._require_canonical_dataset("/tmp/look-alike.jsonl", "0" * 64, "train")
+            runner._require_final_validation("/tmp/look-alike.jsonl", "0" * 64)
         with self.assertRaises(runner.TrainingContractError):
-            runner._require_canonical_dataset("eval/train.jsonl", runner.CANONICAL_TRAIN_SHA256, "train")
+            runner._require_prepared_path("/tmp/not-prepared/manifest.json")
 
     def test_single_accelerate_shard_has_rank_coverage_and_post_prepare_updates(self) -> None:
         runner = self._runner_module()
@@ -264,7 +266,10 @@ class RunnerStaticSafetyTest(unittest.TestCase):
         self.assertIn("aggregate", source)
         self.assertNotIn("from torch.utils.data.distributed", source)
         self.assertIn("_prepared_update_count(len(train_loader)", source)
-        self.assertIn("_require_canonical_dataset", source)
+        self.assertIn("_require_final_validation", source)
+        self.assertIn("_load_prepared_manifest", source)
+        self.assertIn("_PREPARED_PROTOCOL", source)
+        self.assertNotIn("eval/train.jsonl", source)
         self.assertIn("_require_prior_run_artifact", source)
         self.assertIn("selection_metadata", source)
         self.assertIn("refit_adapter", source)
@@ -274,6 +279,48 @@ class RunnerStaticSafetyTest(unittest.TestCase):
         self.assertNotIn('outputs.get("sentence_embedding")', modeling)
         self.assertIn("load_nv_local_config", modeling)
         self.assertIn("text_config", modeling)
+
+
+    def test_prepared_manifest_accepts_only_named_human_feedback_partitions(self) -> None:
+        runner = self._runner_module()
+        prepared_root = ROOT / "data" / "processed" / "_encoder_manifest_static_test"
+        prepared_root.mkdir(parents=True, exist_ok=False)
+        try:
+            row = {
+                "id": "synthetic-test-id",
+                "prompt": "p",
+                "essay": "e",
+                "score": {"content": 1.0, "organization": 2.0, "expression": 3.0, "average": 2.0},
+                "feedback": {"holistic": "h", "content_1": "a", "content_2": "b", "content_3": "c", "organization_1": "d", "organization_2": "e", "expression_1": "f", "expression_2": "g", "task_1": "i"},
+            }
+            encoded = json.dumps(row, ensure_ascii=False) + "\n"
+            digests = {}
+            for name in ("selection_train.jsonl", "selection_dev.jsonl", "refit_train.jsonl"):
+                path = prepared_root / name
+                path.write_text(encoded, encoding="utf-8")
+                digests[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+            group_hash = "b" * 64
+            manifest = {
+                "schema_version": 1,
+                "protocol": "aihub_human_feedback_score_v1",
+                "source_fingerprint": "a" * 64,
+                "eligibility": {"eligible_count": 1},
+                "split": {"normalized_question_hashes": [group_hash]},
+                "files": {key: {"path": filename, "sha256": digests[filename], "record_count": 1} for key, filename in (("selection_train", "selection_train.jsonl"), ("selection_dev", "selection_dev.jsonl"), ("refit_train", "refit_train.jsonl"))},
+            }
+            manifest_path = prepared_root / "manifest.json"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            loaded = runner._load_prepared_manifest(str(manifest_path.resolve()))
+            rows = runner._load_prepared_records(loaded.selection_train)
+            self.assertEqual(len(rows), 1)
+            self.assertFalse(hasattr(rows[0], "feedback"))
+            manifest["files"]["selection_train"]["path"] = "wrong.jsonl"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaises(runner.TrainingContractError):
+                runner._load_prepared_manifest(str(manifest_path.resolve()))
+        finally:
+            import shutil
+            shutil.rmtree(prepared_root)
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@
   "data": {
     "max_sequence_length": 2048,
     "head_fraction": 0.75,
-    "dev_fraction": 0.1
+    "dev_fraction": 0.2
   },
   "optimization": {
     "seed": 20260716,
