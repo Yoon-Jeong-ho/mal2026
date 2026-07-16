@@ -121,6 +121,16 @@ class SharedProtocolTests(unittest.TestCase):
         template["model"]["tokenizer_revision"] = "b" * 40
         template["adapter"]["target_modules"] = ["q_proj"]
         self.assertEqual("encoder-qwen3", validate_experiment_config(template)["run_kind"])
+        for field, invalid in (("normalize_embeddings", False), ("regression_loss", "mae"), ("loss_reduction", "sum"), ("pooling", "last_token_mean")):
+            altered = json.loads(json.dumps(template))
+            altered["model"][field] = invalid
+            with self.assertRaises(ConfigError):
+                validate_experiment_config(altered)
+        for field, invalid in (("weight_decay", -0.1), ("num_workers", -1), ("early_stopping_min_delta", -0.1), ("early_stopping_patience", 0)):
+            altered = json.loads(json.dumps(template))
+            altered["optimization"][field] = invalid
+            with self.assertRaises(ConfigError):
+                validate_experiment_config(altered)
 
 
 if __name__ == "__main__":

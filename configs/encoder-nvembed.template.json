@@ -1,8 +1,45 @@
 {
   "run_kind": "encoder-nvembed",
-  "model": {"id": "nvidia/NV-Embed-v2", "revision": "REQUIRED_40_HEX_COMMIT", "tokenizer_revision": "REQUIRED_40_HEX_COMMIT", "pooling": "REQUIRED_REVIEWED_POOLING", "pooling_revision": "REQUIRED_REVIEWED_REMOTE_CODE_SHA256"},
-  "adapter": {"rank": 16, "alpha": 32, "dropout": 0.05, "target_modules": ["REQUIRED_VALIDATED_TARGET_MODULE"]},
-  "data": {"max_sequence_length": 2048, "head_fraction": 0.75, "dev_fraction": 0.10},
-  "optimization": {"seed": 20260716, "learning_rate": 0.0001, "epochs": 20, "warmup_ratio": 0.05, "per_device_batch_size": 1, "gradient_accumulation_steps": 8},
-  "remote_code_review": {"license_acknowledgement": "REQUIRED_RESEARCH_NONCOMMERCIAL_ACKNOWLEDGEMENT", "review_outcome": "REQUIRED_APPROVED", "reviewed_file_sha256": {"REQUIRED_FILENAME": "REQUIRED_64_HEX_SHA256"}}
+  "model": {
+    "id": "nvidia/NV-Embed-v2",
+    "revision": "REQUIRED_40_HEX_COMMIT",
+    "tokenizer_revision": "REQUIRED_40_HEX_COMMIT",
+    "pooling": "remote_sentence_embedding",
+    "pooling_revision": "REQUIRED_REVIEWED_REMOTE_CODE_SHA256",
+    "normalize_embeddings": true,
+    "regression_loss": "mse",
+    "loss_reduction": "mean"
+  },
+  "adapter": {
+    "rank": 16,
+    "alpha": 32,
+    "dropout": 0.05,
+    "target_modules": [
+      "REQUIRED_VALIDATED_TARGET_MODULE"
+    ]
+  },
+  "data": {
+    "max_sequence_length": 2048,
+    "head_fraction": 0.75,
+    "dev_fraction": 0.1
+  },
+  "optimization": {
+    "seed": 20260716,
+    "learning_rate": 0.0001,
+    "epochs": 20,
+    "warmup_ratio": 0.05,
+    "per_device_batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "weight_decay": 0.01,
+    "num_workers": 4,
+    "early_stopping_min_delta": 0.001,
+    "early_stopping_patience": 3
+  },
+  "remote_code_review": {
+    "license_acknowledgement": "REQUIRED_RESEARCH_NONCOMMERCIAL_ACKNOWLEDGEMENT",
+    "review_outcome": "REQUIRED_APPROVED",
+    "reviewed_file_sha256": {
+      "REQUIRED_FILENAME": "REQUIRED_64_HEX_SHA256"
+    }
+  }
 }

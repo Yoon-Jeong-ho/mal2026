@@ -6,3 +6,11 @@ only and are intentionally excluded from version control.
 
 See `docs/aihub_writing_evaluation_data.md` for the non-sensitive data record
 and the experiment contract under `.omx/plans/` for the approved protocol.
+
+## Local static/unit checks
+
+Run the repository tests without exposing restricted inputs:
+
+```bash
+PYTHONPATH=src python -m unittest discover -v tests
+```

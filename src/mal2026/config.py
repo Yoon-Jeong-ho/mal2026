@@ -67,8 +67,16 @@ def validate_experiment_config(raw: Mapping[str, Any]) -> dict[str, Any]:
     if kind.startswith("decoder"):
         _sha256(model.get("chat_template_sha256"), "model.chat_template_sha256")
     else:
-        _required_text(model.get("pooling"), "model.pooling")
+        expected_pooling = "last_nonpad" if kind == "encoder-qwen3" else "remote_sentence_embedding"
+        if model.get("pooling") != expected_pooling:
+            raise ConfigError(f"model.pooling must be {expected_pooling!r} for {kind}")
         _required_text(model.get("pooling_revision"), "model.pooling_revision")
+        if model.get("normalize_embeddings") is not True:
+            raise ConfigError("model.normalize_embeddings must explicitly be true")
+        if model.get("regression_loss") != "mse":
+            raise ConfigError("model.regression_loss must explicitly be 'mse'")
+        if model.get("loss_reduction") != "mean":
+            raise ConfigError("model.loss_reduction must explicitly be 'mean'")
     _require_adapter(_mapping(raw.get("adapter"), "adapter"))
 
     data = _mapping(raw.get("data"), "data")
@@ -84,6 +92,19 @@ def validate_experiment_config(raw: Mapping[str, Any]) -> dict[str, Any]:
             raise ConfigError(f"optimization.{name} must be a positive integer")
     if not isinstance(optimization.get("learning_rate"), (int, float)) or float(optimization["learning_rate"]) <= 0:
         raise ConfigError("optimization.learning_rate must be positive")
+    if kind.startswith("encoder"):
+        weight_decay = optimization.get("weight_decay")
+        if isinstance(weight_decay, bool) or not isinstance(weight_decay, (int, float)) or float(weight_decay) < 0:
+            raise ConfigError("optimization.weight_decay must be nonnegative")
+        num_workers = optimization.get("num_workers")
+        if isinstance(num_workers, bool) or not isinstance(num_workers, int) or num_workers < 0:
+            raise ConfigError("optimization.num_workers must be a nonnegative integer")
+        minimum_delta = optimization.get("early_stopping_min_delta")
+        if isinstance(minimum_delta, bool) or not isinstance(minimum_delta, (int, float)) or float(minimum_delta) < 0:
+            raise ConfigError("optimization.early_stopping_min_delta must be nonnegative")
+        patience = optimization.get("early_stopping_patience")
+        if isinstance(patience, bool) or not isinstance(patience, int) or patience <= 0:
+            raise ConfigError("optimization.early_stopping_patience must be a positive integer")
 
     if kind == "decoder-rationale-score":
         teacher = _mapping(raw.get("teacher"), "teacher")
