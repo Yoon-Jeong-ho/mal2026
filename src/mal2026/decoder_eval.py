@@ -1,0 +1,284 @@
+"""Strict final-evaluation path for Qwen decoder score models.
+
+It never performs selection or uses labels to alter generation.  Invalid decoder
+text remains a scored prediction through the frozen optimization-train mean.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from .decoder import ContractError, SCORE_KEYS, parse_decoder_output, prompt_text, require_immutable_revision
+from .decoder_train import SYSTEM_MESSAGE, _records_as_mappings
+
+
+@dataclass(frozen=True)
+class DecoderEvalConfig:
+    run_id: str
+    mode: str
+    model_id: str
+    model_revision: str
+    tokenizer_revision: str
+    adapter_path: str
+    evaluation_path: str
+    output_dir: str
+    fallback_mean: dict[str, float]
+    selection_run_id: str
+    refit_run_id: str
+    max_seq_length: int = 3072
+    per_device_batch_size: int = 1
+    max_new_tokens: int = 512
+    wandb_project: str = "mal2026-korean-writing-scoring"
+    wandb_entity: str | None = None
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> "DecoderEvalConfig":
+        known = {field.name for field in fields(cls)}
+        extra = sorted(set(raw) - known)
+        if extra:
+            raise ContractError(f"unknown decoder evaluation config fields: {extra}")
+        return cls(**dict(raw))
+
+    def validate(self) -> None:
+        if self.mode not in {"direct", "rationale"}:
+            raise ContractError("mode must be direct or rationale")
+        require_immutable_revision(self.model_revision, "model_revision")
+        require_immutable_revision(self.tokenizer_revision, "tokenizer_revision")
+        if not self.selection_run_id or not self.refit_run_id:
+            raise ContractError("final evaluation requires separate selection_run_id and refit_run_id")
+        if self.max_seq_length != 3072 or self.per_device_batch_size != 1:
+            raise ContractError("final decoder evaluation uses frozen 3072 cap and batch size 1")
+        if Path(self.output_dir).name != self.run_id or not self.run_id:
+            raise ContractError("output_dir must end with nonempty run_id")
+        if set(self.fallback_mean) != set(SCORE_KEYS):
+            raise ContractError("fallback_mean must be the saved optimization-train four-score mean")
+        for key in SCORE_KEYS:
+            value = float(self.fallback_mean[key])
+            if not math.isfinite(value) or not 1 <= value <= 5:
+                raise ContractError("fallback_mean values must be finite values in [1, 5]")
+
+
+def load_json_config(path: str) -> DecoderEvalConfig:
+    with open(path, encoding="utf-8") as handle:
+        raw = json.load(handle)
+    if not isinstance(raw, dict):
+        raise ContractError("decoder eval config must be JSON object")
+    config = DecoderEvalConfig.from_mapping(raw)
+    config.validate()
+    return config
+
+
+def _head_tail_prompt(ids: list[int], cap: int) -> list[int]:
+    if len(ids) <= cap:
+        return ids
+    head = (cap * 3) // 4
+    return ids[:head] + ids[len(ids) - (cap - head) :]
+
+
+def build_generation_example(tokenizer: Any, record: Mapping[str, Any], max_seq_length: int) -> dict[str, Any]:
+    user = prompt_text(record)
+    messages = [{"role": "system", "content": SYSTEM_MESSAGE}, {"role": "user", "content": user}]
+    prefix = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+    ids = tokenizer(prefix, add_special_tokens=False)["input_ids"]
+    ids = _head_tail_prompt(ids, max_seq_length)
+    return {"input_ids": ids, "scores": [float(record["score"][key]) for key in SCORE_KEYS], "id": record["id"]}
+
+
+class _GenerationDataset:
+    def __init__(self, tokenizer: Any, records: Sequence[Mapping[str, Any]], max_seq_length: int):
+        self.items = [build_generation_example(tokenizer, record, max_seq_length) for record in records]
+
+    def __len__(self) -> int:
+        return len(self.items)
+
+    def __getitem__(self, index: int) -> dict[str, Any]:
+        return self.items[index]
+
+
+def _collator(tokenizer: Any):
+    import torch
+
+    if tokenizer.pad_token_id is None:
+        raise ContractError("tokenizer needs a pad token")
+    pad = tokenizer.pad_token_id
+
+    def collate(batch: list[dict[str, Any]]) -> dict[str, Any]:
+        length = max(len(item["input_ids"]) for item in batch)
+        return {
+            "input_ids": torch.tensor([[pad] * (length - len(item["input_ids"])) + item["input_ids"] for item in batch], dtype=torch.long),
+            "attention_mask": torch.tensor([[0] * (length - len(item["input_ids"])) + [1] * len(item["input_ids"]) for item in batch], dtype=torch.long),
+            "scores": torch.tensor([item["scores"] for item in batch], dtype=torch.float32),
+            "ids": [item["id"] for item in batch],
+        }
+
+    return collate
+
+
+def _rankdata(values: Sequence[float]) -> list[float]:
+    ranks = [0.0] * len(values)
+    for _, group in _tie_groups(values):
+        rank = (group[0] + group[-1] + 2) / 2.0  # one-indexed average rank
+        for index in group:
+            ranks[index] = rank
+    return ranks
+
+
+def _tie_groups(values: Sequence[float]):
+    ordered = sorted(range(len(values)), key=lambda index: values[index])
+    cursor = 0
+    while cursor < len(ordered):
+        end = cursor + 1
+        while end < len(ordered) and values[ordered[end]] == values[ordered[cursor]]:
+            end += 1
+        yield values[ordered[cursor]], ordered[cursor:end]
+        cursor = end
+
+
+def _pearson(x: Sequence[float], y: Sequence[float]) -> float:
+    if len(x) < 2:
+        return float("nan")
+    mx, my = sum(x) / len(x), sum(y) / len(y)
+    dx = sum((a - mx) ** 2 for a in x)
+    dy = sum((b - my) ** 2 for b in y)
+    if dx == 0 or dy == 0:
+        return float("nan")
+    return sum((a - mx) * (b - my) for a, b in zip(x, y)) / math.sqrt(dx * dy)
+
+
+def _round_half_up_bin(value: float) -> int:
+    # scores were already range-clamped by the strict parser/fallback policy.
+    return min(5, max(1, int(math.floor(min(5.0, max(1.0, value)) + 0.5))))
+
+
+def quadratic_weighted_kappa(target: Sequence[float], prediction: Sequence[float]) -> float:
+    """Five-bin QWK with the predeclared half-up discretization."""
+    if len(target) != len(prediction) or not target:
+        return float("nan")
+    observed = [[0.0] * 5 for _ in range(5)]
+    target_hist = [0.0] * 5
+    prediction_hist = [0.0] * 5
+    for truth, pred in zip(target, prediction):
+        i, j = _round_half_up_bin(truth) - 1, _round_half_up_bin(pred) - 1
+        observed[i][j] += 1.0
+        target_hist[i] += 1.0
+        prediction_hist[j] += 1.0
+    weight = lambda i, j: ((i - j) ** 2) / 16.0
+    observed_error = sum(weight(i, j) * observed[i][j] for i in range(5) for j in range(5))
+    expected_error = sum(weight(i, j) * target_hist[i] * prediction_hist[j] / len(target) for i in range(5) for j in range(5))
+    return 1.0 - observed_error / expected_error if expected_error else float("nan")
+
+
+def aggregate_metrics(target: Sequence[Sequence[float]], prediction: Sequence[Sequence[float]], valid: Sequence[bool]) -> dict[str, float]:
+    if not target or len(target) != len(prediction):
+        raise ContractError("nonempty aligned target/prediction arrays required")
+    result: dict[str, float] = {"count": float(len(target)), "decoder/parse_failure_rate": 1.0 - sum(valid) / len(valid)}
+    for index, key in enumerate(SCORE_KEYS):
+        truth = [float(row[index]) for row in target]
+        pred = [float(row[index]) for row in prediction]
+        result[f"{key}/mae"] = sum(abs(a - b) for a, b in zip(truth, pred)) / len(truth)
+        result[f"{key}/rmse"] = math.sqrt(sum((a - b) ** 2 for a, b in zip(truth, pred)) / len(truth))
+        result[f"{key}/pearson"] = _pearson(truth, pred)
+        result[f"{key}/spearman"] = _pearson(_rankdata(truth), _rankdata(pred))
+        result[f"{key}/qwk"] = quadratic_weighted_kappa(truth, pred)
+    result["primary/average_mae"] = result["average/mae"]
+    return result
+
+
+def evaluate(config: DecoderEvalConfig) -> None:
+    config.validate()
+    if Path(config.output_dir).exists():
+        raise ContractError(f"refusing to overwrite run output: {config.output_dir}")
+    from accelerate import Accelerator
+    from peft import PeftModel
+    from torch.utils.data import DataLoader
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    import torch
+
+    accelerator = Accelerator(mixed_precision="bf16")
+    tokenizer = AutoTokenizer.from_pretrained(config.model_id, revision=config.tokenizer_revision, use_fast=True)
+    tokenizer.padding_side = "left"
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    # Explicitly no device_map: Accelerator/DDP controls device placement.
+    base = AutoModelForCausalLM.from_pretrained(config.model_id, revision=config.model_revision, torch_dtype=torch.bfloat16)
+    model = PeftModel.from_pretrained(base, config.adapter_path, is_trainable=False)
+    model.config.use_cache = True
+    from .data_contract import load_and_validate_jsonl
+    records = _records_as_mappings(load_and_validate_jsonl(config.evaluation_path))
+    loader = DataLoader(_GenerationDataset(tokenizer, records, config.max_seq_length), batch_size=config.per_device_batch_size, shuffle=False, collate_fn=_collator(tokenizer), drop_last=False)
+    model, loader = accelerator.prepare(model, loader)
+    run_dir = Path(config.output_dir)
+    if accelerator.is_main_process:
+        run_dir.mkdir(parents=True, exist_ok=False)
+        _write_json(run_dir / "config.json", asdict(config))
+    accelerator.wait_for_everyone()
+
+    rank_path = run_dir / f"predictions-rank-{accelerator.process_index:03d}.jsonl"
+    all_target: list[list[float]] = []
+    all_pred: list[list[float]] = []
+    all_valid: list[bool] = []
+    with open(rank_path, "w", encoding="utf-8") as output:
+        model.eval()
+        with torch.inference_mode():
+            for batch in loader:
+                generated = accelerator.unwrap_model(model).generate(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], do_sample=False, max_new_tokens=config.max_new_tokens, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
+                generated_text = tokenizer.batch_decode(generated[:, batch["input_ids"].shape[1] :], skip_special_tokens=True)
+                local_predictions: list[list[float]] = []
+                local_valid: list[int] = []
+                for identifier, text, truth in zip(batch["ids"], generated_text, batch["scores"].tolist()):
+                    parsed = parse_decoder_output(text, config.mode, config.fallback_mean, essay=None if config.mode == "direct" else _essay_for_id(records, identifier))
+                    local_predictions.append([parsed.scores[key] for key in SCORE_KEYS])
+                    local_valid.append(int(parsed.valid))
+                    # Restricted prediction file contains no prompt/essay/rationale text.
+                    output.write(json.dumps({"id": identifier, "prediction": parsed.scores, "parse_valid": parsed.valid, "parse_error": parsed.error}, ensure_ascii=False) + "\n")
+                gathered_pred = accelerator.gather_for_metrics(torch.tensor(local_predictions, device=accelerator.device, dtype=torch.float32))
+                gathered_truth = accelerator.gather_for_metrics(batch["scores"])
+                gathered_valid = accelerator.gather_for_metrics(torch.tensor(local_valid, device=accelerator.device, dtype=torch.int64))
+                if accelerator.is_main_process:
+                    all_pred.extend(gathered_pred.cpu().tolist())
+                    all_target.extend(gathered_truth.cpu().tolist())
+                    all_valid.extend(bool(value) for value in gathered_valid.cpu().tolist())
+    accelerator.wait_for_everyone()
+    if accelerator.is_main_process:
+        metrics = aggregate_metrics(all_target, all_pred, all_valid)
+        _write_json(run_dir / "metrics.json", metrics)
+        _wandb_log(config, metrics)
+
+
+def _essay_for_id(records: Sequence[Mapping[str, Any]], identifier: str) -> str:
+    # Deliberately local-only lookup for schema validation; never emitted/logged.
+    for record in records:
+        if record["id"] == identifier:
+            return str(record["essay"])
+    raise ContractError("internal evaluation id lookup failed")
+
+
+def _wandb_log(config: DecoderEvalConfig, metrics: Mapping[str, float]) -> None:
+    import wandb
+
+    os.environ.setdefault("WANDB_LOG_MODEL", "false")
+    run = wandb.init(project=config.wandb_project, entity=config.wandb_entity, name=config.run_id, config={"run_id": config.run_id, "mode": config.mode, "selection_run_id": config.selection_run_id, "refit_run_id": config.refit_run_id})
+    run.log(dict(metrics))
+    run.finish()
+
+
+def _write_json(path: Path, value: Mapping[str, Any]) -> None:
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.write("\n")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="strict final evaluation for Qwen decoder SFT")
+    parser.add_argument("--config", required=True, help="non-secret decoder final-evaluation JSON configuration")
+    args = parser.parse_args(argv)
+    evaluate(load_json_config(args.config))
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
