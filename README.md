@@ -7,7 +7,8 @@ and are intentionally excluded from version control.
 See `docs/aihub_writing_evaluation_data.md` for the non-sensitive data record.
 The supported training and evaluation entry points are documented with their
 standard Trainer/TRL/vLLM implementation; legacy bespoke runners are not part
-of this repository.
+of this repository. See `docs/standard_experiment_matrix.md` for the safe
+sequential full-matrix launcher.
 
 ## Local static/unit checks
 
