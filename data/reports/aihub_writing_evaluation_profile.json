@@ -1,0 +1,716 @@
+{
+  "method": "ZIP-internal full-label profile",
+  "datasets": {
+    "024_essay_writing_evaluation": {
+      "display_name": "에세이 글 평가 데이터",
+      "zip_archives": 20,
+      "records": {
+        "train": 39591,
+        "validation": 5906
+      },
+      "json_parse_errors": 0,
+      "required_field_missing": {},
+      "categories": {
+        "essay_type": {
+          "글짓기": 5240,
+          "대안제시": 6082,
+          "설명글": 16416,
+          "주장": 10084,
+          "찬성반대": 7675
+        },
+        "essay_level": {
+          "1": 6460,
+          "2": 26926,
+          "3": 12111
+        },
+        "student_grade_group": {
+          "고등": 10336,
+          "중등": 17822,
+          "초등": 17339
+        }
+      },
+      "lengths": {
+        "essay_len": {
+          "count": 45497,
+          "min": 200.0,
+          "p05": 258.0,
+          "p25": 400.0,
+          "median": 555.0,
+          "mean": 591.9110710596303,
+          "p75": 768.0,
+          "p95": 987.0,
+          "max": 5033.0
+        }
+      },
+      "scores": {
+        "overall_mean": {
+          "summary": {
+            "count": 45497,
+            "min": 0.0,
+            "p05": 17.533333,
+            "p25": 23.223808,
+            "median": 26.066666,
+            "mean": 25.094513321416798,
+            "p75": 27.907408,
+            "p95": 29.383333,
+            "max": 30.0
+          },
+          "distribution": {
+            "kind": "histogram",
+            "bins": [
+              {
+                "lower": 0.0,
+                "upper": 3.0,
+                "count": 9
+              },
+              {
+                "lower": 3.0,
+                "upper": 6.0,
+                "count": 49
+              },
+              {
+                "lower": 6.0,
+                "upper": 9.0,
+                "count": 110
+              },
+              {
+                "lower": 9.0,
+                "upper": 12.0,
+                "count": 171
+              },
+              {
+                "lower": 12.0,
+                "upper": 15.0,
+                "count": 584
+              },
+              {
+                "lower": 15.0,
+                "upper": 18.0,
+                "count": 1694
+              },
+              {
+                "lower": 18.0,
+                "upper": 21.0,
+                "count": 3714
+              },
+              {
+                "lower": 21.0,
+                "upper": 24.0,
+                "count": 7417
+              },
+              {
+                "lower": 24.0,
+                "upper": 27.0,
+                "count": 14238
+              },
+              {
+                "lower": 27.0,
+                "upper": 30.0,
+                "count": 17511
+              }
+            ]
+          }
+        },
+        "rater_score": {
+          "summary": {
+            "count": 136491,
+            "min": 0.0,
+            "p05": 16.15,
+            "p25": 22.699999,
+            "median": 26.1,
+            "mean": 25.09451329589218,
+            "p75": 28.5,
+            "p95": 30.0,
+            "max": 30.0
+          },
+          "distribution": {
+            "kind": "histogram",
+            "bins": [
+              {
+                "lower": 0.0,
+                "upper": 3.0,
+                "count": 209
+              },
+              {
+                "lower": 3.0,
+                "upper": 6.0,
+                "count": 147
+              },
+              {
+                "lower": 6.0,
+                "upper": 9.0,
+                "count": 181
+              },
+              {
+                "lower": 9.0,
+                "upper": 12.0,
+                "count": 1199
+              },
+              {
+                "lower": 12.0,
+                "upper": 15.0,
+                "count": 2926
+              },
+              {
+                "lower": 15.0,
+                "upper": 18.0,
+                "count": 6286
+              },
+              {
+                "lower": 18.0,
+                "upper": 21.0,
+                "count": 12252
+              },
+              {
+                "lower": 21.0,
+                "upper": 24.0,
+                "count": 21842
+              },
+              {
+                "lower": 24.0,
+                "upper": 27.0,
+                "count": 33428
+              },
+              {
+                "lower": 27.0,
+                "upper": 30.0,
+                "count": 58021
+              }
+            ]
+          }
+        },
+        "within_record_rater_sd": {
+          "summary": {
+            "count": 45497,
+            "min": 0.0,
+            "p05": 0.2828427124746197,
+            "p25": 0.9899494936611672,
+            "median": 1.7639916855435194,
+            "mean": 1.9998154273659432,
+            "p75": 2.7671798863566663,
+            "p95": 4.45467719472729,
+            "max": 10.636519898705382
+          },
+          "distribution": {
+            "kind": "histogram",
+            "bins": [
+              {
+                "lower": 0.0,
+                "upper": 1.063651989870538,
+                "count": 12395
+              },
+              {
+                "lower": 1.063651989870538,
+                "upper": 2.127303979741076,
+                "count": 15247
+              },
+              {
+                "lower": 2.127303979741076,
+                "upper": 3.1909559696116143,
+                "count": 10003
+              },
+              {
+                "lower": 3.1909559696116143,
+                "upper": 4.254607959482152,
+                "count": 5026
+              },
+              {
+                "lower": 4.254607959482152,
+                "upper": 5.31825994935269,
+                "count": 1886
+              },
+              {
+                "lower": 5.31825994935269,
+                "upper": 6.381911939223229,
+                "count": 629
+              },
+              {
+                "lower": 6.381911939223229,
+                "upper": 7.445563929093767,
+                "count": 206
+              },
+              {
+                "lower": 7.445563929093767,
+                "upper": 8.509215918964305,
+                "count": 77
+              },
+              {
+                "lower": 8.509215918964305,
+                "upper": 9.572867908834843,
+                "count": 21
+              },
+              {
+                "lower": 9.572867908834843,
+                "upper": 10.63651989870538,
+                "count": 7
+              }
+            ]
+          }
+        }
+      },
+      "vector_length_errors": {},
+      "integrity": {
+        "train": {
+          "label_members": 39591,
+          "source_members": 39591,
+          "label_source_stem_mismatch": 0,
+          "candidate_id": {
+            "count": 39591,
+            "distinct": 39591,
+            "duplicate_rows": 0
+          },
+          "question_or_prompt_group": {
+            "count": 39591,
+            "distinct": 50,
+            "duplicate_rows": 39541
+          },
+          "normalized_text": {
+            "count": 39591,
+            "distinct": 39520,
+            "duplicate_rows": 71
+          }
+        },
+        "validation": {
+          "label_members": 5906,
+          "source_members": 5906,
+          "label_source_stem_mismatch": 0,
+          "candidate_id": {
+            "count": 5906,
+            "distinct": 5906,
+            "duplicate_rows": 0
+          },
+          "question_or_prompt_group": {
+            "count": 5906,
+            "distinct": 50,
+            "duplicate_rows": 5856
+          },
+          "normalized_text": {
+            "count": 5906,
+            "distinct": 5901,
+            "duplicate_rows": 5
+          }
+        },
+        "cross_split": {
+          "candidate_id_overlap": 0,
+          "question_or_prompt_group_overlap": 50,
+          "normalized_text_overlap": 13
+        }
+      }
+    },
+    "025_descriptive_writing_evaluation": {
+      "display_name": "서술형 글쓰기 평가 데이터",
+      "zip_archives": 80,
+      "records": {
+        "train": 32006,
+        "validation": 4000
+      },
+      "json_parse_errors": 0,
+      "required_field_missing": {},
+      "categories": {
+        "grade": {
+          "중1": 6874,
+          "중2": 6791,
+          "중3": 5956,
+          "초5": 8407,
+          "초6": 7978
+        },
+        "subject": {
+          "과학": 6242,
+          "국어": 12522,
+          "사회": 11921,
+          "수학": 5321
+        },
+        "question_type": {
+          "서술형 글쓰기": 36006
+        },
+        "question_level": {
+          "상": 12000,
+          "중": 12061,
+          "하": 11945
+        },
+        "answer_gender": {
+          "남": 19104,
+          "여": 16902
+        },
+        "answer_region": {
+          "강원": 28,
+          "경기": 8697,
+          "경남": 588,
+          "경북": 602,
+          "광주": 1447,
+          "대구": 1051,
+          "대전": 1596,
+          "부산": 1393,
+          "서울": 8629,
+          "인천": 7299,
+          "전남": 715,
+          "전북": 817,
+          "제주": 1789,
+          "충남": 915,
+          "충북": 440
+        }
+      },
+      "lengths": {
+        "text_characters": {
+          "count": 36006,
+          "min": 127.0,
+          "p05": 147.0,
+          "p25": 173.0,
+          "median": 283.0,
+          "mean": 261.55282452924513,
+          "p75": 311.0,
+          "p95": 392.0,
+          "max": 1315.0
+        },
+        "len_syllable": {
+          "count": 36006,
+          "min": 100.0,
+          "p05": 112.0,
+          "p25": 131.0,
+          "median": 214.0,
+          "mean": 198.00766538910182,
+          "p75": 235.0,
+          "p95": 295.0,
+          "max": 971.0
+        },
+        "len_word": {
+          "count": 36006,
+          "min": 21.0,
+          "p05": 35.0,
+          "p25": 43.0,
+          "median": 68.0,
+          "mean": 63.91920790979281,
+          "p75": 77.0,
+          "p95": 97.0,
+          "max": 337.0
+        }
+      },
+      "scores": {
+        "holistic_rater_score": {
+          "summary": {
+            "count": 72012,
+            "min": 1.0,
+            "p05": 2.0,
+            "p25": 3.0,
+            "median": 3.0,
+            "mean": 2.96152030217186,
+            "p75": 3.0,
+            "p95": 4.0,
+            "max": 4.0
+          },
+          "distribution": {
+            "kind": "values",
+            "counts": {
+              "1.0": 1247,
+              "2.0": 15498,
+              "3.0": 40046,
+              "4.0": 15221
+            }
+          }
+        },
+        "holistic_mean": {
+          "summary": {
+            "count": 36006,
+            "min": 1.0,
+            "p05": 2.0,
+            "p25": 2.5,
+            "median": 3.0,
+            "mean": 2.96152030217186,
+            "p75": 3.5,
+            "p95": 4.0,
+            "max": 4.0
+          },
+          "distribution": {
+            "kind": "values",
+            "counts": {
+              "1.0": 262,
+              "1.5": 656,
+              "2.0": 4876,
+              "2.5": 5037,
+              "3.0": 15532,
+              "3.5": 4252,
+              "4.0": 5391
+            }
+          }
+        },
+        "holistic_rater_abs_difference": {
+          "summary": {
+            "count": 36006,
+            "min": 0.0,
+            "p05": 0.0,
+            "p25": 0.0,
+            "median": 0.0,
+            "mean": 0.29031272565683497,
+            "p75": 1.0,
+            "p95": 1.0,
+            "max": 2.0
+          },
+          "distribution": {
+            "kind": "values",
+            "counts": {
+              "0.0": 25807,
+              "1.0": 9945,
+              "2.0": 254
+            }
+          }
+        }
+      },
+      "vector_length_errors": {},
+      "integrity": {
+        "train": {
+          "label_members": 32006,
+          "source_members": 32006,
+          "label_source_stem_mismatch": 0,
+          "candidate_id": {
+            "count": 32006,
+            "distinct": 32006,
+            "duplicate_rows": 0
+          },
+          "question_or_prompt_group": {
+            "count": 32006,
+            "distinct": 60,
+            "duplicate_rows": 31946
+          },
+          "normalized_text": {
+            "count": 32006,
+            "distinct": 32006,
+            "duplicate_rows": 0
+          }
+        },
+        "validation": {
+          "label_members": 4000,
+          "source_members": 4000,
+          "label_source_stem_mismatch": 0,
+          "candidate_id": {
+            "count": 4000,
+            "distinct": 4000,
+            "duplicate_rows": 0
+          },
+          "question_or_prompt_group": {
+            "count": 4000,
+            "distinct": 60,
+            "duplicate_rows": 3940
+          },
+          "normalized_text": {
+            "count": 4000,
+            "distinct": 4000,
+            "duplicate_rows": 0
+          }
+        },
+        "cross_split": {
+          "candidate_id_overlap": 0,
+          "question_or_prompt_group_overlap": 60,
+          "normalized_text_overlap": 0
+        }
+      }
+    },
+    "026_argumentative_writing_evaluation": {
+      "display_name": "논술형 글쓰기 평가 데이터",
+      "zip_archives": 48,
+      "records": {
+        "train": 16010,
+        "validation": 2000
+      },
+      "json_parse_errors": 0,
+      "required_field_missing": {},
+      "categories": {
+        "grade": {
+          "중1": 4325,
+          "중2": 2411,
+          "중3": 3237,
+          "초5": 4466,
+          "초6": 3571
+        },
+        "subject": {
+          "과학": 1865,
+          "국어": 7328,
+          "사회": 8817
+        },
+        "question_type": {
+          "논술형 글쓰기": 18010
+        },
+        "question_level": {
+          "상": 4841,
+          "중": 7462,
+          "하": 5707
+        },
+        "answer_gender": {
+          "남": 9616,
+          "여": 8394
+        },
+        "answer_region": {
+          "강원": 66,
+          "경기": 4762,
+          "경남": 194,
+          "경북": 207,
+          "광주": 782,
+          "대구": 745,
+          "대전": 835,
+          "부산": 1119,
+          "서울": 4097,
+          "세종": 50,
+          "울산": 69,
+          "인천": 3222,
+          "전남": 311,
+          "전북": 342,
+          "제주": 578,
+          "충남": 410,
+          "충북": 221
+        }
+      },
+      "lengths": {
+        "text_characters": {
+          "count": 18010,
+          "min": 765.0,
+          "p05": 807.0,
+          "p25": 836.0,
+          "median": 876.0,
+          "mean": 919.2831204886174,
+          "p75": 955.0,
+          "p95": 1176.5499999999993,
+          "max": 2812.0
+        },
+        "len_syllable": {
+          "count": 18010,
+          "min": 600.0,
+          "p05": 608.0,
+          "p25": 626.0,
+          "median": 655.0,
+          "mean": 688.9710716268739,
+          "p75": 716.0,
+          "p95": 882.0,
+          "max": 2116.0
+        },
+        "len_word": {
+          "count": 18010,
+          "min": 154.0,
+          "p05": 188.0,
+          "p25": 203.0,
+          "median": 215.0,
+          "mean": 223.0964464186563,
+          "p75": 234.0,
+          "p95": 286.0,
+          "max": 697.0
+        }
+      },
+      "scores": {
+        "holistic_rater_score": {
+          "summary": {
+            "count": 36020,
+            "min": 1.0,
+            "p05": 2.0,
+            "p25": 3.0,
+            "median": 3.0,
+            "mean": 2.895696835091616,
+            "p75": 3.0,
+            "p95": 4.0,
+            "max": 4.0
+          },
+          "distribution": {
+            "kind": "values",
+            "counts": {
+              "1.0": 537,
+              "2.0": 7483,
+              "3.0": 23200,
+              "4.0": 4800
+            }
+          }
+        },
+        "holistic_mean": {
+          "summary": {
+            "count": 18010,
+            "min": 1.0,
+            "p05": 2.0,
+            "p25": 2.5,
+            "median": 3.0,
+            "mean": 2.895696835091616,
+            "p75": 3.0,
+            "p95": 4.0,
+            "max": 4.0
+          },
+          "distribution": {
+            "kind": "values",
+            "counts": {
+              "1.0": 107,
+              "1.5": 285,
+              "2.0": 2209,
+              "2.5": 2748,
+              "3.0": 9578,
+              "3.5": 1474,
+              "4.0": 1609
+            }
+          }
+        },
+        "holistic_rater_abs_difference": {
+          "summary": {
+            "count": 18010,
+            "min": 0.0,
+            "p05": 0.0,
+            "p25": 0.0,
+            "median": 0.0,
+            "mean": 0.2664630760688506,
+            "p75": 1.0,
+            "p95": 1.0,
+            "max": 2.0
+          },
+          "distribution": {
+            "kind": "values",
+            "counts": {
+              "0.0": 13357,
+              "1.0": 4507,
+              "2.0": 146
+            }
+          }
+        }
+      },
+      "vector_length_errors": {},
+      "integrity": {
+        "train": {
+          "label_members": 16010,
+          "source_members": 16010,
+          "label_source_stem_mismatch": 0,
+          "candidate_id": {
+            "count": 16010,
+            "distinct": 16010,
+            "duplicate_rows": 0
+          },
+          "question_or_prompt_group": {
+            "count": 16010,
+            "distinct": 89,
+            "duplicate_rows": 15921
+          },
+          "normalized_text": {
+            "count": 16010,
+            "distinct": 16009,
+            "duplicate_rows": 1
+          }
+        },
+        "validation": {
+          "label_members": 2000,
+          "source_members": 2000,
+          "label_source_stem_mismatch": 0,
+          "candidate_id": {
+            "count": 2000,
+            "distinct": 2000,
+            "duplicate_rows": 0
+          },
+          "question_or_prompt_group": {
+            "count": 2000,
+            "distinct": 89,
+            "duplicate_rows": 1911
+          },
+          "normalized_text": {
+            "count": 2000,
+            "distinct": 2000,
+            "duplicate_rows": 0
+          }
+        },
+        "cross_split": {
+          "candidate_id_overlap": 0,
+          "question_or_prompt_group_overlap": 89,
+          "normalized_text_overlap": 0
+        }
+      }
+    }
+  }
+}

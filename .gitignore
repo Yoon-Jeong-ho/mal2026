@@ -4,7 +4,15 @@
 
 # AI-Hub raw downloads and operational logs (large and/or restricted data)
 data/raw/
+data/processed/
 data/logs/
+eval/
 
 # Downloaded third-party executable; retrieve it through the documented script.
 tools/aihubshell
+
+# Python bytecode cache
+__pycache__/
+
+# Local project environment; dependencies are reproducible from project specs.
+.venv/
