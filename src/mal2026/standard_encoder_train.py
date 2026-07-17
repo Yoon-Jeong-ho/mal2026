@@ -178,6 +178,93 @@ def _write_complete(output: Path, payload: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _selection_metrics_at_best_step(trainer: Any, selected_global_step: int) -> dict[str, float]:
+    """Read the distributed Trainer's already-recorded best-dev metrics.
+
+    Calling ``Trainer.evaluate`` after ``train`` on world process zero alone
+    would make Accelerate's evaluation gathers wait for ranks that are no
+    longer participating. Selection evaluation has already been performed by
+    Trainer on every rank at each configured evaluation step. The immutable
+    best checkpoint identifies precisely which aggregate event to persist.
+    """
+    for event in reversed(trainer.state.log_history):
+        if event.get("step") != selected_global_step or "eval_primary_macro_mae" not in event:
+            continue
+        metrics = {
+            key: float(value)
+            for key, value in event.items()
+            if key.startswith("eval_") and isinstance(value, (int, float))
+        }
+        _need("eval_primary_macro_mae" in metrics, "best selection event lacks macro MAE")
+        return metrics
+    raise StandardEncoderTrainingError("best selection checkpoint has no recorded distributed evaluation metrics")
+
+
+def _rank_zero_finalize(
+    trainer: Any,
+    config: StandardEncoderConfig,
+    output: Path,
+    train_metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Export and document the final model exactly once on world process zero."""
+    final_dir = output / "final_model"
+    trainer.save_model(str(final_dir))
+    state_path = final_dir / "model.safetensors"
+    _need(state_path.is_file(), "Trainer did not write a safe final model state")
+    if config.phase == "selection":
+        _need(
+            isinstance(trainer.state.best_global_step, int) and trainer.state.best_global_step > 0,
+            "selection completed without a best Trainer checkpoint",
+        )
+        selected_global_step = int(trainer.state.best_global_step)
+        selection_metrics = _selection_metrics_at_best_step(trainer, selected_global_step)
+    else:
+        selected_global_step = int(trainer.state.global_step)
+        selection_metrics = {}
+    _need(selected_global_step > 0, "Trainer completed without any optimizer update")
+    payload = {
+        "status": "completed",
+        "run_id": config.run_id,
+        "phase": config.phase,
+        "selected_global_step": selected_global_step,
+        "trainer_global_step": int(trainer.state.global_step),
+        "train_metrics": {
+            key: float(value) for key, value in train_metrics.items() if isinstance(value, (int, float))
+        },
+        "selection_metrics": selection_metrics,
+        "identity": _config_identity(config),
+        "config": asdict(config),
+        "model_state_sha256": _sha256(state_path),
+        "privacy": "aggregate_only_no_rows_prompts_essays_feedback_ids_predictions_or_model_outputs_persisted",
+    }
+    _write_complete(output, payload)
+    return payload
+
+
+def _broadcast_rank_zero_finalization(
+    torch: Any, trainer: Any, payload: dict[str, Any] | None, failed: bool
+) -> dict[str, Any]:
+    """Synchronize successful rank-zero publication or fail every DDP rank.
+
+    A generic status rather than a caught exception string is broadcast so a
+    local filesystem error cannot accidentally be turned into shared telemetry.
+    All ranks enter this collective after training; a rank-zero save/write
+    failure therefore fails workers promptly instead of leaving them blocked at
+    a later barrier.
+    """
+    message: list[Any] = [bool(failed), payload]
+    distributed = torch.distributed
+    if distributed.is_available() and distributed.is_initialized():
+        distributed.broadcast_object_list(message, src=0)
+    if bool(message[0]):
+        raise StandardEncoderTrainingError("world-process-zero finalization failed; inspect rank-zero stderr")
+    _need(
+        isinstance(message[1], dict) and message[1].get("status") == "completed",
+        "rank-zero finalization returned no completion payload",
+    )
+    return message[1]
+
+
 def run_standard_encoder(config: StandardEncoderConfig) -> dict[str, Any]:
     """Run only the maintained Transformers ``Trainer`` lifecycle."""
     config.validate()
@@ -224,22 +311,19 @@ def run_standard_encoder(config: StandardEncoderConfig) -> dict[str, Any]:
         callbacks=callbacks,
     )
     train_result = trainer.train()
-    # Save the best selection model (or final refit model) through Trainer, not
-    # a bespoke state/optimizer/DDP implementation.
-    final_dir = output / "final_model"
-    trainer.save_model(str(final_dir))
-    _need((final_dir / "model.safetensors").is_file(), "Trainer did not write a safe final model state")
-    metrics = trainer.evaluate() if config.phase == "selection" else {}
-    selected_global_step = int(trainer.state.global_step)
-    if config.phase == "selection" and trainer.state.best_global_step is not None:
-        selected_global_step = int(trainer.state.best_global_step)
-    _need(selected_global_step > 0, "Trainer completed without any optimizer update")
-    payload = {
-        "status": "completed", "run_id": config.run_id, "phase": config.phase, "selected_global_step": selected_global_step,
-        "trainer_global_step": int(trainer.state.global_step), "train_metrics": {key: float(value) for key, value in train_result.metrics.items() if isinstance(value, (int, float))},
-        "selection_metrics": {key: float(value) for key, value in metrics.items() if isinstance(value, (int, float))},
-        "identity": _config_identity(config), "config": asdict(config), "model_state_sha256": _sha256(final_dir / "model.safetensors"),
-        "privacy": "aggregate_only_no_rows_prompts_essays_feedback_ids_predictions_or_model_outputs_persisted",
-    }
-    _write_complete(output, payload)
-    return payload
+    # Trainer's train/eval/checkpoint collectives have completed on every rank.
+    # Only the global main process may now touch the final-model/artifact paths.
+    trainer.accelerator.wait_for_everyone()
+    payload: dict[str, Any] | None = None
+    failed = False
+    if trainer.is_world_process_zero():
+        try:
+            payload = _rank_zero_finalize(trainer, config, output, train_result.metrics)
+        except Exception:
+            failed = True
+    result = _broadcast_rank_zero_finalization(torch, trainer, payload, failed)
+    # No process exits until it has received the rank-zero status.  On failure
+    # every rank raises above; on success this makes the published files visible
+    # before a launcher reclaims any worker.
+    trainer.accelerator.wait_for_everyone()
+    return result

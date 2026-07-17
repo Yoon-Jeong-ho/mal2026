@@ -16,7 +16,12 @@ from mal2026.standard_encoder_model import (
     _nv_sentence_embeddings,
     verify_nv_snapshot,
 )
-from mal2026.standard_encoder_train import StandardEncoderConfig, StandardEncoderTrainingError
+from mal2026.standard_encoder_train import (
+    StandardEncoderConfig,
+    StandardEncoderTrainingError,
+    _broadcast_rank_zero_finalization,
+    _selection_metrics_at_best_step,
+)
 
 REVISION = "a" * 40
 
@@ -120,6 +125,41 @@ class StandardEncoderConfigTests(unittest.TestCase):
         self.assertNotIn("DistributedSampler", source)
         self.assertIn("trainer.train()", source)
         self.assertIn("trainer.save_model", source)
+
+    def test_post_training_publication_is_rank_zero_only_and_does_not_reenter_distributed_eval(self):
+        source = Path("src/mal2026/standard_encoder_train.py").read_text(encoding="utf-8")
+        self.assertIn("trainer.accelerator.wait_for_everyone()", source)
+        self.assertIn("if trainer.is_world_process_zero():", source)
+        self.assertIn("_rank_zero_finalize(trainer, config, output, train_result.metrics)", source)
+        self.assertIn("_broadcast_rank_zero_finalization(torch, trainer, payload, failed)", source)
+        self.assertNotIn("trainer.evaluate()", source)
+
+    def test_best_selection_metrics_come_from_the_matching_distributed_event(self):
+        class State:
+            log_history = [
+                {"step": 4, "eval_primary_macro_mae": 0.5},
+                {"step": 8, "eval_primary_macro_mae": 0.25, "eval_content_mae": 0.2},
+            ]
+        class Trainer:
+            state = State()
+        metrics = _selection_metrics_at_best_step(Trainer(), 8)
+        self.assertEqual(0.25, metrics["eval_primary_macro_mae"])
+        self.assertEqual(0.2, metrics["eval_content_mae"])
+        with self.assertRaises(StandardEncoderTrainingError):
+            _selection_metrics_at_best_step(Trainer(), 6)
+
+    def test_rank_zero_finalization_failure_is_propagated_without_an_error_payload(self):
+        class Distributed:
+            @staticmethod
+            def is_available(): return False
+            @staticmethod
+            def is_initialized(): return False
+        class Torch:
+            distributed = Distributed()
+        with self.assertRaises(StandardEncoderTrainingError):
+            _broadcast_rank_zero_finalization(Torch(), object(), None, True)
+        payload = {"status": "completed", "aggregate": 1.0}
+        self.assertEqual(payload, _broadcast_rank_zero_finalization(Torch(), object(), payload, False))
 
 
 if __name__ == "__main__":
