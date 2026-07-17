@@ -202,6 +202,39 @@ def _validate_trainer_health(phase: str, trainer_state: Any, train_metrics: Any)
     return serialized_metrics
 
 
+def _synchronize_rank_zero_success(is_world_process_zero: bool, local_success: bool, torch_module: Any) -> bool:
+    """Broadcast rank-zero post-training outcome, then barrier all DDP ranks.
+
+    This is deliberately limited to export/provenance lifecycle coordination;
+    SFTTrainer remains responsible for optimization and distributed training.
+    """
+    distributed = getattr(torch_module, "distributed", None)
+    if distributed is None or not distributed.is_available() or not distributed.is_initialized():
+        return local_success
+    device = torch_module.device("cuda", torch_module.cuda.current_device()) if torch_module.cuda.is_available() else torch_module.device("cpu")
+    flag = torch_module.tensor([1 if local_success else 0], device=device, dtype=torch_module.int32)
+    distributed.broadcast(flag, src=0)
+    distributed.barrier()
+    return bool(flag.item())
+
+
+def _write_completion_atomic(output: Path, payload: dict[str, Any]) -> None:
+    """Atomically publish completed provenance only after rank-zero export succeeds."""
+    destination = output / "standard_training_complete.json"
+    if destination.exists():
+        raise StandardDecoderContractError("training completion artifact already exists")
+    partial = output / "standard_training_complete.json.partial"
+    if partial.exists():
+        raise StandardDecoderContractError("stale partial training completion artifact exists")
+    try:
+        partial.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        partial.replace(destination)
+    except Exception:
+        # A partial marker is intentionally retained for forensic inspection;
+        # it is never a completed provenance artifact.
+        raise
+
+
 def _prompt_completion_dataset(rows, mode: str):
     """TRL conversational prompt-completion form, independent of template masks.
 
@@ -275,27 +308,51 @@ def run_sft(config: StandardSFTConfig) -> None:
         processing_class=tokenizer, peft_config=peft_config, callbacks=callbacks,
     )
     train_result = trainer.train()
-    # Abort before writing adapter/completion provenance if maintained Trainer
-    # telemetry shows numerical corruption. Existing checkpoints are preserved
-    # for inspection but cannot be mistaken for a completed artifact.
-    serializable_train_metrics = _validate_trainer_health(config.phase, trainer.state, train_result.metrics)
-    trainer.save_model(str(Path(config.output_dir) / "adapter"))
-    tokenizer.save_pretrained(str(Path(config.output_dir) / "adapter"))
-    # Only aggregate/provenance metadata. Do not write row predictions, source text, or outputs.
-    checkpoint_steps = sorted(
-        int(path.name.removeprefix("checkpoint-"))
-        for path in Path(config.output_dir).glob("checkpoint-*")
-        if path.is_dir() and path.name.removeprefix("checkpoint-").isdigit()
-    )
-    completion = {
-        "status": "completed", "run_id": config.run_id, "phase": config.phase, "mode": config.mode,
-        "global_step": int(trainer.state.global_step), "best_metric": trainer.state.best_metric,
-        "model_revision": config.model_revision, "tokenizer_revision": config.tokenizer_revision,
-        "train_records": len(train_rows), "eval_records": len(eval_rows or []),
-        "train_metrics": serializable_train_metrics,
-        "fallback_mean": score_mean(train_rows), "selection_candidate_steps": checkpoint_steps if config.phase == "selection" else [],
-        "selection_lifecycle": "Trainer eval_loss early-stopping/checkpointing; external vLLM source-dev macro-MAE selects refit step" if config.phase == "selection" else "refit uses selected_global_step from aggregate vLLM summary",
-        "selected_global_step": config.selected_global_step, "selection_summary_path": config.selection_summary_path,
-        "identity": _config_identity(config), "config": asdict(config),
-    }
-    (Path(config.output_dir) / "standard_training_complete.json").write_text(json.dumps(completion, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    is_world_process_zero = trainer.is_world_process_zero()
+    health_error: Exception | None = None
+    serializable_train_metrics: dict[str, float] | None = None
+    if is_world_process_zero:
+        try:
+            # Abort before writing adapter/completion provenance if maintained
+            # Trainer telemetry shows numerical corruption. Existing
+            # checkpoints remain inspectable but are never completed artifacts.
+            serializable_train_metrics = _validate_trainer_health(config.phase, trainer.state, train_result.metrics)
+        except Exception as exc:
+            health_error = exc
+    if not _synchronize_rank_zero_success(is_world_process_zero, health_error is None, torch):
+        if health_error is not None:
+            raise health_error
+        raise StandardDecoderContractError("rank-zero Trainer health gate failed")
+
+    persistence_error: Exception | None = None
+    if is_world_process_zero:
+        try:
+            assert serializable_train_metrics is not None
+            adapter_dir = Path(config.output_dir) / "adapter"
+            trainer.save_model(str(adapter_dir))
+            tokenizer.save_pretrained(str(adapter_dir))
+            # Only aggregate/provenance metadata. Do not write row predictions,
+            # source text, feedback, IDs, or model completions.
+            checkpoint_steps = sorted(
+                int(path.name.removeprefix("checkpoint-"))
+                for path in Path(config.output_dir).glob("checkpoint-*")
+                if path.is_dir() and path.name.removeprefix("checkpoint-").isdigit()
+            )
+            completion = {
+                "status": "completed", "run_id": config.run_id, "phase": config.phase, "mode": config.mode,
+                "global_step": int(trainer.state.global_step), "best_metric": trainer.state.best_metric,
+                "model_revision": config.model_revision, "tokenizer_revision": config.tokenizer_revision,
+                "train_records": len(train_rows), "eval_records": len(eval_rows or []),
+                "train_metrics": serializable_train_metrics,
+                "fallback_mean": score_mean(train_rows), "selection_candidate_steps": checkpoint_steps if config.phase == "selection" else [],
+                "selection_lifecycle": "Trainer eval_loss early-stopping/checkpointing; external vLLM source-dev macro-MAE selects refit step" if config.phase == "selection" else "refit uses selected_global_step from aggregate vLLM summary",
+                "selected_global_step": config.selected_global_step, "selection_summary_path": config.selection_summary_path,
+                "identity": _config_identity(config), "config": asdict(config),
+            }
+            _write_completion_atomic(Path(config.output_dir), completion)
+        except Exception as exc:
+            persistence_error = exc
+    if not _synchronize_rank_zero_success(is_world_process_zero, persistence_error is None, torch):
+        if persistence_error is not None:
+            raise persistence_error
+        raise StandardDecoderContractError("rank-zero adapter/provenance persistence failed")

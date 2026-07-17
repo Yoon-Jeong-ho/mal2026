@@ -144,3 +144,42 @@ class StandardDecoderHealthTests(unittest.TestCase):
             with self.subTest(phase=phase, metrics=metrics):
                 with self.assertRaises(StandardDecoderContractError):
                     _validate_trainer_health(phase, state, metrics)
+
+class StandardDecoderDistributedLifecycleTests(unittest.TestCase):
+    def test_rank_zero_outcome_is_broadcast_and_barriered(self):
+        from mal2026.standard_decoder_train import _synchronize_rank_zero_success
+
+        class Flag:
+            def __init__(self, value): self.value = value
+            def item(self): return self.value
+
+        class Distributed:
+            def __init__(self): self.barrier_called = False
+            def is_available(self): return True
+            def is_initialized(self): return True
+            def broadcast(self, flag, src):
+                self.source = src
+                flag.value = 0  # Simulate rank zero reporting a failed health gate.
+            def barrier(self): self.barrier_called = True
+
+        class CUDA:
+            def is_available(self): return False
+
+        class Torch:
+            int32 = object()
+            cuda = CUDA()
+            distributed = Distributed()
+            def device(self, name, index=None): return (name, index)
+            def tensor(self, value, **_): return Flag(value[0])
+
+        torch = Torch()
+        self.assertFalse(_synchronize_rank_zero_success(False, True, torch))
+        self.assertEqual(0, torch.distributed.source)
+        self.assertTrue(torch.distributed.barrier_called)
+
+    def test_standard_sft_persists_only_on_world_process_zero(self):
+        from pathlib import Path
+        source = Path("src/mal2026/standard_decoder_train.py").read_text(encoding="utf-8")
+        self.assertIn("is_world_process_zero = trainer.is_world_process_zero()", source)
+        self.assertIn("if is_world_process_zero:\n        try:\n            assert serializable_train_metrics", source)
+        self.assertIn("_write_completion_atomic", source)
