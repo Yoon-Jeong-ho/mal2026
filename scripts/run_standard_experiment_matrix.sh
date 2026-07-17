@@ -37,11 +37,20 @@ Options:
   --decoder-grad-accum N          decoder accumulation; defaults to global batch 64
   --encoder-batch-size N          encoder per-device batch (default: 1)
   --encoder-grad-accum N          encoder accumulation; defaults to global batch 64
+  --resume-run-prefix PREFIX      resume this exact failed matrix runtime; requires
+                                  --run-prefix PREFIX and immutable inputs unchanged
   --dry-run                       print planned outputs; do not check paths or write/run anything
   -h, --help                      show this text
 
 Do not use --dry-run as a smoke test. Before a real launch, verify the approved
 validated smoke evidence compatible with the selected 0--3 GPU allocation and ensure no other process owns those GPUs.
+
+Resume is intentionally narrow: it reads the existing manifest, verifies its
+Git SHA, all immutable selection-config hashes, and every recorded completed
+stage's strict artifact contract.  It never rewrites configs, logs, ledgers,
+or stage outputs.  Only a recorded-and-verified completed stage is skipped;
+failed or not-started stages are retried only when their output path is absent.
+An incomplete pre-existing output is refused rather than overwritten.
 USAGE
 }
 
@@ -62,6 +71,7 @@ DECODER_ACCUM=""
 ENCODER_BATCH=1
 ENCODER_ACCUM=""
 DRY_RUN=false
+RESUME_RUN_PREFIX=""
 
 need_value() { [[ $# -ge 2 && -n "$2" ]] || { echo "missing value for $1" >&2; exit 2; }; }
 while [[ $# -gt 0 ]]; do
@@ -82,6 +92,7 @@ while [[ $# -gt 0 ]]; do
     --decoder-grad-accum) need_value "$@"; DECODER_ACCUM="$2"; shift 2;;
     --encoder-batch-size) need_value "$@"; ENCODER_BATCH="$2"; shift 2;;
     --encoder-grad-accum) need_value "$@"; ENCODER_ACCUM="$2"; shift 2;;
+    --resume-run-prefix) need_value "$@"; RESUME_RUN_PREFIX="$2"; shift 2;;
     --dry-run) DRY_RUN=true; shift;;
     -h|--help) usage; exit 0;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 2;;
@@ -112,6 +123,11 @@ done
 (( NUM_GPUS * DECODER_BATCH * DECODER_ACCUM == 64 )) || { echo "decoder settings must preserve global effective batch 64" >&2; exit 2; }
 (( NUM_GPUS * ENCODER_BATCH * ENCODER_ACCUM == 64 )) || { echo "encoder settings must preserve global effective batch 64" >&2; exit 2; }
 [[ "$RUN_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || { echo "run prefix must be a safe 1-80 char identifier" >&2; exit 2; }
+if [[ -n "$RESUME_RUN_PREFIX" ]]; then
+  [[ "$RESUME_RUN_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || { echo "resume run prefix must be a safe 1-80 char identifier" >&2; exit 2; }
+  [[ "$RESUME_RUN_PREFIX" == "$RUN_PREFIX" ]] || { echo "--resume-run-prefix must exactly match --run-prefix" >&2; exit 2; }
+  [[ "$DRY_RUN" == false ]] || { echo "--resume-run-prefix cannot be combined with --dry-run" >&2; exit 2; }
+fi
 [[ "$VALIDATION_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "validation SHA-256 must be 64 lowercase hexadecimal characters" >&2; exit 2; }
 for path in "$RUNTIME_ROOT" "$MANIFEST" "$QWEN_MODEL" "$QWEN3_MODEL" "$NV_MODEL" "$NV_REVIEW_JSON"; do
   is_absolute "$path" || { echo "absolute path required: $path" >&2; exit 2; }
@@ -166,12 +182,8 @@ fi
 for command in "$PYTHON" "$TORCHRUN" git; do [[ -x "$command" || -n "$(command -v "$command" 2>/dev/null || true)" ]] || { echo "required command unavailable: $command" >&2; exit 2; }; done
 for path in "$MANIFEST" "$NV_REVIEW_JSON"; do [[ -f "$path" ]] || { echo "required file missing: $path" >&2; exit 2; }; done
 for path in "$QWEN_MODEL" "$QWEN3_MODEL" "$NV_MODEL"; do [[ -d "$path" ]] || { echo "required model directory missing: $path" >&2; exit 2; }; done
-[[ ! -e "$RUNTIME_ROOT" ]] || { echo "runtime root already exists; refusing overwrite: $RUNTIME_ROOT" >&2; exit 2; }
 [[ "$RUNTIME_ROOT" == "$ROOT/outputs/"* ]] || { echo "runtime root must be inside ignored $ROOT/outputs" >&2; exit 2; }
 git -C "$ROOT" check-ignore -q "$RUNTIME_ROOT" || { echo "runtime root is not ignored by Git: $RUNTIME_ROOT" >&2; exit 2; }
-for path in "$DIRECT_SELECTION" "$DIRECT_REFIT" "$FEEDBACK_SELECTION" "$FEEDBACK_REFIT" "$QWEN3_SELECTION" "$QWEN3_REFIT" "$NV_SELECTION" "$NV_REFIT"; do
-  [[ ! -e "$path" ]] || { echo "run output already exists; choose a new prefix: $path" >&2; exit 2; }
-done
 "$PYTHON" - "$NV_REVIEW_JSON" <<'PY'
 import json, sys
 payload = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -179,6 +191,21 @@ required = {"model_id", "revision", "license_acknowledged", "use_case", "reviewe
 if not isinstance(payload, dict) or set(payload) != required or payload["model_id"] != "nvidia/NV-Embed-v2" or payload["revision"] != "3fa59658547db50a1e8e3346cf057fd0c77ed6ef" or payload["outcome"] != "approved" or not payload["license_acknowledged"] or not isinstance(payload["reviewed_files"], dict) or not payload["reviewed_files"]:
     raise SystemExit("NV review JSON is not an approved immutable NV-Embed-v2 review")
 PY
+CONFIGS="$RUNTIME_ROOT/configs"; LOGS="$RUNTIME_ROOT/logs"; LEDGER="$RUNTIME_ROOT/matrix_ledger.jsonl"
+RESUME_MODE=false
+if [[ -n "$RESUME_RUN_PREFIX" ]]; then
+  RESUME_MODE=true
+  [[ -d "$RUNTIME_ROOT" ]] || { echo "resume runtime root is missing or not a directory: $RUNTIME_ROOT" >&2; exit 2; }
+  [[ -f "$RUNTIME_ROOT/matrix_manifest.json" && -f "$LEDGER" && -d "$CONFIGS" && -d "$LOGS" ]] || {
+    echo "resume runtime root must contain matrix_manifest.json, matrix_ledger.jsonl, configs/, and logs/" >&2; exit 2;
+  }
+else
+  [[ ! -e "$RUNTIME_ROOT" ]] || { echo "runtime root already exists; use --resume-run-prefix for the exact failed run or choose a new root: $RUNTIME_ROOT" >&2; exit 2; }
+  for path in "$DIRECT_SELECTION" "$DIRECT_REFIT" "$FEEDBACK_SELECTION" "$FEEDBACK_REFIT" "$QWEN3_SELECTION" "$QWEN3_REFIT" "$NV_SELECTION" "$NV_REFIT"; do
+    [[ ! -e "$path" ]] || { echo "run output already exists; choose a new prefix: $path" >&2; exit 2; }
+  done
+  mkdir -p "$CONFIGS" "$LOGS"
+fi
 # Map selected indices to UUIDs immediately before each process stage. Other
 # users may legitimately occupy unselected GPUs, but a selected GPU is never
 # shared or terminated. Returning rather than exiting lets run_step ledger the
@@ -217,27 +244,82 @@ assert_selected_gpus_idle() {
   done <<< "$gpu_process_table"
 }
 
-CONFIGS="$RUNTIME_ROOT/configs"; LOGS="$RUNTIME_ROOT/logs"; LEDGER="$RUNTIME_ROOT/matrix_ledger.jsonl"
-mkdir -p "$CONFIGS" "$LOGS"
-export ROOT RUNTIME_ROOT RUN_PREFIX MANIFEST VALIDATION_SHA256 QWEN_MODEL QWEN3_MODEL NV_MODEL NV_REVIEW_JSON NUM_GPUS CUDA_VISIBLE WANDB_PROJECT WANDB_ENTITY DECODER_BATCH DECODER_ACCUM ENCODER_BATCH ENCODER_ACCUM QWEN_REV QWEN3_REV NV_REV DIRECT_SELECTION DIRECT_REFIT FEEDBACK_SELECTION FEEDBACK_REFIT QWEN3_SELECTION QWEN3_REFIT NV_SELECTION NV_REFIT
+export ROOT RUNTIME_ROOT RUN_PREFIX MANIFEST VALIDATION_SHA256 QWEN_MODEL QWEN3_MODEL NV_MODEL NV_REVIEW_JSON NUM_GPUS CUDA_VISIBLE WANDB_PROJECT WANDB_ENTITY DECODER_BATCH DECODER_ACCUM ENCODER_BATCH ENCODER_ACCUM QWEN_REV QWEN3_REV NV_REV DIRECT_SELECTION DIRECT_REFIT FEEDBACK_SELECTION FEEDBACK_REFIT QWEN3_SELECTION QWEN3_REFIT NV_SELECTION NV_REFIT RESUME_MODE
 "$PYTHON" - <<'PY'
 import hashlib, json, os, subprocess
 from pathlib import Path
 root = Path(os.environ["RUNTIME_ROOT"]); configs = root / "configs"
-def dump(name, payload):
+
+def sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+def dump_new(name, payload):
     path = configs / name
     with path.open("x", encoding="utf-8") as f: json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True); f.write("\n")
+
 def decoder(mode, output):
     return {"run_id": Path(output).name, "phase":"selection", "mode":mode, "model_path":os.environ["QWEN_MODEL"], "tokenizer_path":os.environ["QWEN_MODEL"], "model_revision":os.environ["QWEN_REV"], "tokenizer_revision":os.environ["QWEN_REV"], "prepared_manifest":os.environ["MANIFEST"], "output_dir":output, "seed":2026, "max_length":2048 if mode == "direct" else 4096, "learning_rate":2e-5, "num_train_epochs":12.0, "per_device_train_batch_size":int(os.environ["DECODER_BATCH"]), "per_device_eval_batch_size":int(os.environ["DECODER_BATCH"]), "gradient_accumulation_steps":int(os.environ["DECODER_ACCUM"]), "eval_steps":100, "save_steps":100, "logging_steps":5, "early_stopping_patience":4, "lora_r":32, "lora_alpha":64, "lora_dropout":0.05, "selection_summary_path":None, "selected_global_step":None, "wandb_project":os.environ["WANDB_PROJECT"], "wandb_entity":os.environ["WANDB_ENTITY"] or None}
+
 def encoder(backbone, output):
     nv = backbone == "nv_embed_v2"; model = os.environ["NV_MODEL"] if nv else os.environ["QWEN3_MODEL"]; revision = os.environ["NV_REV"] if nv else os.environ["QWEN3_REV"]
     return {"run_id":Path(output).name, "phase":"selection", "backbone":backbone, "model_id":"nvidia/NV-Embed-v2" if nv else "Qwen/Qwen3-Embedding-8B", "model_revision":revision, "tokenizer_revision":revision, "model_path":model, "prepared_manifest":os.environ["MANIFEST"], "output_dir":output, "max_length":2048, "seed":2026, "learning_rate":1e-4, "weight_decay":0.01, "warmup_ratio":0.05, "num_train_epochs":20.0, "per_device_train_batch_size":int(os.environ["ENCODER_BATCH"]), "per_device_eval_batch_size":int(os.environ["ENCODER_BATCH"]), "gradient_accumulation_steps":int(os.environ["ENCODER_ACCUM"]), "eval_steps":100, "save_steps":100, "logging_steps":5, "early_stopping_patience":3, "lora_r":16, "lora_alpha":32, "lora_dropout":0.05, "lora_target_modules":["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"], "nv_snapshot_dir":model if nv else None, "nv_review":json.load(open(os.environ["NV_REVIEW_JSON"], encoding="utf-8")) if nv else None, "selection_metadata_path":None, "wandb_project":os.environ["WANDB_PROJECT"], "wandb_entity":os.environ["WANDB_ENTITY"] or None}
-dump("decoder-direct-selection.json", decoder("direct", os.environ["DIRECT_SELECTION"]))
-dump("decoder-human-feedback-selection.json", decoder("human_feedback", os.environ["FEEDBACK_SELECTION"]))
-dump("encoder-qwen3-selection.json", encoder("qwen3_embedding", os.environ["QWEN3_SELECTION"]))
-dump("encoder-nvembed-selection.json", encoder("nv_embed_v2", os.environ["NV_SELECTION"]))
-manifest = {"status":"started", "run_prefix":os.environ["RUN_PREFIX"], "git_sha":subprocess.check_output(["git","-C",os.environ["ROOT"],"rev-parse","HEAD"], text=True).strip(), "prepared_manifest":os.environ["MANIFEST"], "validation_sha256":os.environ["VALIDATION_SHA256"], "cuda_visible_devices":os.environ["CUDA_VISIBLE"], "num_gpus":int(os.environ["NUM_GPUS"]), "privacy":"aggregate_only_no_restricted_rows_or_credentials", "selection_configs":{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in configs.glob("*.json")}}
-with (root / "matrix_manifest.json").open("x", encoding="utf-8") as f: json.dump(manifest, f, indent=2, sort_keys=True); f.write("\n")
+
+expected_configs = {
+    "decoder-direct-selection.json": decoder("direct", os.environ["DIRECT_SELECTION"]),
+    "decoder-human-feedback-selection.json": decoder("human_feedback", os.environ["FEEDBACK_SELECTION"]),
+    "encoder-qwen3-selection.json": encoder("qwen3_embedding", os.environ["QWEN3_SELECTION"]),
+    "encoder-nvembed-selection.json": encoder("nv_embed_v2", os.environ["NV_SELECTION"]),
+}
+current_git_sha = subprocess.check_output(["git", "-C", os.environ["ROOT"], "rev-parse", "HEAD"], text=True).strip()
+if os.environ["RESUME_MODE"] == "false":
+    for name, payload in expected_configs.items():
+        dump_new(name, payload)
+    manifest = {
+        "schema_version": 2,
+        "status":"started", "run_prefix":os.environ["RUN_PREFIX"], "git_sha":current_git_sha,
+        "prepared_manifest":os.environ["MANIFEST"], "prepared_manifest_sha256":sha256(Path(os.environ["MANIFEST"])),
+        "nv_review_sha256":sha256(Path(os.environ["NV_REVIEW_JSON"])),
+        "validation_sha256":os.environ["VALIDATION_SHA256"], "cuda_visible_devices":os.environ["CUDA_VISIBLE"],
+        "num_gpus":int(os.environ["NUM_GPUS"]), "privacy":"aggregate_only_no_restricted_rows_or_credentials",
+        "selection_configs":{name:sha256(configs / name) for name in expected_configs},
+    }
+    with (root / "matrix_manifest.json").open("x", encoding="utf-8") as f: json.dump(manifest, f, indent=2, sort_keys=True); f.write("\n")
+else:
+    manifest_path = root / "matrix_manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"cannot read resume matrix manifest: {exc}")
+    if not isinstance(manifest, dict):
+        raise SystemExit("resume matrix manifest must be a JSON object")
+    required = {
+        "status":"started", "run_prefix":os.environ["RUN_PREFIX"], "git_sha":current_git_sha,
+        "prepared_manifest":os.environ["MANIFEST"], "validation_sha256":os.environ["VALIDATION_SHA256"],
+        "cuda_visible_devices":os.environ["CUDA_VISIBLE"], "num_gpus":int(os.environ["NUM_GPUS"]),
+        "privacy":"aggregate_only_no_restricted_rows_or_credentials",
+    }
+    for key, value in required.items():
+        if manifest.get(key) != value:
+            raise SystemExit(f"resume immutable manifest mismatch for {key}: refusing changed config/model/data/Git input")
+    if "prepared_manifest_sha256" in manifest and manifest["prepared_manifest_sha256"] != sha256(Path(os.environ["MANIFEST"])):
+        raise SystemExit("resume prepared manifest checksum changed: refusing changed data input")
+    if "nv_review_sha256" in manifest and manifest["nv_review_sha256"] != sha256(Path(os.environ["NV_REVIEW_JSON"])):
+        raise SystemExit("resume NV review checksum changed: refusing changed model-review input")
+    recorded_hashes = manifest.get("selection_configs")
+    if not isinstance(recorded_hashes, dict) or set(recorded_hashes) != set(expected_configs):
+        raise SystemExit("resume selection config hash set is incomplete or changed")
+    for name, expected in expected_configs.items():
+        path = configs / name
+        if not path.is_file() or not isinstance(recorded_hashes[name], str) or len(recorded_hashes[name]) != 64:
+            raise SystemExit(f"resume immutable selection config is missing or malformed: {path}")
+        if sha256(path) != recorded_hashes[name]:
+            raise SystemExit(f"resume immutable selection config hash mismatch: {path}")
+        try:
+            observed = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise SystemExit(f"resume immutable selection config is invalid JSON: {path}: {exc}")
+        if observed != expected:
+            raise SystemExit(f"resume immutable selection config disagrees with supplied inputs: {path}")
 PY
 
 ledger() { local status="$1" step="$2" detail="${3:-}"; STATUS="$status" STEP="$step" DETAIL="$detail" "$PYTHON" - "$LEDGER" <<'PY'
@@ -246,9 +328,55 @@ entry={"time_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "status":o
 with open(sys.argv[1], "a", encoding="utf-8") as f: f.write(json.dumps(entry, ensure_ascii=True, sort_keys=True)+"\n")
 PY
 }
+record_resume_lineage() {
+  [[ "$RESUME_MODE" == true ]] || return 0
+  "$PYTHON" - "$RUNTIME_ROOT/resume_lineage.jsonl" "$RUNTIME_ROOT/matrix_manifest.json" "$LEDGER" <<'PY'
+import hashlib, json, os, subprocess, sys, time
+lineage, manifest, ledger = map(os.fsencode, sys.argv[1:])
+def digest(path):
+    value = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
+entry = {
+    "event": "resume",
+    "time_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "run_prefix": os.environ["RUN_PREFIX"],
+    "immutable_manifest_sha256": digest(manifest),
+    "immutable_git_sha": json.load(open(manifest, encoding="utf-8"))["git_sha"],
+    "resume_git_sha": subprocess.check_output(["git", "-C", os.environ["ROOT"], "rev-parse", "HEAD"], text=True).strip(),
+    "ledger_sha256_before_resume": digest(ledger),
+    "privacy": "aggregate_only",
+}
+with open(lineage, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps(entry, ensure_ascii=True, sort_keys=True) + "\n")
+PY
+  ledger resumed matrix "$RUNTIME_ROOT/resume_lineage.jsonl"
+}
+stage_log_path() {
+  local step="$1" base="$LOGS/$step.log" attempt=1
+  if [[ ! -e "$base" ]]; then
+    printf '%s' "$base"
+    return 0
+  fi
+  while [[ -e "$LOGS/$step.attempt-$attempt.log" ]]; do ((attempt++)); done
+  printf '%s' "$LOGS/$step.attempt-$attempt.log"
+}
+assert_stage_output_absent() {
+  local step="$1"; shift
+  local path
+  for path in "$@"; do
+    [[ ! -e "$path" ]] || {
+      echo "stage $step has a pre-existing incomplete output; refusing to overwrite or delete: $path" >&2
+      return 1
+    }
+  done
+}
 run_step() {
   local step="$1"; shift
-  local log="$LOGS/$step.log"
+  local log
+  log="$(stage_log_path "$step")"
   ledger started "$step" "$*"
   if ! assert_selected_gpus_idle; then
     ledger failed "$step" "selected_gpu_busy_or_preflight_refusal"
@@ -456,6 +584,68 @@ verify_stage() {
     return 1
   fi
 }
+maybe_skip_verified_stage() {
+  local step="$1"; shift
+  [[ "$RESUME_MODE" == true ]] || return 1
+  local ledger_result status
+  if ledger_result="$("$PYTHON" - "$LEDGER" "$step" <<'PY'
+import json, sys
+ledger, step = sys.argv[1:]
+latest = None
+try:
+    with open(ledger, encoding="utf-8") as handle:
+        for number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            if not isinstance(entry, dict) or not isinstance(entry.get("step"), str) or not isinstance(entry.get("status"), str):
+                raise SystemExit(f"malformed ledger entry at line {number}")
+            if entry["step"] == step:
+                latest = entry["status"]
+except (OSError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"cannot read resume ledger: {exc}")
+if latest in {"completed", "skipped_verified"}:
+    print("verified")
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+  )"; then
+    status=0
+  else
+    status=$?
+  fi
+  if (( status == 1 )); then
+    return 1
+  elif (( status != 0 )); then
+    echo "cannot safely determine resume status for $step; refusing to rerun it" >&2
+    return 2
+  fi
+  if ! validate_stage_artifacts "$step" "$@"; then
+    ledger failed "$step" "resume_recorded_completed_artifact_validation_failed"
+    echo "recorded completed stage $step failed strict resume validation" >&2
+    return 2
+  fi
+  ledger skipped_verified "$step" "$*"
+  return 0
+}
+execute_stage() {
+  local step="$1" artifact="$2" output="$3" skip_status
+  shift 3
+  if maybe_skip_verified_stage "$step" "$artifact"; then
+    return 0
+  else
+    skip_status=$?
+  fi
+  if (( skip_status != 1 )); then
+    return 1
+  fi
+  if ! assert_stage_output_absent "$step" "$output"; then
+    ledger failed "$step" "preexisting_incomplete_output_refusal:$output"
+    return 1
+  fi
+  run_step "$step" "$@"
+  verify_stage "$step" "$artifact"
+}
 
 write_decoder_refit() {
   local mode="$1"; local selection="$2"; local refit="$3"
@@ -464,21 +654,30 @@ write_decoder_refit() {
 import json, os, sys
 selection=json.load(open(os.environ["SELECTION"]+"/selected_checkpoint.json", encoding="utf-8")); base=json.load(open(f"{os.environ['RUNTIME_ROOT']}/configs/decoder-{os.environ['MODE'].replace('_','-')}-selection.json", encoding="utf-8")
 base.update({"run_id":os.path.basename(os.environ["REFIT"]), "phase":"refit", "output_dir":os.environ["REFIT"], "eval_steps":0, "save_steps":0, "selection_summary_path":os.environ["SELECTION"]+"/selected_checkpoint.json", "selected_global_step":selection["selected_global_step"]})
-with open(sys.argv[1],"x",encoding="utf-8") as f: json.dump(base,f,indent=2,sort_keys=True);f.write("\n")
+path = os.path.abspath(sys.argv[1])
+if os.path.exists(path):
+    if json.load(open(path, encoding="utf-8")) != base:
+        raise SystemExit(f"immutable generated config mismatch; refusing overwrite: {path}")
+else:
+    with open(path,"x",encoding="utf-8") as f: json.dump(base,f,indent=2,sort_keys=True);f.write("\n")
 PY
 }
 write_decoder_eval() { local mode="$1" source="$2" adapter="$3" name="$4"; MODE="$mode" SOURCE="$source" ADAPTER="$adapter" NAME="$name" "$PYTHON" - "$CONFIGS/$name.json" <<'PY'
 import json, os, sys
 mode=os.environ["MODE"]; source=os.environ["SOURCE"]
 p={"run_id":os.environ["NAME"],"mode":mode,"model_path":os.environ["QWEN_MODEL"],"model_revision":os.environ["QWEN_REV"],"adapter_path":os.environ["ADAPTER"],"source":source,"prepared_manifest":os.environ["MANIFEST"],"validation_sha256":"" if source=="selection_dev" else os.environ["VALIDATION_SHA256"],"output_dir":os.environ["ROOT"]+"/outputs/standard-evals/"+os.environ["NAME"],"tensor_parallel_size":int(os.environ["NUM_GPUS"]),"max_model_len":2048 if mode=="direct" else 4096,"max_new_tokens":256 if mode=="direct" else 1536,"gpu_memory_utilization":0.9,"wandb_project":os.environ["WANDB_PROJECT"],"wandb_entity":os.environ["WANDB_ENTITY"] or None}
-with open(sys.argv[1],"x",encoding="utf-8") as f: json.dump(p,f,indent=2,sort_keys=True);f.write("\n")
+path = os.path.abspath(sys.argv[1])
+if os.path.exists(path):
+    if json.load(open(path, encoding="utf-8")) != p:
+        raise SystemExit(f"immutable generated config mismatch; refusing overwrite: {path}")
+else:
+    with open(path,"x",encoding="utf-8") as f: json.dump(p,f,indent=2,sort_keys=True);f.write("\n")
 PY
 }
 run_decoder() {
   local mode="$1"; local selection="$2"; local refit="$3"; local config_mode="${mode//_/-}"
   local selection_step="decoder-$config_mode-selection"
-  run_step "$selection_step" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-selection.json"
-  verify_stage "$selection_step" "$selection/standard_training_complete.json"
+  execute_stage "$selection_step" "$selection/standard_training_complete.json" "$selection" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-selection.json"
   local -a steps metric_args=()
   mapfile -t steps < <("$PYTHON" - "$selection/standard_training_complete.json" <<'PY'
 import json,sys
@@ -490,47 +689,54 @@ PY
   for step in "${steps[@]}"; do
     name="$(run_name decoder-$config_mode-dev-step-$step)"; eval_step="decoder-$config_mode-dev-step-$step"
     write_decoder_eval "$mode" selection_dev "$selection/checkpoint-$step" "$name"
-    run_step "$eval_step" "$PYTHON" "$ROOT/scripts/evaluate_standard_decoder_vllm.py" --config "$CONFIGS/$name.json"
-    verify_stage "$eval_step" "$ROOT/outputs/standard-evals/$name/aggregate_metrics.json"
+    execute_stage "$eval_step" "$ROOT/outputs/standard-evals/$name/aggregate_metrics.json" "$ROOT/outputs/standard-evals/$name" "$PYTHON" "$ROOT/scripts/evaluate_standard_decoder_vllm.py" --config "$CONFIGS/$name.json"
     metric_args+=(--evaluation-metrics "$ROOT/outputs/standard-evals/$name/aggregate_metrics.json")
   done
   local select_step="decoder-$config_mode-select-checkpoint"
-  run_step "$select_step" "$PYTHON" "$ROOT/scripts/select_standard_decoder_checkpoint.py" --selection-run-dir "$selection" "${metric_args[@]}"
-  verify_stage "$select_step" "$selection/selected_checkpoint.json"
+  execute_stage "$select_step" "$selection/selected_checkpoint.json" "$selection/selected_checkpoint.json" "$PYTHON" "$ROOT/scripts/select_standard_decoder_checkpoint.py" --selection-run-dir "$selection" "${metric_args[@]}"
   write_decoder_refit "$mode" "$selection" "$refit"
   local refit_step="decoder-$config_mode-refit"
-  run_step "$refit_step" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-refit.json"
-  verify_stage "$refit_step" "$refit/standard_training_complete.json"
+  execute_stage "$refit_step" "$refit/standard_training_complete.json" "$refit" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-refit.json"
   local final="$(run_name decoder-$config_mode-final)"; local final_step="decoder-$config_mode-final"
   write_decoder_eval "$mode" frozen_validation "$refit/adapter" "$final"
-  run_step "$final_step" "$PYTHON" "$ROOT/scripts/evaluate_standard_decoder_vllm.py" --config "$CONFIGS/$final.json"
-  verify_stage "$final_step" "$ROOT/outputs/standard-evals/$final/aggregate_metrics.json"
+  execute_stage "$final_step" "$ROOT/outputs/standard-evals/$final/aggregate_metrics.json" "$ROOT/outputs/standard-evals/$final" "$PYTHON" "$ROOT/scripts/evaluate_standard_decoder_vllm.py" --config "$CONFIGS/$final.json"
 }
 write_encoder_refit() { local tag="$1" selection="$2" refit="$3"; TAG="$tag" SELECTION="$selection" REFIT="$refit" "$PYTHON" - "$CONFIGS/encoder-$tag-refit.json" <<'PY'
 import json,os,sys
 base=json.load(open(f"{os.environ['RUNTIME_ROOT']}/configs/encoder-{os.environ['TAG']}-selection.json",encoding="utf-8"));base.update({"run_id":os.path.basename(os.environ["REFIT"]),"phase":"refit","output_dir":os.environ["REFIT"],"eval_steps":0,"save_steps":0,"selection_metadata_path":os.environ["SELECTION"]+"/standard_encoder_training_complete.json"})
-with open(sys.argv[1],"x",encoding="utf-8") as f:json.dump(base,f,indent=2,sort_keys=True);f.write("\n")
+path = os.path.abspath(sys.argv[1])
+if os.path.exists(path):
+    if json.load(open(path, encoding="utf-8")) != base:
+        raise SystemExit(f"immutable generated config mismatch; refusing overwrite: {path}")
+else:
+    with open(path,"x",encoding="utf-8") as f:json.dump(base,f,indent=2,sort_keys=True);f.write("\n")
 PY
 }
 run_encoder() {
   local tag="$1"; local selection="$2"; local refit="$3"; local selection_step="encoder-$tag-selection"
-  run_step "$selection_step" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_encoder.py" --config "$CONFIGS/encoder-$tag-selection.json"
-  verify_stage "$selection_step" "$selection/standard_encoder_training_complete.json"
+  execute_stage "$selection_step" "$selection/standard_encoder_training_complete.json" "$selection" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_encoder.py" --config "$CONFIGS/encoder-$tag-selection.json"
   write_encoder_refit "$tag" "$selection" "$refit"
   local refit_step="encoder-$tag-refit"
-  run_step "$refit_step" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_encoder.py" --config "$CONFIGS/encoder-$tag-refit.json"
-  verify_stage "$refit_step" "$refit/standard_encoder_training_complete.json"
+  execute_stage "$refit_step" "$refit/standard_encoder_training_complete.json" "$refit" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_encoder.py" --config "$CONFIGS/encoder-$tag-refit.json"
   local final="$(run_name encoder-$tag-final)"; FINAL="$final" REFIT="$refit" "$PYTHON" - "$CONFIGS/$final.json" <<'PY'
 import json,os,sys
 p={"run_id":os.environ["FINAL"],"source":"frozen_validation","training_metadata_path":os.environ["REFIT"]+"/standard_encoder_training_complete.json","prepared_manifest":os.environ["MANIFEST"],"validation_sha256":os.environ["VALIDATION_SHA256"],"output_dir":os.environ["ROOT"]+"/outputs/standard-encoder-evals/"+os.environ["FINAL"],"per_device_eval_batch_size":int(os.environ["ENCODER_BATCH"]),"wandb_project":os.environ["WANDB_PROJECT"],"wandb_entity":os.environ["WANDB_ENTITY"] or None}
-with open(sys.argv[1],"x",encoding="utf-8") as f:json.dump(p,f,indent=2,sort_keys=True);f.write("\n")
+path = os.path.abspath(sys.argv[1])
+if os.path.exists(path):
+    if json.load(open(path, encoding="utf-8")) != p:
+        raise SystemExit(f"immutable generated config mismatch; refusing overwrite: {path}")
+else:
+    with open(path,"x",encoding="utf-8") as f:json.dump(p,f,indent=2,sort_keys=True);f.write("\n")
 PY
   local final_step="encoder-$tag-final"
-  run_step "$final_step" "$PYTHON" "$ROOT/scripts/evaluate_standard_encoder.py" --config "$CONFIGS/$final.json"
-  verify_stage "$final_step" "$ROOT/outputs/standard-encoder-evals/$final/aggregate_metrics.json"
+  execute_stage "$final_step" "$ROOT/outputs/standard-encoder-evals/$final/aggregate_metrics.json" "$ROOT/outputs/standard-encoder-evals/$final" "$PYTHON" "$ROOT/scripts/evaluate_standard_encoder.py" --config "$CONFIGS/$final.json"
 }
 
-ledger started matrix "approved sequential matrix"
+if [[ "$RESUME_MODE" == true ]]; then
+  record_resume_lineage
+else
+  ledger started matrix "approved sequential matrix"
+fi
 run_decoder direct "$DIRECT_SELECTION" "$DIRECT_REFIT"
 run_decoder human_feedback "$FEEDBACK_SELECTION" "$FEEDBACK_REFIT"
 run_encoder qwen3 "$QWEN3_SELECTION" "$QWEN3_REFIT"

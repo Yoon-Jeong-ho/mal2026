@@ -67,12 +67,48 @@ produced non-finite metrics, out of the default protocol.
 
 ## Outputs and failure behavior
 
-The supplied runtime root must not exist and must be Git-ignored. It receives
+For a new matrix, the supplied runtime root must not exist and must be Git-ignored. It receives
 only ignored JSON configs, per-stage logs, `matrix_manifest.json`, and an
 aggregate-only `matrix_ledger.jsonl`. Training/evaluation output directories
 are fresh direct children of the canonical ignored `outputs/standard-*` roots.
 The launcher uses `set -e`, records the failed stage/log path, and stops; it
-never overwrites, resumes, deletes, or silently skips a stage.
+never overwrites or deletes an output.
+
+### Resuming a failed matrix
+
+Use the explicit `--resume-run-prefix` only for the exact same failed run. It
+must equal `--run-prefix`, use the same ignored runtime root, and supply the
+same prepared manifest, frozen-validation hash, model paths, GPU contract,
+batch/accumulation settings, W&B routing, and checked-out Git SHA. The launcher
+validates the immutable runtime manifest and every hashed selection config
+before it appends a `resume_lineage.jsonl` record. A changed input, config hash,
+data-manifest checksum (for schema-v2 manifests), model-review checksum, or Git
+SHA is rejected rather than silently mixing protocols.
+
+On resume it re-validates every stage whose latest ledger status is completed.
+Only stages that are both ledger-recorded successful and pass the strict
+artifact validator are skipped; that decision is appended as
+`skipped_verified`. A failed or not-started stage is launched again only when
+its output path does not already exist. If an incomplete output exists, the
+launcher refuses rather than overwriting it; preserve it and launch a distinct
+approved retry instead. Existing per-stage logs are also preserved and a retry
+writes a numbered attempt log.
+
+For example, after a transient downstream failure with no output directory for
+the failed stage:
+
+```bash
+scripts/run_standard_experiment_matrix.sh \
+  --resume-run-prefix approved-matrix-001 \
+  --runtime-root "$PWD/outputs/experiment-matrix/approved-matrix-001" \
+  --run-prefix approved-matrix-001 \
+  --prepared-manifest /absolute/path/to/aihub_human_feedback_v1.json \
+  --validation-sha256 PINNED_VALIDATION_SHA256 \
+  --qwen-model /absolute/local/qwen2.5-snapshot \
+  --qwen3-model /absolute/local/qwen3-embedding-snapshot \
+  --nv-model /absolute/local/nv-embed-snapshot \
+  --nv-review-json /absolute/path/to/approved-nv-review.json
+```
 
 After every completed training or evaluation stage it rejects non-finite JSON
 metrics/provenance before proceeding. Inspect the aggregate metrics and ledger,

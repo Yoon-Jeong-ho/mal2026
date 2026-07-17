@@ -300,6 +300,85 @@ printf '{"status": "completed"}\n' > "$out/standard_training_complete.json"
             )
             self.assertEqual(0, completed.returncode, completed.stderr)
 
+    def test_resume_skips_verified_selection_and_preserves_attempt_history(self) -> None:
+        """Retry a downstream failure without repeating a verified selection stage."""
+        import hashlib
+        import os
+        import shutil
+        import uuid
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            for name in ("qwen", "qwen3", "nv"):
+                (fixture / name).mkdir()
+            (fixture / "manifest.json").write_text("{}", encoding="utf-8")
+            (fixture / "review.json").write_text(json.dumps({
+                "model_id": "nvidia/NV-Embed-v2", "revision": "3fa59658547db50a1e8e3346cf057fd0c77ed6ef",
+                "license_acknowledged": True, "use_case": "research_noncommercial", "reviewer": "test",
+                "outcome": "approved", "reviewed_files": {"modeling_nvembed.py": "0" * 64},
+            }), encoding="utf-8")
+            count = fixture / "preflight-count"
+            nvidia = fixture / "nvidia-smi"
+            nvidia.write_text("\n".join([
+                "#!/bin/sh", "case \"$1\" in",
+                "  --query-gpu=*) printf '0, UUID-0\\n1, UUID-1\\n2, UUID-2\\n3, UUID-3\\n' ;;",
+                "  --query-compute-apps=*)",
+                f"    n=$(cat {count} 2>/dev/null || echo 0); n=$((n + 1)); printf '%s' \"$n\" > {count}",
+                "    if [ \"$n\" -ge 2 ]; then printf '777, UUID-0\\n'; fi ;;",
+                "esac", "",
+            ]), encoding="utf-8")
+            invoked = fixture / "torchrun-invocations"
+            torchrun = fixture / "torchrun"
+            torchrun.write_text("\n".join([
+                "#!/bin/sh", f"printf x >> {invoked}",
+                "while [ \"$#\" -gt 0 ]; do", "  if [ \"$1\" = --config ]; then config=\"$2\"; break; fi", "  shift", "done",
+                "out=$(sed -n 's/.*\"output_dir\": \"\\([^\"]*\\)\".*/\\1/p' \"$config\")",
+                "mkdir -p \"$out/adapter\"",
+                "printf '{\"status\":\"completed\",\"run_id\":\"test\",\"phase\":\"selection\",\"global_step\":1,\"best_metric\":0.2,\"train_metrics\":{\"train_loss\":0.2},\"selection_candidate_steps\":[1]}\\n' > \"$out/standard_training_complete.json\"",
+                "printf '{}\\n' > \"$out/adapter/adapter_config.json\"", "",
+            ]), encoding="utf-8")
+            nvidia.chmod(0o755)
+            torchrun.chmod(0o755)
+            prefix = "resume-verified-" + uuid.uuid4().hex
+            runtime = ROOT / "outputs" / "experiment-matrix" / prefix
+            selection = ROOT / "outputs" / "standard-runs" / f"{prefix}-decoder-direct-selection"
+            command = [
+                str(SCRIPT), "--runtime-root", str(runtime), "--run-prefix", prefix,
+                "--prepared-manifest", str(fixture / "manifest.json"), "--validation-sha256", HASH,
+                "--qwen-model", str(fixture / "qwen"), "--qwen3-model", str(fixture / "qwen3"),
+                "--nv-model", str(fixture / "nv"), "--nv-review-json", str(fixture / "review.json"),
+            ]
+            env = dict(os.environ, MAL2026_NVIDIA_SMI=str(nvidia), MAL2026_TORCHRUN=str(torchrun), MAL2026_PYTHON=sys.executable)
+            try:
+                initial = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, env=env)
+                self.assertEqual(1, initial.returncode, initial.stderr)
+                self.assertEqual("x", invoked.read_text(encoding="utf-8"))
+                completion = selection / "standard_training_complete.json"
+                completion_hash = hashlib.sha256(completion.read_bytes()).hexdigest()
+                resumed = subprocess.run(command + ["--resume-run-prefix", prefix], cwd=ROOT, text=True, capture_output=True, env=env)
+                self.assertEqual(1, resumed.returncode, resumed.stderr)
+                self.assertEqual("x", invoked.read_text(encoding="utf-8"), "verified selection must not rerun")
+                self.assertEqual(completion_hash, hashlib.sha256(completion.read_bytes()).hexdigest())
+                entries = [json.loads(line) for line in (runtime / "matrix_ledger.jsonl").read_text().splitlines()]
+                self.assertEqual(["started", "completed", "skipped_verified"], [entry["status"] for entry in entries if entry["step"] == "decoder-direct-selection"])
+                self.assertEqual(["started", "failed", "started", "failed"], [entry["status"] for entry in entries if entry["step"] == "decoder-direct-dev-step-1"])
+                lineage = [json.loads(line) for line in (runtime / "resume_lineage.jsonl").read_text().splitlines()]
+                self.assertEqual("resume", lineage[-1]["event"])
+                self.assertEqual(prefix, lineage[-1]["run_prefix"])
+                self.assertFalse((ROOT / "outputs" / "standard-evals" / f"{prefix}-decoder-direct-dev-step-1").exists())
+                changed_input = subprocess.run(
+                    command + ["--resume-run-prefix", prefix, "--wandb-project", "different-project"],
+                    cwd=ROOT,
+                    text=True,
+                    capture_output=True,
+                    env=env,
+                )
+                self.assertEqual(1, changed_input.returncode)
+                self.assertIn("immutable selection config disagrees", changed_input.stderr)
+            finally:
+                shutil.rmtree(runtime, ignore_errors=True)
+                shutil.rmtree(selection, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()
