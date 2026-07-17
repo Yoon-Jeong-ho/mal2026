@@ -120,6 +120,15 @@ class StandardDecoderStackTests(unittest.TestCase):
         matrix = Path("scripts/run_standard_experiment_matrix.sh").read_text(encoding="utf-8")
         self.assertIn('"enforce_eager":True', matrix)
 
+    def test_vllm_template_exactly_matches_the_frozen_config_schema(self):
+        import json
+        from pathlib import Path
+        from mal2026.standard_decoder_vllm import VLLMEvalConfig
+
+        template = json.loads(Path("configs/standard-decoder-vllm-eval.template.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(VLLMEvalConfig.__dataclass_fields__), set(template))
+        self.assertIs(template["enforce_eager"], True)
+
     def test_aggregate_metrics_contains_no_row_text(self):
         target = row().score
         result = aggregate_metrics([target], [target], [True])

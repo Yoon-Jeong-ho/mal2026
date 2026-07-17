@@ -4,6 +4,6 @@
   "adapter_path": "REQUIRED_STANDARD_RUN_ADAPTER_PATH", "source": "selection_dev",
   "prepared_manifest": "REQUIRED_ABSOLUTE_CANONICAL_MANIFEST_PATH", "validation_sha256": "REQUIRED_ONLY_FOR_FROZEN_VALIDATION",
   "output_dir": "REQUIRED_IGNORED_OUTPUTS_STANDARD_EVAL_DIRECT_CHILD", "tensor_parallel_size": 8,
-  "max_model_len": 2048, "max_new_tokens": 256, "gpu_memory_utilization": 0.9,
+  "max_model_len": 2048, "max_new_tokens": 256, "gpu_memory_utilization": 0.9, "enforce_eager": true,
   "wandb_project": "mal2026-korean-writing-scoring", "wandb_entity": null
 }
