@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import math
 from pathlib import Path
@@ -23,6 +24,7 @@ from mal2026.standard_encoder_train import (
     _broadcast_rank_zero_finalization,
     _rank_zero_finalize,
     _selection_metrics_at_best_step,
+    _training_arguments_kwargs,
     _validate_encoder_metric_health,
 )
 
@@ -110,6 +112,23 @@ class StandardEncoderWandbTests(unittest.TestCase):
 
 
 class StandardEncoderConfigTests(unittest.TestCase):
+    def test_training_argument_keywords_bind_to_installed_transformers_signature(self):
+        """Catch unsupported Trainer kwargs before a multi-GPU encoder launch."""
+        from transformers import TrainingArguments
+
+        config = StandardEncoderConfig(
+            run_id="trainer-argument-contract", phase="selection", backbone="qwen3_embedding",
+            model_id="Qwen/Qwen3-Embedding-8B", model_revision=REVISION, tokenizer_revision=REVISION,
+            model_path="/private/qwen", prepared_manifest="/manifest", output_dir="/out",
+            nv_snapshot_dir=None, nv_review=None,
+        )
+        kwargs = _training_arguments_kwargs(config, selected_steps=None)
+        self.assertNotIn("overwrite_output_dir", kwargs)
+        # ``bind`` uses the installed Transformers API but does not initialize
+        # a Trainer, model, distributed process group, or GPU.  Re-adding an
+        # unsupported keyword such as ``overwrite_output_dir`` fails here.
+        inspect.signature(TrainingArguments).bind(**kwargs)
+
     def test_rejects_noncanonical_output_or_legacy_manual_settings(self):
         config = StandardEncoderConfig(
             run_id="test", phase="selection", backbone="qwen3_embedding", model_id="Qwen/Qwen3-Embedding-8B",

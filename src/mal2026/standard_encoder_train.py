@@ -327,6 +327,51 @@ def _broadcast_rank_zero_finalization(
     return message[1]
 
 
+def _training_arguments_kwargs(
+    config: StandardEncoderConfig, selected_steps: int | None
+) -> dict[str, Any]:
+    """Build only keyword arguments supported by the pinned Trainer API.
+
+    Keeping this construction separate lets the unit suite bind the exact
+    keyword set against the installed ``TrainingArguments`` signature without
+    initializing a model, CUDA, or a Trainer.
+    """
+    return {
+        "output_dir": config.output_dir,
+        "do_train": True,
+        "do_eval": config.phase == "selection",
+        "eval_strategy": "steps" if config.phase == "selection" else "no",
+        "save_strategy": "steps" if config.phase == "selection" else "no",
+        "eval_steps": config.eval_steps if config.phase == "selection" else None,
+        "save_steps": config.save_steps if config.phase == "selection" else None,
+        "logging_steps": config.logging_steps,
+        "logging_strategy": "steps",
+        "learning_rate": config.learning_rate,
+        "weight_decay": config.weight_decay,
+        "warmup_ratio": config.warmup_ratio,
+        "num_train_epochs": config.num_train_epochs,
+        "max_steps": selected_steps if selected_steps is not None else -1,
+        "per_device_train_batch_size": config.per_device_train_batch_size,
+        "per_device_eval_batch_size": config.per_device_eval_batch_size,
+        "gradient_accumulation_steps": config.gradient_accumulation_steps,
+        "bf16": True,
+        "tf32": True,
+        "save_total_limit": 2 if config.phase == "selection" else None,
+        "load_best_model_at_end": config.phase == "selection",
+        "metric_for_best_model": "primary_macro_mae" if config.phase == "selection" else None,
+        "greater_is_better": False if config.phase == "selection" else None,
+        "report_to": ["wandb"],
+        "run_name": config.run_id,
+        "remove_unused_columns": False,
+        "dataloader_num_workers": 0,
+        "dataloader_pin_memory": True,
+        "ddp_find_unused_parameters": False,
+        "seed": config.seed,
+        "data_seed": config.seed,
+        "save_only_model": False,
+    }
+
+
 def run_standard_encoder(config: StandardEncoderConfig) -> dict[str, Any]:
     """Run only the maintained Transformers ``Trainer`` lifecycle."""
     config.validate()
@@ -348,24 +393,7 @@ def run_standard_encoder(config: StandardEncoderConfig) -> dict[str, Any]:
     _configure_wandb(config)
     set_seed(config.seed)
     output = Path(config.output_dir)
-    args = TrainingArguments(
-        output_dir=str(output), overwrite_output_dir=False, do_train=True, do_eval=config.phase == "selection",
-        eval_strategy="steps" if config.phase == "selection" else "no",
-        save_strategy="steps" if config.phase == "selection" else "no",
-        eval_steps=config.eval_steps if config.phase == "selection" else None,
-        save_steps=config.save_steps if config.phase == "selection" else None,
-        logging_steps=config.logging_steps, logging_strategy="steps", learning_rate=config.learning_rate,
-        weight_decay=config.weight_decay, warmup_ratio=config.warmup_ratio, num_train_epochs=config.num_train_epochs,
-        max_steps=selected_steps if selected_steps is not None else -1,
-        per_device_train_batch_size=config.per_device_train_batch_size, per_device_eval_batch_size=config.per_device_eval_batch_size,
-        gradient_accumulation_steps=config.gradient_accumulation_steps, bf16=True, tf32=True,
-        save_total_limit=2 if config.phase == "selection" else None,
-        load_best_model_at_end=config.phase == "selection", metric_for_best_model="primary_macro_mae" if config.phase == "selection" else None,
-        greater_is_better=False if config.phase == "selection" else None,
-        report_to=["wandb"], run_name=config.run_id, remove_unused_columns=False,
-        dataloader_num_workers=0, dataloader_pin_memory=True, ddp_find_unused_parameters=False,
-        seed=config.seed, data_seed=config.seed, save_only_model=False,
-    )
+    args = TrainingArguments(**_training_arguments_kwargs(config, selected_steps))
     callbacks = [EarlyStoppingCallback(early_stopping_patience=config.early_stopping_patience)] if config.phase == "selection" else []
     trainer = Trainer(
         model=model, args=args, train_dataset=train_dataset, eval_dataset=eval_dataset,
