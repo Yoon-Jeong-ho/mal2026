@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 import tempfile
 import unittest
@@ -20,7 +21,9 @@ from mal2026.standard_encoder_train import (
     StandardEncoderConfig,
     StandardEncoderTrainingError,
     _broadcast_rank_zero_finalization,
+    _rank_zero_finalize,
     _selection_metrics_at_best_step,
+    _validate_encoder_metric_health,
 )
 
 REVISION = "a" * 40
@@ -160,6 +163,76 @@ class StandardEncoderConfigTests(unittest.TestCase):
             _broadcast_rank_zero_finalization(Torch(), object(), None, True)
         payload = {"status": "completed", "aggregate": 1.0}
         self.assertEqual(payload, _broadcast_rank_zero_finalization(Torch(), object(), payload, False))
+
+
+class StandardEncoderMetricHealthTests(unittest.TestCase):
+    class State:
+        def __init__(self, *, best_metric=0.25, event_metric=0.25, event_extra=0.2):
+            self.global_step = 8
+            self.best_global_step = 8
+            self.best_model_checkpoint = "/ignored/checkpoint-8"
+            self.best_metric = best_metric
+            self.log_history = [
+                {"loss": 1.0},
+                {
+                    "step": 8,
+                    "eval_primary_macro_mae": event_metric,
+                    "eval_content_mae": event_extra,
+                },
+            ]
+
+    def test_selection_health_accepts_finite_matching_best_monitor(self):
+        train, step, selection, best = _validate_encoder_metric_health(
+            "selection", self.State(), {"train_loss": 0.8, "train_runtime": 1.2}
+        )
+        self.assertEqual({"train_loss": 0.8, "train_runtime": 1.2}, train)
+        self.assertEqual(8, step)
+        self.assertEqual(0.25, selection["eval_primary_macro_mae"])
+        self.assertEqual(0.25, best)
+
+    def test_metric_health_rejects_nan_or_infinity_in_all_persisted_sources(self):
+        cases = [
+            ("selection", self.State(), {"train_loss": float("nan")}),
+            ("selection", self.State(), {"train_loss": 0.8, "train_runtime": float("inf")}),
+            ("selection", self.State(event_metric=float("nan")), {"train_loss": 0.8}),
+            ("selection", self.State(event_extra=float("inf")), {"train_loss": 0.8}),
+            ("selection", self.State(best_metric=float("nan")), {"train_loss": 0.8}),
+            ("selection", self.State(best_metric=float("inf")), {"train_loss": 0.8}),
+            ("refit", type("RefitState", (), {"global_step": 1})(), {"train_loss": float("inf")}),
+        ]
+        for phase, state, metrics in cases:
+            with self.subTest(phase=phase, metrics=metrics):
+                with self.assertRaises(StandardEncoderTrainingError):
+                    _validate_encoder_metric_health(phase, state, metrics)
+
+    def test_rank_zero_gate_runs_before_save_or_completion_write(self):
+        class Trainer:
+            def __init__(self):
+                self.state = type("State", (), {"global_step": 1})()
+                self.save_called = False
+
+            def save_model(self, _):
+                self.save_called = True
+                raise AssertionError("save_model must not run after a failed metric gate")
+
+        config = StandardEncoderConfig(
+            run_id="health-failure", phase="refit", backbone="qwen3_embedding", model_id="Qwen/Qwen3-Embedding-8B",
+            model_revision=REVISION, tokenizer_revision=REVISION, model_path="/private/qwen", prepared_manifest="/manifest",
+            output_dir="/out", nv_snapshot_dir=None, nv_review=None, selection_metadata_path="/selection/standard_encoder_training_complete.json",
+        )
+        trainer = Trainer()
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            with self.assertRaises(StandardEncoderTrainingError):
+                _rank_zero_finalize(trainer, config, output, {"train_loss": math.nan})
+            self.assertFalse(trainer.save_called)
+            self.assertFalse((output / "standard_encoder_training_complete.json").exists())
+
+    def test_static_gate_precedes_model_export_and_completion_write(self):
+        source = Path("src/mal2026/standard_encoder_train.py").read_text(encoding="utf-8")
+        finalizer = source[source.index("def _rank_zero_finalize"):source.index("def _broadcast_rank_zero_finalization")]
+        self.assertLess(finalizer.index("_validate_encoder_metric_health"), finalizer.index("trainer.save_model"))
+        self.assertLess(finalizer.index("_validate_encoder_metric_health"), finalizer.index("_write_complete(output, payload)"))
 
 
 if __name__ == "__main__":

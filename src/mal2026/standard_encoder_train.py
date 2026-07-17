@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 import json
+import math
+from numbers import Real
 import os
 from pathlib import Path
 from typing import Any, Mapping
@@ -178,7 +180,7 @@ def _write_complete(output: Path, payload: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _selection_metrics_at_best_step(trainer: Any, selected_global_step: int) -> dict[str, float]:
+def _selection_metrics_at_best_step(trainer_or_state: Any, selected_global_step: int) -> dict[str, float]:
     """Read the distributed Trainer's already-recorded best-dev metrics.
 
     Calling ``Trainer.evaluate`` after ``train`` on world process zero alone
@@ -187,7 +189,11 @@ def _selection_metrics_at_best_step(trainer: Any, selected_global_step: int) -> 
     Trainer on every rank at each configured evaluation step. The immutable
     best checkpoint identifies precisely which aggregate event to persist.
     """
-    for event in reversed(trainer.state.log_history):
+    trainer_state = getattr(trainer_or_state, "state", trainer_or_state)
+    history = getattr(trainer_state, "log_history", None)
+    _need(isinstance(history, list), "Trainer log_history must be a list")
+    for event in reversed(history):
+        _need(isinstance(event, Mapping), "Trainer log_history event must be a mapping")
         if event.get("step") != selected_global_step or "eval_primary_macro_mae" not in event:
             continue
         metrics = {
@@ -200,6 +206,69 @@ def _selection_metrics_at_best_step(trainer: Any, selected_global_step: int) -> 
     raise StandardEncoderTrainingError("best selection checkpoint has no recorded distributed evaluation metrics")
 
 
+def _finite_metric(value: Any, label: str) -> float:
+    """Convert one persisted metric to a finite JSON-safe float or fail closed."""
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise StandardEncoderTrainingError(f"{label} must be a finite numeric metric")
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise StandardEncoderTrainingError(f"{label} must be finite")
+    return parsed
+
+
+def _persisted_finite_metrics(metrics: Any, label: str) -> dict[str, float]:
+    """Return exactly the numeric metric subset allowed in completion JSON."""
+    _need(isinstance(metrics, Mapping), f"{label} metrics must be a mapping")
+    result: dict[str, float] = {}
+    for key, value in metrics.items():
+        # Match the completion artifact's numeric-only contract, but validate
+        # every retained value before JSON serialization can spell NaN/Infinity.
+        if isinstance(value, Real) and not isinstance(value, bool):
+            result[str(key)] = _finite_metric(value, f"{label} metric {key}")
+    return result
+
+
+def _validate_encoder_metric_health(
+    phase: str, trainer_state: Any, train_metrics: Any
+) -> tuple[dict[str, float], int, dict[str, float], float | None]:
+    """Gate all completion metrics before rank-zero exports a final model.
+
+    This observes maintained Trainer state only. It does not change model
+    optimization or DDP behavior. The returned mappings are the exact numeric
+    mappings persisted in provenance, so a completed artifact cannot encode a
+    non-finite metric.
+    """
+    _need(phase in {"selection", "refit"}, "invalid encoder health phase")
+    serialized_train = _persisted_finite_metrics(train_metrics, "Trainer train")
+    _finite_metric(serialized_train.get("train_loss"), "Trainer train_loss")
+    global_step = getattr(trainer_state, "global_step", None)
+    _need(isinstance(global_step, int) and not isinstance(global_step, bool) and global_step > 0, "Trainer global_step must be positive")
+    if phase == "refit":
+        return serialized_train, global_step, {}, None
+
+    best_step = getattr(trainer_state, "best_global_step", None)
+    _need(
+        isinstance(best_step, int) and not isinstance(best_step, bool) and 0 < best_step <= global_step,
+        "selection best_global_step must be a completed positive update",
+    )
+    best_checkpoint = getattr(trainer_state, "best_model_checkpoint", None)
+    _need(isinstance(best_checkpoint, str) and bool(best_checkpoint.strip()), "selection best checkpoint is missing")
+    best_metric = _finite_metric(getattr(trainer_state, "best_metric", None), "selection Trainer best_metric")
+    selection_metrics = _persisted_finite_metrics(
+        _selection_metrics_at_best_step(trainer_state, best_step),
+        "selection",
+    )
+    primary = _finite_metric(selection_metrics.get("eval_primary_macro_mae"), "selection eval_primary_macro_mae")
+    # Macro MAE over four 1--5 targets has this bounded range because encoder
+    # metric computation clips predictions before calculating the score.
+    _need(0.0 <= primary <= 4.0, "selection eval_primary_macro_mae is outside the score-contract range")
+    _need(
+        math.isclose(best_metric, primary, rel_tol=1e-9, abs_tol=1e-12),
+        "selection best_metric does not match the recorded best macro MAE",
+    )
+    return serialized_train, best_step, selection_metrics, best_metric
+
+
 def _rank_zero_finalize(
     trainer: Any,
     config: StandardEncoderConfig,
@@ -207,31 +276,24 @@ def _rank_zero_finalize(
     train_metrics: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Export and document the final model exactly once on world process zero."""
+    # This health gate is deliberately before save_model and _write_complete:
+    # no NaN/Infinity metric may produce a completed artifact or success signal.
+    serialized_train, selected_global_step, selection_metrics, best_metric = _validate_encoder_metric_health(
+        config.phase, trainer.state, train_metrics
+    )
     final_dir = output / "final_model"
     trainer.save_model(str(final_dir))
     state_path = final_dir / "model.safetensors"
     _need(state_path.is_file(), "Trainer did not write a safe final model state")
-    if config.phase == "selection":
-        _need(
-            isinstance(trainer.state.best_global_step, int) and trainer.state.best_global_step > 0,
-            "selection completed without a best Trainer checkpoint",
-        )
-        selected_global_step = int(trainer.state.best_global_step)
-        selection_metrics = _selection_metrics_at_best_step(trainer, selected_global_step)
-    else:
-        selected_global_step = int(trainer.state.global_step)
-        selection_metrics = {}
-    _need(selected_global_step > 0, "Trainer completed without any optimizer update")
     payload = {
         "status": "completed",
         "run_id": config.run_id,
         "phase": config.phase,
         "selected_global_step": selected_global_step,
         "trainer_global_step": int(trainer.state.global_step),
-        "train_metrics": {
-            key: float(value) for key, value in train_metrics.items() if isinstance(value, (int, float))
-        },
+        "train_metrics": serialized_train,
         "selection_metrics": selection_metrics,
+        "selection_best_metric": best_metric,
         "identity": _config_identity(config),
         "config": asdict(config),
         "model_state_sha256": _sha256(state_path),
