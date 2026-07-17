@@ -55,11 +55,14 @@ tmux new-session -s mal2026-matrix \
 ```
 
 The required path/hash arguments also accept `MAL2026_*` environment variables
-listed by `--help`. `--num-gpus` defaults to 8. Decoder defaults deliberately
-remain the stable `batch=1`, `gradient_accumulation=8` contract after the
-higher-batch smoke produced non-finite metrics. Batch and accumulation overrides
-are exposed for a separately recorded successful smoke, not as an automatic
-utilization tuning mechanism.
+listed by `--help`. `--num-gpus` defaults to **4** and therefore the default CUDA allocation is
+GPUs **0--3**; it never targets the occupied GPUs 4--7. The launcher derives
+accumulation to preserve the frozen global effective batch of 64: stable
+`batch=1` uses `gradient_accumulation=16` on four GPUs (or 8 only for an
+explicit eight-GPU allocation). Explicit batch/accumulation overrides are
+accepted only when they exactly retain global batch 64. This keeps the
+higher-batch smoke, which produced non-finite metrics, out of the default
+protocol.
 
 ## Outputs and failure behavior
 

@@ -29,14 +29,14 @@ new ignored runtime root. Training/evaluation outputs remain direct children of 
 canonical ignored outputs/standard-*-{runs,evals} roots.
 
 Options:
-  --num-gpus N                    DDP/vLLM GPU count (default: 8)
+  --num-gpus N                    DDP/vLLM GPU count (default: 4; GPUs 0-3 only)
   --cuda-visible-devices LIST     CUDA devices (default: 0,...,N-1)
   --wandb-project NAME            W&B scalar project (default: mal2026-korean-writing-scoring)
   --wandb-entity NAME             optional W&B entity
   --decoder-batch-size N          stable decoder per-device batch (default: 1)
-  --decoder-grad-accum N          stable decoder accumulation (default: 8)
+  --decoder-grad-accum N          decoder accumulation; defaults to global batch 64
   --encoder-batch-size N          encoder per-device batch (default: 1)
-  --encoder-grad-accum N          encoder accumulation (default: 8)
+  --encoder-grad-accum N          encoder accumulation; defaults to global batch 64
   --dry-run                       print planned outputs; do not check paths or write/run anything
   -h, --help                      show this text
 
@@ -53,14 +53,14 @@ QWEN_MODEL="${MAL2026_QWEN_MODEL:-}"
 QWEN3_MODEL="${MAL2026_QWEN3_MODEL:-}"
 NV_MODEL="${MAL2026_NV_MODEL:-}"
 NV_REVIEW_JSON="${MAL2026_NV_REVIEW_JSON:-}"
-NUM_GPUS=8
+NUM_GPUS=4
 CUDA_VISIBLE=""
 WANDB_PROJECT="mal2026-korean-writing-scoring"
 WANDB_ENTITY=""
 DECODER_BATCH=1
-DECODER_ACCUM=8
+DECODER_ACCUM=""
 ENCODER_BATCH=1
-ENCODER_ACCUM=8
+ENCODER_ACCUM=""
 DRY_RUN=false
 
 need_value() { [[ $# -ge 2 && -n "$2" ]] || { echo "missing value for $1" >&2; exit 2; }; }
@@ -90,9 +90,26 @@ done
 
 is_positive_integer() { [[ "$1" =~ ^[1-9][0-9]*$ ]]; }
 is_absolute() { [[ "$1" = /* ]]; }
-for item in "$NUM_GPUS" "$DECODER_BATCH" "$DECODER_ACCUM" "$ENCODER_BATCH" "$ENCODER_ACCUM"; do
+for item in "$NUM_GPUS" "$DECODER_BATCH" "$ENCODER_BATCH"; do
   is_positive_integer "$item" || { echo "positive integer required: $item" >&2; exit 2; }
 done
+# Keep the research protocol's global effective batch fixed at 64.  With the
+# safe b1 defaults this derives 16 accumulation steps on the permitted four
+# GPUs (and 8 on an explicitly requested eight-GPU allocation).  Overrides
+# are accepted only when they preserve the same global batch exactly.
+if [[ -z "$DECODER_ACCUM" ]]; then
+  (( 64 % (NUM_GPUS * DECODER_BATCH) == 0 )) || { echo "decoder batch/GPU product must divide global batch 64" >&2; exit 2; }
+  DECODER_ACCUM=$((64 / (NUM_GPUS * DECODER_BATCH)))
+fi
+if [[ -z "$ENCODER_ACCUM" ]]; then
+  (( 64 % (NUM_GPUS * ENCODER_BATCH) == 0 )) || { echo "encoder batch/GPU product must divide global batch 64" >&2; exit 2; }
+  ENCODER_ACCUM=$((64 / (NUM_GPUS * ENCODER_BATCH)))
+fi
+for item in "$DECODER_ACCUM" "$ENCODER_ACCUM"; do
+  is_positive_integer "$item" || { echo "positive integer required: $item" >&2; exit 2; }
+done
+(( NUM_GPUS * DECODER_BATCH * DECODER_ACCUM == 64 )) || { echo "decoder settings must preserve global effective batch 64" >&2; exit 2; }
+(( NUM_GPUS * ENCODER_BATCH * ENCODER_ACCUM == 64 )) || { echo "encoder settings must preserve global effective batch 64" >&2; exit 2; }
 [[ "$RUN_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || { echo "run prefix must be a safe 1-80 char identifier" >&2; exit 2; }
 [[ "$VALIDATION_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "validation SHA-256 must be 64 lowercase hexadecimal characters" >&2; exit 2; }
 for path in "$RUNTIME_ROOT" "$MANIFEST" "$QWEN_MODEL" "$QWEN3_MODEL" "$NV_MODEL" "$NV_REVIEW_JSON"; do

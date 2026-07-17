@@ -26,8 +26,20 @@ class StandardExperimentMatrixShellTests(unittest.TestCase):
             ]
             completed = subprocess.run(command, check=True, cwd=ROOT, text=True, capture_output=True)
             self.assertIn("DRY RUN: no paths checked, files created, or jobs launched.", completed.stdout)
-            self.assertIn("Stable decoder settings: per-device batch=1, accumulation=8", completed.stdout)
+            self.assertIn("Stable decoder settings: per-device batch=1, accumulation=16", completed.stdout)
+            self.assertIn("CUDA_VISIBLE_DEVICES=0,1,2,3; DDP/vLLM GPUs=4", completed.stdout)
             self.assertFalse(runtime.exists())
+
+    def test_rejects_batch_override_that_changes_global_effective_batch(self) -> None:
+        command = [
+            str(SCRIPT), "--dry-run", "--runtime-root", "/tmp/matrix", "--run-prefix", "bad-batch",
+            "--prepared-manifest", "/tmp/manifest.json", "--validation-sha256", HASH,
+            "--qwen-model", "/tmp/qwen", "--qwen3-model", "/tmp/qwen3", "--nv-model", "/tmp/nv",
+            "--nv-review-json", "/tmp/nv-review.json", "--decoder-grad-accum", "8",
+        ]
+        completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn("decoder settings must preserve global effective batch 64", completed.stderr)
 
 
 if __name__ == "__main__":
