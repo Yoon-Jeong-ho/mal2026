@@ -2,7 +2,7 @@
 
 `scripts/run_standard_experiment_matrix.sh` is the approved foreground launcher
 for the complete, **sequential** matrix. Run it from a dedicated tmux session
-only after the one-GPU and eight-GPU smoke evidence has been recorded. It does
+only after compatible smoke evidence for the permitted GPU 0--3 allocation has been recorded. It does
 not download data, read credentials, write raw rows, or upload artifacts.
 
 The launcher uses maintained project entry points only:
@@ -59,11 +59,11 @@ The required path/hash arguments also accept `MAL2026_*` environment variables
 listed by `--help`. `--num-gpus` defaults to **4** and therefore the default CUDA allocation is
 GPUs **0--3**; it never targets the occupied GPUs 4--7. The launcher derives
 accumulation to preserve the frozen global effective batch of 64: stable
-`batch=1` uses `gradient_accumulation=16` on four GPUs (or 8 only for an
-explicit eight-GPU allocation). Explicit batch/accumulation overrides are
-accepted only when they exactly retain global batch 64. This keeps the
-higher-batch smoke, which produced non-finite metrics, out of the default
-protocol.
+`batch=1` uses `gradient_accumulation=16` on the permitted four GPUs. The
+launcher rejects any GPU count above four and any physical GPU index outside
+0--3. Explicit batch/accumulation overrides are accepted only when they
+exactly retain global batch 64. This keeps the higher-batch smoke, which
+produced non-finite metrics, out of the default protocol.
 
 ## Outputs and failure behavior
 

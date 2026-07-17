@@ -41,7 +41,7 @@ Options:
   -h, --help                      show this text
 
 Do not use --dry-run as a smoke test. Before a real launch, verify the approved
-one-GPU/8-GPU smoke evidence and ensure no other process owns the selected GPUs.
+validated smoke evidence compatible with the selected 0--3 GPU allocation and ensure no other process owns those GPUs.
 USAGE
 }
 
@@ -93,9 +93,10 @@ is_absolute() { [[ "$1" = /* ]]; }
 for item in "$NUM_GPUS" "$DECODER_BATCH" "$ENCODER_BATCH"; do
   is_positive_integer "$item" || { echo "positive integer required: $item" >&2; exit 2; }
 done
+(( NUM_GPUS <= 4 )) || { echo "current allocation is restricted to at most GPUs 0,1,2,3" >&2; exit 2; }
 # Keep the research protocol's global effective batch fixed at 64.  With the
 # safe b1 defaults this derives 16 accumulation steps on the permitted four
-# GPUs (and 8 on an explicitly requested eight-GPU allocation).  Overrides
+# GPUs. Overrides
 # are accepted only when they preserve the same global batch exactly.
 if [[ -z "$DECODER_ACCUM" ]]; then
   (( 64 % (NUM_GPUS * DECODER_BATCH) == 0 )) || { echo "decoder batch/GPU product must divide global batch 64" >&2; exit 2; }
@@ -123,6 +124,7 @@ IFS=, read -r -a CUDA_IDS <<< "$CUDA_VISIBLE"
 declare -A REQUESTED_GPU_INDEX=()
 for gpu in "${CUDA_IDS[@]}"; do
   [[ "$gpu" =~ ^[0-9]+$ ]] || { echo "--cuda-visible-devices must use numeric physical GPU indices" >&2; exit 2; }
+  (( 10#$gpu <= 3 )) || { echo "current allocation is restricted to physical GPUs 0,1,2,3" >&2; exit 2; }
   [[ -z "${REQUESTED_GPU_INDEX[$gpu]+x}" ]] || { echo "--cuda-visible-devices contains a duplicate GPU index: $gpu" >&2; exit 2; }
   REQUESTED_GPU_INDEX[$gpu]=1
 done
@@ -177,34 +179,37 @@ required = {"model_id", "revision", "license_acknowledged", "use_case", "reviewe
 if not isinstance(payload, dict) or set(payload) != required or payload["model_id"] != "nvidia/NV-Embed-v2" or payload["revision"] != "3fa59658547db50a1e8e3346cf057fd0c77ed6ef" or payload["outcome"] != "approved" or not payload["license_acknowledged"] or not isinstance(payload["reviewed_files"], dict) or not payload["reviewed_files"]:
     raise SystemExit("NV review JSON is not an approved immutable NV-Embed-v2 review")
 PY
-# Only the physical GPUs selected above are part of this allocation.  Other
-# users may legitimately occupy unselected GPUs, so map selected indices to
-# UUIDs and inspect compute processes by UUID rather than rejecting globally.
-if command -v "$NVIDIA_SMI" >/dev/null 2>&1 || [[ -x "$NVIDIA_SMI" ]]; then
-  GPU_UUID_TABLE="$($NVIDIA_SMI --query-gpu=index,uuid --format=csv,noheader 2>/dev/null)" || {
-    echo "unable to identify selected GPU UUIDs; refusing to launch" >&2; exit 2;
+# Map selected indices to UUIDs immediately before each process stage. Other
+# users may legitimately occupy unselected GPUs, but a selected GPU is never
+# shared or terminated. Returning rather than exiting lets run_step ledger the
+# refusal before the matrix aborts.
+assert_selected_gpus_idle() {
+  if ! command -v "$NVIDIA_SMI" >/dev/null 2>&1 && [[ ! -x "$NVIDIA_SMI" ]]; then return 0; fi
+  local gpu_uuid_table gpu_process_table raw_index raw_uuid index uuid raw_pid pid
+  gpu_uuid_table="$($NVIDIA_SMI --query-gpu=index,uuid --format=csv,noheader 2>/dev/null)" || {
+    echo "unable to identify selected GPU UUIDs; refusing to launch" >&2; return 1;
   }
-  declare -A REQUESTED_GPU_UUID=()
+  local -A requested_gpu_uuid=()
   while IFS=, read -r raw_index raw_uuid; do
     index="$(printf '%s' "$raw_index" | tr -d '[:space:]')"
     uuid="$(printf '%s' "$raw_uuid" | tr -d '[:space:]')"
-    if [[ -n "${REQUESTED_GPU_INDEX[$index]+x}" && -n "$uuid" ]]; then REQUESTED_GPU_UUID[$uuid]=1; fi
-  done <<< "$GPU_UUID_TABLE"
-  [[ ${#REQUESTED_GPU_UUID[@]} -eq $NUM_GPUS ]] || {
-    echo "could not map every selected GPU index to a UUID; refusing to launch" >&2; exit 2;
+    if [[ -n "${REQUESTED_GPU_INDEX[$index]+x}" && -n "$uuid" ]]; then requested_gpu_uuid[$uuid]=1; fi
+  done <<< "$gpu_uuid_table"
+  [[ ${#requested_gpu_uuid[@]} -eq $NUM_GPUS ]] || {
+    echo "could not map every selected GPU index to a UUID; refusing to launch" >&2; return 1;
   }
-  GPU_PROCESS_TABLE="$($NVIDIA_SMI --query-compute-apps=pid,gpu_uuid --format=csv,noheader 2>/dev/null)" || {
-    echo "unable to inspect selected GPU processes; refusing to launch" >&2; exit 2;
+  gpu_process_table="$($NVIDIA_SMI --query-compute-apps=pid,gpu_uuid --format=csv,noheader 2>/dev/null)" || {
+    echo "unable to inspect selected GPU processes; refusing to launch" >&2; return 1;
   }
   while IFS=, read -r raw_pid raw_uuid; do
     pid="$(printf '%s' "$raw_pid" | tr -d '[:space:]')"
     uuid="$(printf '%s' "$raw_uuid" | tr -d '[:space:]')"
-    if [[ -n "$pid" && -n "${REQUESTED_GPU_UUID[$uuid]+x}" ]]; then
+    if [[ -n "$pid" && -n "${requested_gpu_uuid[$uuid]+x}" ]]; then
       echo "selected GPU UUID $uuid has active compute PID $pid; refusing to share or terminate it" >&2
-      exit 2
+      return 1
     fi
-  done <<< "$GPU_PROCESS_TABLE"
-fi
+  done <<< "$gpu_process_table"
+}
 
 CONFIGS="$RUNTIME_ROOT/configs"; LOGS="$RUNTIME_ROOT/logs"; LEDGER="$RUNTIME_ROOT/matrix_ledger.jsonl"
 mkdir -p "$CONFIGS" "$LOGS"
@@ -235,7 +240,21 @@ entry={"time_utc":time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "status":o
 with open(sys.argv[1], "a", encoding="utf-8") as f: f.write(json.dumps(entry, ensure_ascii=True, sort_keys=True)+"\n")
 PY
 }
-run_step() { local step="$1"; shift; local log="$LOGS/$step.log"; ledger started "$step" "$*"; if env CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE" PYTHONPATH="$ROOT/src" TOKENIZERS_PARALLELISM=false "$@" >"$log" 2>&1; then ledger completed "$step" "$log"; else ledger failed "$step" "$log"; echo "failed step preserved at $log" >&2; return 1; fi; }
+run_step() {
+  local step="$1"; shift
+  local log="$LOGS/$step.log"
+  ledger started "$step" "$*"
+  if ! assert_selected_gpus_idle; then
+    ledger failed "$step" "selected_gpu_busy_or_preflight_refusal"
+    return 1
+  fi
+  if env CUDA_VISIBLE_DEVICES="$CUDA_VISIBLE" PYTHONPATH="$ROOT/src" TOKENIZERS_PARALLELISM=false "$@" >"$log" 2>&1; then
+    return 0
+  fi
+  ledger failed "$step" "$log"
+  echo "failed step preserved at $log" >&2
+  return 1
+}
 assert_finite() { "$PYTHON" - "$@" <<'PY'
 import json, math, sys
 for path in sys.argv[1:]:
@@ -244,8 +263,20 @@ for path in sys.argv[1:]:
  if data.get("status") != "completed": raise SystemExit(f"incomplete result: {path}")
 PY
 }
+verify_stage() {
+  local step="$1"; shift
+  if assert_finite "$@"; then
+    ledger completed "$step" "$*"
+  else
+    ledger failed "$step" "artifact_or_provenance_validation_failed"
+    return 1
+  fi
+}
 
-write_decoder_refit() { local mode="$1" selection="$2" refit="$3"; MODE="$mode" SELECTION="$selection" REFIT="$refit" "$PYTHON" - "$CONFIGS/decoder-$mode-refit.json" <<'PY'
+write_decoder_refit() {
+  local mode="$1"; local selection="$2"; local refit="$3"
+  local config_mode="${mode//_/-}"
+  MODE="$mode" SELECTION="$selection" REFIT="$refit" "$PYTHON" - "$CONFIGS/decoder-$config_mode-refit.json" <<'PY'
 import json, os, sys
 selection=json.load(open(os.environ["SELECTION"]+"/selected_checkpoint.json", encoding="utf-8")); base=json.load(open(f"{os.environ['RUNTIME_ROOT']}/configs/decoder-{os.environ['MODE'].replace('_','-')}-selection.json", encoding="utf-8")
 base.update({"run_id":os.path.basename(os.environ["REFIT"]), "phase":"refit", "output_dir":os.environ["REFIT"], "eval_steps":0, "save_steps":0, "selection_summary_path":os.environ["SELECTION"]+"/selected_checkpoint.json", "selected_global_step":selection["selected_global_step"]})
@@ -259,23 +290,61 @@ p={"run_id":os.environ["NAME"],"mode":mode,"model_path":os.environ["QWEN_MODEL"]
 with open(sys.argv[1],"x",encoding="utf-8") as f: json.dump(p,f,indent=2,sort_keys=True);f.write("\n")
 PY
 }
-run_decoder() { local mode="$1"; local selection="$2"; local refit="$3"; local config_mode="${mode//_/-}"; run_step "decoder-$config_mode-selection" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-selection.json"; assert_finite "$selection/standard_training_complete.json"; mapfile -t steps < <("$PYTHON" - "$selection/standard_training_complete.json" <<'PY'
+run_decoder() {
+  local mode="$1"; local selection="$2"; local refit="$3"; local config_mode="${mode//_/-}"
+  local selection_step="decoder-$config_mode-selection"
+  run_step "$selection_step" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-selection.json"
+  verify_stage "$selection_step" "$selection/standard_training_complete.json"
+  local -a steps metric_args=()
+  mapfile -t steps < <("$PYTHON" - "$selection/standard_training_complete.json" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1])); print(*p["selection_candidate_steps"],sep="\n")
 PY
-); [[ ${#steps[@]} -gt 0 ]] || { echo "no retained decoder checkpoints" >&2; return 1; }; local metric_args=(); for step in "${steps[@]}"; do local name="$(run_name decoder-$config_mode-dev-step-$step)"; write_decoder_eval "$mode" selection_dev "$selection/checkpoint-$step" "$name"; run_step "decoder-$config_mode-dev-step-$step" "$PYTHON" "$ROOT/scripts/evaluate_standard_decoder_vllm.py" --config "$CONFIGS/$name.json"; assert_finite "$ROOT/outputs/standard-evals/$name/aggregate_metrics.json"; metric_args+=(--evaluation-metrics "$ROOT/outputs/standard-evals/$name/aggregate_metrics.json"); done; run_step "decoder-$config_mode-select-checkpoint" "$PYTHON" "$ROOT/scripts/select_standard_decoder_checkpoint.py" --selection-run-dir "$selection" "${metric_args[@]}"; assert_finite "$selection/selected_checkpoint.json"; write_decoder_refit "$mode" "$selection" "$refit"; run_step "decoder-$config_mode-refit" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-refit.json"; assert_finite "$refit/standard_training_complete.json"; local final="$(run_name decoder-$config_mode-final)"; write_decoder_eval "$mode" frozen_validation "$refit/adapter" "$final"; run_step "decoder-$config_mode-final" "$PYTHON" "$ROOT/scripts/evaluate_standard_decoder_vllm.py" --config "$CONFIGS/$final.json"; assert_finite "$ROOT/outputs/standard-evals/$final/aggregate_metrics.json"; }
+)
+  [[ ${#steps[@]} -gt 0 ]] || { echo "no retained decoder checkpoints" >&2; return 1; }
+  local step name eval_step
+  for step in "${steps[@]}"; do
+    name="$(run_name decoder-$config_mode-dev-step-$step)"; eval_step="decoder-$config_mode-dev-step-$step"
+    write_decoder_eval "$mode" selection_dev "$selection/checkpoint-$step" "$name"
+    run_step "$eval_step" "$PYTHON" "$ROOT/scripts/evaluate_standard_decoder_vllm.py" --config "$CONFIGS/$name.json"
+    verify_stage "$eval_step" "$ROOT/outputs/standard-evals/$name/aggregate_metrics.json"
+    metric_args+=(--evaluation-metrics "$ROOT/outputs/standard-evals/$name/aggregate_metrics.json")
+  done
+  local select_step="decoder-$config_mode-select-checkpoint"
+  run_step "$select_step" "$PYTHON" "$ROOT/scripts/select_standard_decoder_checkpoint.py" --selection-run-dir "$selection" "${metric_args[@]}"
+  verify_stage "$select_step" "$selection/selected_checkpoint.json"
+  write_decoder_refit "$mode" "$selection" "$refit"
+  local refit_step="decoder-$config_mode-refit"
+  run_step "$refit_step" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-refit.json"
+  verify_stage "$refit_step" "$refit/standard_training_complete.json"
+  local final="$(run_name decoder-$config_mode-final)"; local final_step="decoder-$config_mode-final"
+  write_decoder_eval "$mode" frozen_validation "$refit/adapter" "$final"
+  run_step "$final_step" "$PYTHON" "$ROOT/scripts/evaluate_standard_decoder_vllm.py" --config "$CONFIGS/$final.json"
+  verify_stage "$final_step" "$ROOT/outputs/standard-evals/$final/aggregate_metrics.json"
+}
 write_encoder_refit() { local tag="$1" selection="$2" refit="$3"; TAG="$tag" SELECTION="$selection" REFIT="$refit" "$PYTHON" - "$CONFIGS/encoder-$tag-refit.json" <<'PY'
 import json,os,sys
 base=json.load(open(f"{os.environ['RUNTIME_ROOT']}/configs/encoder-{os.environ['TAG']}-selection.json",encoding="utf-8"));base.update({"run_id":os.path.basename(os.environ["REFIT"]),"phase":"refit","output_dir":os.environ["REFIT"],"eval_steps":0,"save_steps":0,"selection_metadata_path":os.environ["SELECTION"]+"/standard_encoder_training_complete.json"})
 with open(sys.argv[1],"x",encoding="utf-8") as f:json.dump(base,f,indent=2,sort_keys=True);f.write("\n")
 PY
 }
-run_encoder() { local tag="$1" selection="$2" refit="$3"; run_step "encoder-$tag-selection" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_encoder.py" --config "$CONFIGS/encoder-$tag-selection.json"; assert_finite "$selection/standard_encoder_training_complete.json"; write_encoder_refit "$tag" "$selection" "$refit"; run_step "encoder-$tag-refit" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_encoder.py" --config "$CONFIGS/encoder-$tag-refit.json"; assert_finite "$refit/standard_encoder_training_complete.json"; local final="$(run_name encoder-$tag-final)"; FINAL="$final" REFIT="$refit" "$PYTHON" - "$CONFIGS/$final.json" <<'PY'
+run_encoder() {
+  local tag="$1"; local selection="$2"; local refit="$3"; local selection_step="encoder-$tag-selection"
+  run_step "$selection_step" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_encoder.py" --config "$CONFIGS/encoder-$tag-selection.json"
+  verify_stage "$selection_step" "$selection/standard_encoder_training_complete.json"
+  write_encoder_refit "$tag" "$selection" "$refit"
+  local refit_step="encoder-$tag-refit"
+  run_step "$refit_step" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_encoder.py" --config "$CONFIGS/encoder-$tag-refit.json"
+  verify_stage "$refit_step" "$refit/standard_encoder_training_complete.json"
+  local final="$(run_name encoder-$tag-final)"; FINAL="$final" REFIT="$refit" "$PYTHON" - "$CONFIGS/$final.json" <<'PY'
 import json,os,sys
 p={"run_id":os.environ["FINAL"],"source":"frozen_validation","training_metadata_path":os.environ["REFIT"]+"/standard_encoder_training_complete.json","prepared_manifest":os.environ["MANIFEST"],"validation_sha256":os.environ["VALIDATION_SHA256"],"output_dir":os.environ["ROOT"]+"/outputs/standard-encoder-evals/"+os.environ["FINAL"],"per_device_eval_batch_size":int(os.environ["ENCODER_BATCH"]),"wandb_project":os.environ["WANDB_PROJECT"],"wandb_entity":os.environ["WANDB_ENTITY"] or None}
 with open(sys.argv[1],"x",encoding="utf-8") as f:json.dump(p,f,indent=2,sort_keys=True);f.write("\n")
 PY
-run_step "encoder-$tag-final" "$PYTHON" "$ROOT/scripts/evaluate_standard_encoder.py" --config "$CONFIGS/$final.json"; assert_finite "$ROOT/outputs/standard-encoder-evals/$final/aggregate_metrics.json"; }
+  local final_step="encoder-$tag-final"
+  run_step "$final_step" "$PYTHON" "$ROOT/scripts/evaluate_standard_encoder.py" --config "$CONFIGS/$final.json"
+  verify_stage "$final_step" "$ROOT/outputs/standard-encoder-evals/$final/aggregate_metrics.json"
+}
 
 ledger started matrix "approved sequential matrix"
 run_decoder direct "$DIRECT_SELECTION" "$DIRECT_REFIT"
