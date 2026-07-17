@@ -138,6 +138,7 @@ class StandardDecoderHealthTests(unittest.TestCase):
             ("selection", self.State([{"loss": 1.0, "grad_norm": float("inf")}, {"eval_loss": 0.5}], 0.5), {"train_loss": 1.0}),
             ("selection", self.State([{"loss": 1.0}, {"eval_loss": 0.5}], float("nan")), {"train_loss": 1.0}),
             ("refit", self.State([{"loss": 1.0}], None), {"train_loss": float("inf")}),
+            ("refit", self.State([{"loss": 1.0}], None), {"train_loss": 1.0, "train_runtime": float("nan")}),
         ]
         for phase, state, metrics in cases:
             with self.subTest(phase=phase, metrics=metrics):

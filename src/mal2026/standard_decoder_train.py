@@ -172,17 +172,22 @@ def _observed_metrics(log_history: Any, key: str) -> list[float]:
     return values
 
 
-def _validate_trainer_health(phase: str, trainer_state: Any, train_metrics: Any) -> None:
+def _validate_trainer_health(phase: str, trainer_state: Any, train_metrics: Any) -> dict[str, float]:
     """Fail closed on non-finite Trainer metrics before any adapter is exported.
 
     This reads standard Trainer state only; it neither implements an optimizer
     nor alters the DDP/SFT lifecycle.  `grad_norm` is validated whenever the
     Trainer recorded it, but is not required because some maintained backends
-    do not emit it.
+    do not emit it.  The returned mapping is exactly the numeric metric subset
+    persisted in completion provenance, so it cannot serialize NaN/Infinity.
     """
     if phase not in {"selection", "refit"} or not isinstance(train_metrics, dict):
         raise StandardDecoderContractError("invalid Trainer health validation inputs")
-    _finite(train_metrics.get("train_loss"), "Trainer train_loss")
+    serialized_metrics: dict[str, float] = {}
+    for key, value in train_metrics.items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            serialized_metrics[str(key)] = _finite(value, f"Trainer train metric {key}")
+    _finite(serialized_metrics.get("train_loss"), "Trainer train_loss")
     history = getattr(trainer_state, "log_history", None)
     # `train_loss` is a mandatory Trainer.train summary. Periodic `loss` and
     # `grad_norm` logs are backend/cadence-dependent, so validate every value
@@ -194,6 +199,7 @@ def _validate_trainer_health(phase: str, trainer_state: Any, train_metrics: Any)
         if not eval_losses:
             raise StandardDecoderContractError("selection Trainer did not record an observed eval loss")
         _finite(getattr(trainer_state, "best_metric", None), "Trainer best_metric")
+    return serialized_metrics
 
 
 def _prompt_completion_dataset(rows, mode: str):
@@ -272,7 +278,7 @@ def run_sft(config: StandardSFTConfig) -> None:
     # Abort before writing adapter/completion provenance if maintained Trainer
     # telemetry shows numerical corruption. Existing checkpoints are preserved
     # for inspection but cannot be mistaken for a completed artifact.
-    _validate_trainer_health(config.phase, trainer.state, train_result.metrics)
+    serializable_train_metrics = _validate_trainer_health(config.phase, trainer.state, train_result.metrics)
     trainer.save_model(str(Path(config.output_dir) / "adapter"))
     tokenizer.save_pretrained(str(Path(config.output_dir) / "adapter"))
     # Only aggregate/provenance metadata. Do not write row predictions, source text, or outputs.
@@ -286,7 +292,7 @@ def run_sft(config: StandardSFTConfig) -> None:
         "global_step": int(trainer.state.global_step), "best_metric": trainer.state.best_metric,
         "model_revision": config.model_revision, "tokenizer_revision": config.tokenizer_revision,
         "train_records": len(train_rows), "eval_records": len(eval_rows or []),
-        "train_metrics": {key: float(value) for key, value in train_result.metrics.items() if isinstance(value, (int, float))},
+        "train_metrics": serializable_train_metrics,
         "fallback_mean": score_mean(train_rows), "selection_candidate_steps": checkpoint_steps if config.phase == "selection" else [],
         "selection_lifecycle": "Trainer eval_loss early-stopping/checkpointing; external vLLM source-dev macro-MAE selects refit step" if config.phase == "selection" else "refit uses selected_global_step from aggregate vLLM summary",
         "selected_global_step": config.selected_global_step, "selection_summary_path": config.selection_summary_path,
