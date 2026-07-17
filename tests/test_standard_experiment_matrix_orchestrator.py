@@ -93,6 +93,62 @@ class StandardExperimentMatrixShellTests(unittest.TestCase):
             finally:
                 shutil.rmtree(runtime, ignore_errors=True)
 
+    def test_gpu_preflight_fails_closed_when_nvidia_smi_override_is_missing_or_invalid(self) -> None:
+        """A preflight tool that cannot be executed must never permit torchrun."""
+        import json
+        import os
+        import shutil
+        import uuid
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            for name in ("qwen", "qwen3", "nv"):
+                (fixture / name).mkdir()
+            (fixture / "manifest.json").write_text("{}", encoding="utf-8")
+            review = {
+                "model_id": "nvidia/NV-Embed-v2", "revision": "3fa59658547db50a1e8e3346cf057fd0c77ed6ef",
+                "license_acknowledged": True, "use_case": "research_noncommercial", "reviewer": "test",
+                "outcome": "approved", "reviewed_files": {"modeling_nvembed.py": "0" * 64},
+            }
+            (fixture / "review.json").write_text(json.dumps(review), encoding="utf-8")
+            invoked = fixture / "torchrun-invoked"
+            torchrun = fixture / "torchrun"
+            torchrun.write_text(f"#!/bin/sh\nprintf invoked > {invoked}\nexit 73\n", encoding="utf-8")
+            torchrun.chmod(0o755)
+
+            for override in ("missing-nvidia-smi-for-mal2026-test", str(fixture / "not-an-executable")):
+                prefix = "preflight-unavailable-" + uuid.uuid4().hex
+                runtime = ROOT / "outputs" / "experiment-matrix" / prefix
+                command = [
+                    str(SCRIPT), "--runtime-root", str(runtime), "--run-prefix", prefix,
+                    "--prepared-manifest", str(fixture / "manifest.json"), "--validation-sha256", HASH,
+                    "--qwen-model", str(fixture / "qwen"), "--qwen3-model", str(fixture / "qwen3"),
+                    "--nv-model", str(fixture / "nv"), "--nv-review-json", str(fixture / "review.json"),
+                ]
+                try:
+                    completed = subprocess.run(
+                        command,
+                        cwd=ROOT,
+                        text=True,
+                        capture_output=True,
+                        env=dict(
+                            os.environ,
+                            MAL2026_NVIDIA_SMI=override,
+                            MAL2026_TORCHRUN=str(torchrun),
+                        ),
+                    )
+                    self.assertNotEqual(0, completed.returncode)
+                    self.assertIn("unable to resolve nvidia-smi", completed.stderr)
+                    self.assertTrue(runtime.is_dir())
+                    self.assertFalse(invoked.exists(), "torchrun must not run after preflight refusal")
+                    entries = [json.loads(line) for line in (runtime / "matrix_ledger.jsonl").read_text().splitlines()]
+                    stage_entries = [entry for entry in entries if entry["step"] == "decoder-direct-selection"]
+                    self.assertEqual(["started", "failed"], [entry["status"] for entry in stage_entries])
+                    self.assertEqual("selected_gpu_busy_or_preflight_refusal", stage_entries[-1]["detail"])
+                finally:
+                    invoked.unlink(missing_ok=True)
+                    shutil.rmtree(runtime, ignore_errors=True)
+
     def test_rejects_gpu_count_or_device_outside_current_boundary(self) -> None:
         base = [
             str(SCRIPT), "--dry-run", "--runtime-root", "/tmp/matrix", "--run-prefix", "gpu-boundary",

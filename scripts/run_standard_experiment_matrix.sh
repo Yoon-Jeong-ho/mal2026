@@ -184,7 +184,13 @@ PY
 # shared or terminated. Returning rather than exiting lets run_step ledger the
 # refusal before the matrix aborts.
 assert_selected_gpus_idle() {
-  if ! command -v "$NVIDIA_SMI" >/dev/null 2>&1 && [[ ! -x "$NVIDIA_SMI" ]]; then return 0; fi
+  # This is an ownership gate, not an optional diagnostic: without a working
+  # nvidia-smi executable the launcher cannot prove the selected GPUs are
+  # unshared.  Refuse before every stage rather than risking a shared launch.
+  if ! command -v "$NVIDIA_SMI" >/dev/null 2>&1 && [[ ! -x "$NVIDIA_SMI" ]]; then
+    echo "unable to resolve nvidia-smi for selected-GPU ownership preflight; refusing to launch" >&2
+    return 1
+  fi
   local gpu_uuid_table gpu_process_table raw_index raw_uuid index uuid raw_pid pid
   gpu_uuid_table="$($NVIDIA_SMI --query-gpu=index,uuid --format=csv,noheader 2>/dev/null)" || {
     echo "unable to identify selected GPU UUIDs; refusing to launch" >&2; return 1;
