@@ -261,17 +261,195 @@ run_step() {
   echo "failed step preserved at $log" >&2
   return 1
 }
-assert_finite() { "$PYTHON" - "$@" <<'PY'
-import json, math, sys
-for path in sys.argv[1:]:
- data=json.load(open(path, encoding="utf-8")); text=json.dumps(data)
- if 'NaN' in text or 'Infinity' in text: raise SystemExit(f"non-finite metric/provenance: {path}")
- if data.get("status") != "completed": raise SystemExit(f"incomplete result: {path}")
+validate_stage_artifacts() { "$PYTHON" - "$@" <<'PY'
+"""Reject incomplete, numerically corrupt, or schema-inadequate stage artifacts.
+
+The launcher is intentionally a last-line release gate rather than a second
+implementation of every runner's provenance contract.  It verifies the
+minimal completion fields that make an artifact usable by the next matrix
+stage, before the aggregate-only ledger can call that stage completed.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import math
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+
+step, *raw_paths = sys.argv[1:]
+if not step or not raw_paths:
+    raise SystemExit("stage validator requires a step and at least one artifact path")
+
+
+def fail(path: Path, message: str) -> "None":
+    raise SystemExit(f"stage {step}: invalid artifact {path}: {message}")
+
+
+def object_field(payload: dict[str, Any], key: str, path: Path) -> dict[str, Any]:
+    value = payload.get(key)
+    if not isinstance(value, dict):
+        fail(path, f"{key} must be a mapping")
+    return value
+
+
+def finite_number(value: Any, field: str, path: Path, *, nonnegative: bool = False) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        fail(path, f"{field} must be a finite numeric value")
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        fail(path, f"{field} must be finite")
+    if nonnegative and numeric < 0:
+        fail(path, f"{field} must be nonnegative")
+    return numeric
+
+
+def positive_int(value: Any, field: str, path: Path) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        fail(path, f"{field} must be a positive integer")
+    return value
+
+
+def nonempty_string(value: Any, field: str, path: Path) -> str:
+    if not isinstance(value, str) or not value.strip():
+        fail(path, f"{field} must be a nonempty string")
+    return value
+
+
+def reject_nonfinite(value: Any, path: Path, location: str = "$") -> None:
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            fail(path, f"non-finite numeric value at {location}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            reject_nonfinite(item, path, f"{location}[{index}]")
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            reject_nonfinite(item, path, f"{location}.{key}")
+
+
+def require_completed(payload: dict[str, Any], path: Path) -> None:
+    if payload.get("status") != "completed":
+        fail(path, "status must be completed")
+
+
+def validate_decoder_completion(payload: dict[str, Any], path: Path) -> None:
+    require_completed(payload, path)
+    nonempty_string(payload.get("run_id"), "run_id", path)
+    phase = payload.get("phase")
+    if phase not in {"selection", "refit"}:
+        fail(path, "phase must be selection or refit")
+    positive_int(payload.get("global_step"), "global_step", path)
+    if "selected_global_step" in payload and payload["selected_global_step"] is not None:
+        positive_int(payload["selected_global_step"], "selected_global_step", path)
+    train_metrics = object_field(payload, "train_metrics", path)
+    finite_number(train_metrics.get("train_loss"), "train_metrics.train_loss", path)
+    if phase == "selection":
+        finite_number(payload.get("best_metric"), "best_metric", path)
+        candidates = payload.get("selection_candidate_steps")
+        if not isinstance(candidates, list) or not candidates:
+            fail(path, "selection_candidate_steps must be a nonempty list")
+        for index, candidate in enumerate(candidates):
+            positive_int(candidate, f"selection_candidate_steps[{index}]", path)
+    else:
+        positive_int(payload.get("selected_global_step"), "selected_global_step", path)
+        nonempty_string(payload.get("selection_summary_path"), "selection_summary_path", path)
+    if not (path.parent / "adapter" / "adapter_config.json").is_file():
+        fail(path, "decoder adapter/adapter_config.json is missing")
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def validate_encoder_completion(payload: dict[str, Any], path: Path) -> None:
+    require_completed(payload, path)
+    nonempty_string(payload.get("run_id"), "run_id", path)
+    phase = payload.get("phase")
+    if phase not in {"selection", "refit"}:
+        fail(path, "phase must be selection or refit")
+    positive_int(payload.get("selected_global_step"), "selected_global_step", path)
+    positive_int(payload.get("trainer_global_step"), "trainer_global_step", path)
+    train_metrics = object_field(payload, "train_metrics", path)
+    finite_number(train_metrics.get("train_loss"), "train_metrics.train_loss", path)
+    model_hash = payload.get("model_state_sha256")
+    if not isinstance(model_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", model_hash):
+        fail(path, "model_state_sha256 must be a lowercase SHA-256 hex digest")
+    state_path = path.parent / "final_model" / "model.safetensors"
+    if not state_path.is_file():
+        fail(path, "encoder final_model/model.safetensors is missing")
+    if sha256(state_path) != model_hash:
+        fail(path, "model_state_sha256 does not match final_model/model.safetensors")
+    if phase == "selection":
+        selection_metrics = object_field(payload, "selection_metrics", path)
+        finite_number(selection_metrics.get("eval_primary_macro_mae"), "selection_metrics.eval_primary_macro_mae", path)
+    else:
+        config = object_field(payload, "config", path)
+        selection_path = nonempty_string(config.get("selection_metadata_path"), "config.selection_metadata_path", path)
+        candidate = Path(selection_path)
+        if not candidate.is_absolute() or candidate.name != "standard_encoder_training_complete.json" or not candidate.is_file():
+            fail(path, "config.selection_metadata_path must name an existing absolute encoder completion artifact")
+
+
+def validate_aggregate(payload: dict[str, Any], path: Path) -> None:
+    require_completed(payload, path)
+    metrics = object_field(payload, "metrics", path)
+    if "standard-encoder-evals" in path.parts:
+        finite_number(metrics.get("eval_primary_macro_mae"), "metrics.eval_primary_macro_mae", path)
+    elif "standard-evals" in path.parts:
+        finite_number(metrics.get("primary_macro_mae"), "metrics.primary_macro_mae", path)
+    else:
+        fail(path, "aggregate_metrics.json must be below standard-evals or standard-encoder-evals")
+
+
+def validate_selected_checkpoint(payload: dict[str, Any], path: Path) -> None:
+    require_completed(payload, path)
+    if payload.get("phase") != "selection":
+        fail(path, "phase must be selection")
+    finite_number(payload.get("selected_primary_macro_mae"), "selected_primary_macro_mae", path, nonnegative=True)
+    positive_int(payload.get("selected_global_step"), "selected_global_step", path)
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        fail(path, "candidates must be a nonempty list")
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            fail(path, f"candidates[{index}] must be a mapping")
+        positive_int(candidate.get("global_step"), f"candidates[{index}].global_step", path)
+        finite_number(candidate.get("primary_macro_mae"), f"candidates[{index}].primary_macro_mae", path, nonnegative=True)
+
+
+for raw_path in raw_paths:
+    path = Path(raw_path)
+    try:
+        with path.open(encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(path, f"cannot read JSON: {exc}")
+    if not isinstance(payload, dict):
+        fail(path, "top-level JSON value must be an object")
+    reject_nonfinite(payload, path)
+    if path.name == "standard_training_complete.json":
+        validate_decoder_completion(payload, path)
+    elif path.name == "standard_encoder_training_complete.json":
+        validate_encoder_completion(payload, path)
+    elif path.name == "aggregate_metrics.json":
+        validate_aggregate(payload, path)
+    elif path.name == "selected_checkpoint.json":
+        validate_selected_checkpoint(payload, path)
+    else:
+        fail(path, "unrecognized stage artifact filename")
 PY
 }
 verify_stage() {
   local step="$1"; shift
-  if assert_finite "$@"; then
+  if validate_stage_artifacts "$step" "$@"; then
     ledger completed "$step" "$*"
   else
     ledger failed "$step" "artifact_or_provenance_validation_failed"
