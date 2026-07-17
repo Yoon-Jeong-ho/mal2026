@@ -41,6 +41,54 @@ class StandardExperimentMatrixShellTests(unittest.TestCase):
         self.assertNotEqual(0, completed.returncode)
         self.assertIn("decoder settings must preserve global effective batch 64", completed.stderr)
 
+    def test_gpu_preflight_ignores_busy_unselected_devices_but_rejects_selected_ones(self) -> None:
+        """Mock nvidia-smi: only UUIDs for CUDA_VISIBLE_DEVICES=0,1,2,3 block."""
+        import json
+        import os
+        import shutil
+        import uuid
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            for name in ("qwen", "qwen3", "nv"):
+                (fixture / name).mkdir()
+            (fixture / "manifest.json").write_text("{}", encoding="utf-8")
+            review = {
+                "model_id": "nvidia/NV-Embed-v2", "revision": "3fa59658547db50a1e8e3346cf057fd0c77ed6ef",
+                "license_acknowledged": True, "use_case": "research_noncommercial", "reviewer": "test",
+                "outcome": "approved", "reviewed_files": {"modeling_nvembed.py": "0" * 64},
+            }
+            (fixture / "review.json").write_text(json.dumps(review), encoding="utf-8")
+            nvidia = fixture / "nvidia-smi"
+            nvidia.write_text("#!/bin/sh\ncase \"$1\" in\n  --query-gpu=*) printf '0, UUID-0\\n1, UUID-1\\n2, UUID-2\\n3, UUID-3\\n4, UUID-4\\n5, UUID-5\\n6, UUID-6\\n7, UUID-7\\n' ;;\n  --query-compute-apps=*) printf '%s\\n' \"${MOCK_APPS:-}\" ;;\nesac\n", encoding="utf-8")
+            torchrun = fixture / "torchrun"
+            torchrun.write_text("#!/bin/sh\nexit 73\n", encoding="utf-8")
+            nvidia.chmod(0o755); torchrun.chmod(0o755)
+
+            def invoke(apps: str) -> tuple[subprocess.CompletedProcess[str], Path]:
+                prefix = "gpu-preflight-" + uuid.uuid4().hex
+                runtime = ROOT / "outputs" / "experiment-matrix" / prefix
+                command = [
+                    str(SCRIPT), "--runtime-root", str(runtime), "--run-prefix", prefix,
+                    "--prepared-manifest", str(fixture / "manifest.json"), "--validation-sha256", HASH,
+                    "--qwen-model", str(fixture / "qwen"), "--qwen3-model", str(fixture / "qwen3"),
+                    "--nv-model", str(fixture / "nv"), "--nv-review-json", str(fixture / "review.json"),
+                ]
+                env = dict(os.environ, MAL2026_NVIDIA_SMI=str(nvidia), MAL2026_TORCHRUN=str(torchrun), MOCK_APPS=apps)
+                return subprocess.run(command, cwd=ROOT, text=True, capture_output=True, env=env), runtime
+
+            other_busy, runtime = invoke("999, UUID-4")
+            try:
+                self.assertEqual(1, other_busy.returncode)  # mocked torchrun fails after preflight passes
+                self.assertIn("failed step preserved", other_busy.stderr)
+                self.assertTrue(runtime.is_dir())
+            finally:
+                shutil.rmtree(runtime, ignore_errors=True)
+            selected_busy, runtime = invoke("100, UUID-0")
+            self.assertEqual(2, selected_busy.returncode)
+            self.assertIn("selected GPU UUID UUID-0 has active compute PID 100", selected_busy.stderr)
+            self.assertFalse(runtime.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

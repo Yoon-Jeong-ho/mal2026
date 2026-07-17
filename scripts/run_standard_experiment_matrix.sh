@@ -120,6 +120,12 @@ if [[ -z "$CUDA_VISIBLE" ]]; then
 fi
 IFS=, read -r -a CUDA_IDS <<< "$CUDA_VISIBLE"
 [[ ${#CUDA_IDS[@]} -eq $NUM_GPUS ]] || { echo "--cuda-visible-devices must list exactly --num-gpus devices" >&2; exit 2; }
+declare -A REQUESTED_GPU_INDEX=()
+for gpu in "${CUDA_IDS[@]}"; do
+  [[ "$gpu" =~ ^[0-9]+$ ]] || { echo "--cuda-visible-devices must use numeric physical GPU indices" >&2; exit 2; }
+  [[ -z "${REQUESTED_GPU_INDEX[$gpu]+x}" ]] || { echo "--cuda-visible-devices contains a duplicate GPU index: $gpu" >&2; exit 2; }
+  REQUESTED_GPU_INDEX[$gpu]=1
+done
 
 RUNS="$ROOT/outputs/standard-runs"
 EVALS="$ROOT/outputs/standard-evals"
@@ -127,6 +133,7 @@ ENCODER_RUNS="$ROOT/outputs/standard-encoder-runs"
 ENCODER_EVALS="$ROOT/outputs/standard-encoder-evals"
 PYTHON="${MAL2026_PYTHON:-$PYTHON_DEFAULT}"
 TORCHRUN="${MAL2026_TORCHRUN:-$TORCHRUN_DEFAULT}"
+NVIDIA_SMI="${MAL2026_NVIDIA_SMI:-nvidia-smi}"
 
 run_name() { printf '%s-%s' "$RUN_PREFIX" "$1"; }
 DIRECT_SELECTION="$RUNS/$(run_name decoder-direct-selection)"
@@ -170,9 +177,33 @@ required = {"model_id", "revision", "license_acknowledged", "use_case", "reviewe
 if not isinstance(payload, dict) or set(payload) != required or payload["model_id"] != "nvidia/NV-Embed-v2" or payload["revision"] != "3fa59658547db50a1e8e3346cf057fd0c77ed6ef" or payload["outcome"] != "approved" or not payload["license_acknowledged"] or not isinstance(payload["reviewed_files"], dict) or not payload["reviewed_files"]:
     raise SystemExit("NV review JSON is not an approved immutable NV-Embed-v2 review")
 PY
-if command -v nvidia-smi >/dev/null 2>&1 && [[ -n "$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | tr -d '[:space:]')" ]]; then
-  echo "selected GPUs have active compute processes; refusing to share or terminate them" >&2
-  exit 2
+# Only the physical GPUs selected above are part of this allocation.  Other
+# users may legitimately occupy unselected GPUs, so map selected indices to
+# UUIDs and inspect compute processes by UUID rather than rejecting globally.
+if command -v "$NVIDIA_SMI" >/dev/null 2>&1 || [[ -x "$NVIDIA_SMI" ]]; then
+  GPU_UUID_TABLE="$($NVIDIA_SMI --query-gpu=index,uuid --format=csv,noheader 2>/dev/null)" || {
+    echo "unable to identify selected GPU UUIDs; refusing to launch" >&2; exit 2;
+  }
+  declare -A REQUESTED_GPU_UUID=()
+  while IFS=, read -r raw_index raw_uuid; do
+    index="$(printf '%s' "$raw_index" | tr -d '[:space:]')"
+    uuid="$(printf '%s' "$raw_uuid" | tr -d '[:space:]')"
+    if [[ -n "${REQUESTED_GPU_INDEX[$index]+x}" && -n "$uuid" ]]; then REQUESTED_GPU_UUID[$uuid]=1; fi
+  done <<< "$GPU_UUID_TABLE"
+  [[ ${#REQUESTED_GPU_UUID[@]} -eq $NUM_GPUS ]] || {
+    echo "could not map every selected GPU index to a UUID; refusing to launch" >&2; exit 2;
+  }
+  GPU_PROCESS_TABLE="$($NVIDIA_SMI --query-compute-apps=pid,gpu_uuid --format=csv,noheader 2>/dev/null)" || {
+    echo "unable to inspect selected GPU processes; refusing to launch" >&2; exit 2;
+  }
+  while IFS=, read -r raw_pid raw_uuid; do
+    pid="$(printf '%s' "$raw_pid" | tr -d '[:space:]')"
+    uuid="$(printf '%s' "$raw_uuid" | tr -d '[:space:]')"
+    if [[ -n "$pid" && -n "${REQUESTED_GPU_UUID[$uuid]+x}" ]]; then
+      echo "selected GPU UUID $uuid has active compute PID $pid; refusing to share or terminate it" >&2
+      exit 2
+    fi
+  done <<< "$GPU_PROCESS_TABLE"
 fi
 
 CONFIGS="$RUNTIME_ROOT/configs"; LOGS="$RUNTIME_ROOT/logs"; LEDGER="$RUNTIME_ROOT/matrix_ledger.jsonl"
@@ -228,7 +259,7 @@ p={"run_id":os.environ["NAME"],"mode":mode,"model_path":os.environ["QWEN_MODEL"]
 with open(sys.argv[1],"x",encoding="utf-8") as f: json.dump(p,f,indent=2,sort_keys=True);f.write("\n")
 PY
 }
-run_decoder() { local mode="$1" selection="$2" refit="$3" config_mode="${mode//_/-}"; run_step "decoder-$config_mode-selection" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-selection.json"; assert_finite "$selection/standard_training_complete.json"; mapfile -t steps < <("$PYTHON" - "$selection/standard_training_complete.json" <<'PY'
+run_decoder() { local mode="$1"; local selection="$2"; local refit="$3"; local config_mode="${mode//_/-}"; run_step "decoder-$config_mode-selection" "$TORCHRUN" --standalone --nproc_per_node="$NUM_GPUS" "$ROOT/scripts/train_standard_decoder_sft.py" --config "$CONFIGS/decoder-$config_mode-selection.json"; assert_finite "$selection/standard_training_complete.json"; mapfile -t steps < <("$PYTHON" - "$selection/standard_training_complete.json" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1])); print(*p["selection_candidate_steps"],sep="\n")
 PY

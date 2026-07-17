@@ -17,7 +17,8 @@ The launcher uses maintained project entry points only:
    frozen validation evaluation.
 
 It runs one stage at a time and refuses to launch when `nvidia-smi` reports
-active compute processes. It never terminates other processes. All selection
+an active compute process on a **selected** GPU. Occupancy on unselected GPUs
+does not block the run, and it never terminates another process. All selection
 uses only the prepared training/source-development partitions; the fixed
 validation hash is required only for final evaluation.
 
