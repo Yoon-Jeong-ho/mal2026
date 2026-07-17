@@ -18,6 +18,53 @@ def row() -> RestrictedRow:
 
 
 class StandardDecoderStackTests(unittest.TestCase):
+    def test_vllm_entrypoint_import_is_safe_for_spawned_workers(self):
+        """Importing the CLI module must not start the heavyweight evaluator."""
+        import importlib.util
+        import sys
+        import types
+        from pathlib import Path
+
+        calls = []
+        fake_runtime = types.ModuleType("mal2026.standard_decoder_vllm")
+
+        class FakeConfig:
+            @classmethod
+            def from_json(cls, path):
+                calls.append(("config", path))
+                return "parsed-config"
+
+        def fake_evaluate(config):
+            calls.append(("evaluate", config))
+
+        fake_runtime.VLLMEvalConfig = FakeConfig
+        fake_runtime.run_vllm_evaluation = fake_evaluate
+        original_runtime = sys.modules.get("mal2026.standard_decoder_vllm")
+        module_name = "mal2026_test_vllm_entrypoint"
+        try:
+            sys.modules["mal2026.standard_decoder_vllm"] = fake_runtime
+            spec = importlib.util.spec_from_file_location(
+                module_name, Path("scripts/evaluate_standard_decoder_vllm.py")
+            )
+            self.assertIsNotNone(spec)
+            self.assertIsNotNone(spec.loader)
+            entrypoint = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = entrypoint
+            spec.loader.exec_module(entrypoint)
+            self.assertEqual([], calls, "module import must not invoke vLLM")
+
+            entrypoint.main(["--config", "/tmp/aggregate-only-config.json"])
+            self.assertEqual(
+                [("config", Path("/tmp/aggregate-only-config.json")), ("evaluate", "parsed-config")],
+                calls,
+            )
+        finally:
+            sys.modules.pop(module_name, None)
+            if original_runtime is None:
+                sys.modules.pop("mal2026.standard_decoder_vllm", None)
+            else:
+                sys.modules["mal2026.standard_decoder_vllm"] = original_runtime
+
     def test_direct_is_exact_and_no_prose_fallback(self):
         target = render_scores(row().score)
         self.assertEqual('{"content":1.00,"organization":2.00,"expression":3.00,"average":4.00}', target)
