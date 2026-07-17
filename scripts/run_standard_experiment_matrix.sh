@@ -295,6 +295,39 @@ else
   done
   mkdir -p "$CONFIGS" "$LOGS"
 fi
+if [[ "$RESUME_MODE" == true && "$DIRECT_EVALUATION_CONTINUATION_MODE" == false ]]; then
+  recovery_metadata="$($PYTHON - "$RUNTIME_ROOT/matrix_manifest.json" <<'PY'
+import json, sys
+from pathlib import Path
+
+try:
+    manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"cannot inspect resume recovery manifest: {exc}")
+recovery = manifest.get("continuation") if isinstance(manifest, dict) else None
+if not isinstance(recovery, dict) or recovery.get("kind") != "bounded_direct_evaluation_refit_recovery":
+    raise SystemExit(0)
+source = recovery.get("direct_evaluation_runtime")
+parent = recovery.get("parent_selection_run")
+if not isinstance(source, str) or not source.startswith("/") or not isinstance(parent, str) or not parent.startswith("/"):
+    raise SystemExit("resume recovery manifest has malformed source lineage paths")
+print(source)
+print(Path(source).name)
+print(parent)
+PY
+  )"
+  if [[ -n "$recovery_metadata" ]]; then
+    mapfile -t recovery_fields <<< "$recovery_metadata"
+    [[ ${#recovery_fields[@]} -eq 3 ]] || { echo "resume recovery manifest lineage is incomplete" >&2; exit 2; }
+    DIRECT_EVALUATION_RUNTIME="${recovery_fields[0]}"
+    DIRECT_EVALUATION_PREFIX="${recovery_fields[1]}"
+    DIRECT_SELECTION="${recovery_fields[2]}"
+    [[ "$(dirname "$DIRECT_EVALUATION_RUNTIME")" == "$ROOT/outputs/experiment-matrix" && "$DIRECT_EVALUATION_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ ]] || {
+      echo "resume recovery source runtime is not canonical" >&2; exit 2;
+    }
+    DIRECT_EVALUATION_CONTINUATION_MODE=true
+  fi
+fi
 # Map selected indices to UUIDs immediately before each process stage. Other
 # users may legitimately occupy unselected GPUs, but a selected GPU is never
 # shared or terminated. Returning rather than exiting lets run_step ledger the
@@ -790,6 +823,9 @@ else:
     for key, value in required.items():
         if manifest.get(key) != value:
             raise SystemExit(f"resume immutable manifest mismatch for {key}: refusing changed config/model/data/Git input")
+    if os.environ["DIRECT_EVALUATION_CONTINUATION_MODE"] == "true":
+        if manifest.get("schema_version") != 4 or manifest.get("continuation") != continuation:
+            raise SystemExit("resume recovery immutable lineage mismatch: refusing changed source evidence")
     if "prepared_manifest_sha256" in manifest and manifest["prepared_manifest_sha256"] != sha256(Path(os.environ["MANIFEST"])):
         raise SystemExit("resume prepared manifest checksum changed: refusing changed data input")
     if "nv_review_sha256" in manifest and manifest["nv_review_sha256"] != sha256(Path(os.environ["NV_REVIEW_JSON"])):

@@ -71,6 +71,132 @@ class StandardExperimentMatrixShellTests(unittest.TestCase):
             second = subprocess.run([str(harness)], cwd=ROOT, text=True, capture_output=True, env=env)
             self.assertEqual(0, second.returncode, second.stderr)
 
+    def _make_valid_direct_evaluation_continuation(self, fixture: Path) -> dict[str, object]:
+        """Create a minimal, fully valid cont4-shaped source without GPUs."""
+        import hashlib
+        import uuid
+
+        def digest(path: Path) -> str:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+
+        for name in ("qwen", "qwen3", "nv"):
+            (fixture / name).mkdir()
+        manifest_input = fixture / "manifest.json"
+        manifest_input.write_text("{}", encoding="utf-8")
+        review = fixture / "review.json"
+        review.write_text(json.dumps({
+            "model_id": "nvidia/NV-Embed-v2", "revision": "3fa59658547db50a1e8e3346cf057fd0c77ed6ef",
+            "license_acknowledged": True, "use_case": "research_noncommercial", "reviewer": "test",
+            "outcome": "approved", "reviewed_files": {"modeling_nvembed.py": "0" * 64},
+        }), encoding="utf-8")
+        parent_prefix = "valid-direct-recovery-parent-" + uuid.uuid4().hex
+        continuation_prefix = "valid-direct-recovery-cont4-" + uuid.uuid4().hex
+        parent = ROOT / "outputs" / "standard-runs" / f"{parent_prefix}-decoder-direct-selection"
+        parent_runtime = ROOT / "outputs" / "experiment-matrix" / parent_prefix
+        continuation_runtime = ROOT / "outputs" / "experiment-matrix" / continuation_prefix
+        checkpoint = parent / "checkpoint-1"
+        config = {
+            "run_id": parent.name, "phase": "selection", "mode": "direct",
+            "model_path": str(fixture / "qwen"), "tokenizer_path": str(fixture / "qwen"),
+            "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+            "tokenizer_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+            "prepared_manifest": str(manifest_input), "output_dir": str(parent), "seed": 2026,
+            "max_length": 2048, "learning_rate": 2e-5, "num_train_epochs": 12.0,
+            "per_device_train_batch_size": 1, "per_device_eval_batch_size": 1,
+            "gradient_accumulation_steps": 16, "eval_steps": 100, "save_steps": 100,
+            "logging_steps": 5, "early_stopping_patience": 4, "lora_r": 32, "lora_alpha": 64,
+            "lora_dropout": 0.05, "selection_summary_path": None, "selected_global_step": None,
+            "wandb_project": "test-project", "wandb_entity": None,
+        }
+        (parent_runtime / "configs").mkdir(parents=True)
+        parent.mkdir(parents=True)
+        original_config = parent_runtime / "configs" / "decoder-direct-selection.json"
+        original_config.write_text(json.dumps(config), encoding="utf-8")
+        completion = parent / "standard_training_complete.json"
+        completion.write_text(json.dumps({
+            "status": "completed", "phase": "selection", "mode": "direct", "run_id": parent.name,
+            "global_step": 1, "best_metric": 0.2, "train_metrics": {"train_loss": 0.2},
+            "selection_candidate_steps": [1], "config": config,
+        }), encoding="utf-8")
+        for adapter in (checkpoint, parent / "adapter"):
+            adapter.mkdir(parents=True, exist_ok=True)
+            (adapter / "adapter_config.json").write_text('{"r": 32}\n', encoding="utf-8")
+            (adapter / "adapter_model.safetensors").write_bytes(b"adapter")
+        (continuation_runtime / "configs").mkdir(parents=True)
+        (continuation_runtime / "logs").mkdir()
+        selection_names = (
+            "decoder-direct-selection.json", "decoder-human-feedback-selection.json",
+            "encoder-qwen3-selection.json", "encoder-nvembed-selection.json",
+        )
+        for name in selection_names:
+            payload = config if name == "decoder-direct-selection.json" else {}
+            (continuation_runtime / "configs" / name).write_text(json.dumps(payload), encoding="utf-8")
+        name = f"{continuation_prefix}-decoder-direct-dev-step-1"
+        output = ROOT / "outputs" / "standard-evals" / name
+        expected_eval_config = {
+            "run_id": name, "mode": "direct", "model_path": str(fixture / "qwen"),
+            "model_revision": config["model_revision"], "adapter_path": str(checkpoint),
+            "source": "selection_dev", "prepared_manifest": str(manifest_input), "validation_sha256": "",
+            "output_dir": str(output), "tensor_parallel_size": 4, "max_model_len": 2048,
+            "max_new_tokens": 256, "gpu_memory_utilization": 0.9, "enforce_eager": True,
+            "disable_flashinfer_sampler": True, "max_lora_rank": 32,
+            "wandb_project": "test-project", "wandb_entity": None,
+        }
+        (continuation_runtime / "configs" / f"{name}.json").write_text(json.dumps(expected_eval_config), encoding="utf-8")
+        output.mkdir(parents=True)
+        primary = 0.4
+        (output / "aggregate_metrics.json").write_text(json.dumps({
+            "status": "completed", "run_id": name, "mode": "direct", "source": "selection_dev",
+            "model_revision": config["model_revision"], "adapter_path": str(checkpoint.resolve()),
+            "adapter_global_step": 1, "config": expected_eval_config,
+            "metrics": {"primary_macro_mae": primary},
+        }), encoding="utf-8")
+        selected = parent / "selected_checkpoint.json"
+        candidate = {"global_step": 1, "primary_macro_mae": primary, "evaluation_metrics_path": str(output / "aggregate_metrics.json")}
+        selected.write_text(json.dumps({
+            "status": "completed", "phase": "selection", "selection_run_id": parent.name, "mode": "direct",
+            "model_revision": config["model_revision"], "tokenizer_revision": config["tokenizer_revision"],
+            "selected_global_step": 1, "selected_primary_macro_mae": primary, "candidates": [candidate],
+        }), encoding="utf-8")
+        (continuation_runtime / "matrix_manifest.json").write_text(json.dumps({
+            "schema_version": 3, "status": "started", "run_prefix": continuation_prefix,
+            "git_sha": "4c6ed913d755c78ee2a3dabbc02c4cccc9ed0c99",
+            "prepared_manifest": str(manifest_input), "prepared_manifest_sha256": digest(manifest_input),
+            "nv_review_sha256": digest(review), "validation_sha256": HASH, "cuda_visible_devices": "0,1,2,3",
+            "num_gpus": 4, "privacy": "aggregate_only_no_restricted_rows_or_credentials",
+            "selection_configs": {name: digest(continuation_runtime / "configs" / name) for name in selection_names},
+            "continuation": {
+                "kind": "bounded_decoder_direct_selection_reuse",
+                "current_git_sha": "4c6ed913d755c78ee2a3dabbc02c4cccc9ed0c99",
+                "parent_selection_run": str(parent), "parent_runtime_root": str(parent_runtime),
+                "parent_artifacts": {
+                    "selection_config_path": str(original_config), "selection_config_sha256": digest(original_config),
+                    "completion_path": str(completion), "completion_sha256": digest(completion),
+                    "candidate_checkpoints": [1], "candidate_adapter_config_sha256": {"1": digest(checkpoint / "adapter_config.json")},
+                    "final_adapter_config_sha256": digest(parent / "adapter" / "adapter_config.json"),
+                },
+            },
+        }), encoding="utf-8")
+        (continuation_runtime / "matrix_ledger.jsonl").write_text("\n".join(
+            json.dumps({"step": step, "status": status})
+            for step, status in (("decoder-direct-dev-step-1", "started"), ("decoder-direct-dev-step-1", "completed"),
+                                 ("decoder-direct-select-checkpoint", "started"), ("decoder-direct-select-checkpoint", "completed"))
+        ) + "\n", encoding="utf-8")
+        return {
+            "manifest": manifest_input, "review": review, "parent": parent, "parent_runtime": parent_runtime,
+            "continuation_runtime": continuation_runtime, "continuation_prefix": continuation_prefix,
+            "source_metrics": output, "config": config,
+        }
+
+    def _recovery_command(self, fixture: Path, source_runtime: Path, new_runtime: Path, prefix: str) -> list[str]:
+        return [
+            str(SCRIPT), "--continue-from-direct-evaluation-runtime", str(source_runtime),
+            "--runtime-root", str(new_runtime), "--run-prefix", prefix,
+            "--prepared-manifest", str(fixture / "manifest.json"), "--validation-sha256", HASH,
+            "--qwen-model", str(fixture / "qwen"), "--qwen3-model", str(fixture / "qwen3"),
+            "--nv-model", str(fixture / "nv"), "--nv-review-json", str(fixture / "review.json"),
+        ]
+
     def test_direct_evaluation_recovery_rejects_invalid_metrics_before_gpu_preflight(self) -> None:
         """A cont4-shaped runtime with corrupt aggregate evidence must not reach GPUs."""
         import hashlib
@@ -203,6 +329,118 @@ class StandardExperimentMatrixShellTests(unittest.TestCase):
                 self.assertFalse(nvidia_calls.exists(), "invalid recovery evidence must fail before GPU preflight")
             finally:
                 for path in (parent, parent_runtime, continuation_runtime, new_runtime, ROOT / "outputs" / "standard-evals" / f"{continuation_prefix}-decoder-direct-dev-step-1"):
+                    shutil.rmtree(path, ignore_errors=True)
+
+    def test_direct_evaluation_recovery_validates_source_and_writes_refit_before_mock_gpu_refusal(self) -> None:
+        """A valid cont4-shaped source reaches only the mocked direct-refit preflight."""
+        import os
+        import shutil
+        import uuid
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            context = self._make_valid_direct_evaluation_continuation(fixture)
+            prefix = "valid-direct-recovery-new-" + uuid.uuid4().hex
+            runtime = ROOT / "outputs" / "experiment-matrix" / prefix
+            refit = ROOT / "outputs" / "standard-runs" / f"{prefix}-decoder-direct-refit"
+            nvidia_calls = fixture / "nvidia-calls"
+            nvidia = fixture / "nvidia-smi"
+            nvidia.write_text("\n".join([
+                "#!/bin/sh", f"printf x > {nvidia_calls}", "case \"$1\" in",
+                "  --query-gpu=*) printf '0, UUID-0\\n1, UUID-1\\n2, UUID-2\\n3, UUID-3\\n' ;;",
+                "  --query-compute-apps=*) printf '99, UUID-0\\n' ;;", "esac", "",
+            ]), encoding="utf-8")
+            torchrun_called = fixture / "torchrun-called"
+            torchrun = fixture / "torchrun"
+            torchrun.write_text(f"#!/bin/sh\nprintf x > {torchrun_called}\nexit 99\n", encoding="utf-8")
+            nvidia.chmod(0o755); torchrun.chmod(0o755)
+            source_manifest = Path(context["continuation_runtime"]) / "matrix_manifest.json"
+            source_ledger = Path(context["continuation_runtime"]) / "matrix_ledger.jsonl"
+            manifest_before, ledger_before = source_manifest.read_bytes(), source_ledger.read_bytes()
+            try:
+                completed = subprocess.run(
+                    self._recovery_command(fixture, Path(context["continuation_runtime"]), runtime, prefix),
+                    cwd=ROOT, text=True, capture_output=True,
+                    env=dict(os.environ, MAL2026_NVIDIA_SMI=str(nvidia), MAL2026_TORCHRUN=str(torchrun), MAL2026_PYTHON=sys.executable),
+                )
+                self.assertEqual(1, completed.returncode)
+                self.assertTrue(nvidia_calls.is_file())
+                self.assertFalse(torchrun_called.exists(), "busy mock GPU must prevent torchrun")
+                refit_config = json.loads((runtime / "configs" / "decoder-direct-refit.json").read_text())
+                self.assertEqual(1, refit_config["selected_global_step"])
+                self.assertEqual("refit", refit_config["phase"])
+                manifest = json.loads((runtime / "matrix_manifest.json").read_text())
+                self.assertEqual(4, manifest["schema_version"])
+                self.assertEqual("bounded_direct_evaluation_refit_recovery", manifest["continuation"]["kind"])
+                entries = [json.loads(line) for line in (runtime / "matrix_ledger.jsonl").read_text().splitlines()]
+                self.assertEqual(["reused_verified_parent"], [entry["status"] for entry in entries if entry["step"] == "decoder-direct-selection"])
+                self.assertEqual(["reused_verified_direct_evaluation"], [entry["status"] for entry in entries if entry["step"] == "decoder-direct-dev-step-1"])
+                self.assertEqual(["reused_verified_direct_evaluation"], [entry["status"] for entry in entries if entry["step"] == "decoder-direct-select-checkpoint"])
+                self.assertEqual(["started", "failed"], [entry["status"] for entry in entries if entry["step"] == "decoder-direct-refit"])
+                self.assertEqual(manifest_before, source_manifest.read_bytes())
+                self.assertEqual(ledger_before, source_ledger.read_bytes())
+            finally:
+                for path in (Path(context["parent"]), Path(context["parent_runtime"]), Path(context["continuation_runtime"]), runtime, Path(context["source_metrics"]), refit):
+                    shutil.rmtree(path, ignore_errors=True)
+
+    def test_recovery_resume_skips_completed_direct_refit_after_downstream_failure(self) -> None:
+        """Recovery resume derives its immutable source lineage and never reruns refit."""
+        import os
+        import shutil
+        import uuid
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            context = self._make_valid_direct_evaluation_continuation(fixture)
+            prefix = "resume-direct-recovery-" + uuid.uuid4().hex
+            runtime = ROOT / "outputs" / "experiment-matrix" / prefix
+            refit = ROOT / "outputs" / "standard-runs" / f"{prefix}-decoder-direct-refit"
+            preflight_count = fixture / "preflight-count"
+            nvidia = fixture / "nvidia-smi"
+            nvidia.write_text("\n".join([
+                "#!/bin/sh", "case \"$1\" in",
+                "  --query-gpu=*) printf '0, UUID-0\\n1, UUID-1\\n2, UUID-2\\n3, UUID-3\\n' ;;",
+                "  --query-compute-apps=*)",
+                f"    n=$(cat {preflight_count} 2>/dev/null || echo 0); n=$((n + 1)); printf '%s' \"$n\" > {preflight_count}",
+                "    if [ \"$n\" -ge 2 ]; then printf '99, UUID-0\\n'; fi ;;", "esac", "",
+            ]), encoding="utf-8")
+            invoked = fixture / "torchrun-invocations"
+            torchrun = fixture / "torchrun"
+            torchrun.write_text("\n".join([
+                "#!/bin/sh", f"printf x >> {invoked}",
+                "while [ \"$#\" -gt 0 ]; do if [ \"$1\" = --config ]; then config=\"$2\"; break; fi; shift; done",
+                "out=$(sed -n 's/.*\"output_dir\": \"\\([^\"]*\\)\".*/\\1/p' \"$config\")",
+                "selected=$(sed -n 's/.*\"selected_global_step\": \\([0-9][0-9]*\\).*/\\1/p' \"$config\")",
+                "summary=$(sed -n 's/.*\"selection_summary_path\": \"\\([^\"]*\\)\".*/\\1/p' \"$config\")",
+                "mkdir -p \"$out/adapter\"", "printf '{\"r\":32}\\n' > \"$out/adapter/adapter_config.json\"",
+                "printf '{\"status\":\"completed\",\"run_id\":\"mock-refit\",\"phase\":\"refit\",\"global_step\":1,\"selected_global_step\":%s,\"selection_summary_path\":\"%s\",\"train_metrics\":{\"train_loss\":0.2}}\\n' \"$selected\" \"$summary\" > \"$out/standard_training_complete.json\"", "",
+            ]), encoding="utf-8")
+            nvidia.chmod(0o755); torchrun.chmod(0o755)
+            env = dict(os.environ, MAL2026_NVIDIA_SMI=str(nvidia), MAL2026_TORCHRUN=str(torchrun), MAL2026_PYTHON=sys.executable)
+            try:
+                initial = subprocess.run(
+                    self._recovery_command(fixture, Path(context["continuation_runtime"]), runtime, prefix),
+                    cwd=ROOT, text=True, capture_output=True, env=env,
+                )
+                self.assertEqual(1, initial.returncode, initial.stderr)
+                self.assertEqual("x", invoked.read_text(encoding="utf-8"))
+                self.assertTrue((refit / "standard_training_complete.json").is_file())
+                resume_command = [
+                    str(SCRIPT), "--runtime-root", str(runtime), "--run-prefix", prefix,
+                    "--resume-run-prefix", prefix, "--prepared-manifest", str(fixture / "manifest.json"),
+                    "--validation-sha256", HASH, "--qwen-model", str(fixture / "qwen"),
+                    "--qwen3-model", str(fixture / "qwen3"), "--nv-model", str(fixture / "nv"),
+                    "--nv-review-json", str(fixture / "review.json"),
+                ]
+                resumed = subprocess.run(resume_command, cwd=ROOT, text=True, capture_output=True, env=env)
+                self.assertEqual(1, resumed.returncode, resumed.stderr)
+                self.assertEqual("x", invoked.read_text(encoding="utf-8"), "completed direct refit must not rerun")
+                entries = [json.loads(line) for line in (runtime / "matrix_ledger.jsonl").read_text().splitlines()]
+                self.assertEqual(["started", "completed", "skipped_verified"], [entry["status"] for entry in entries if entry["step"] == "decoder-direct-refit"])
+                self.assertEqual(["started", "failed", "started", "failed"], [entry["status"] for entry in entries if entry["step"] == "decoder-direct-final"])
+                self.assertTrue((runtime / "resume_lineage.jsonl").is_file())
+            finally:
+                for path in (Path(context["parent"]), Path(context["parent_runtime"]), Path(context["continuation_runtime"]), runtime, Path(context["source_metrics"]), refit):
                     shutil.rmtree(path, ignore_errors=True)
 
     def test_dry_run_is_side_effect_free(self) -> None:
