@@ -99,16 +99,22 @@ def run_standard_encoder_evaluation(config: StandardEncoderEvalConfig) -> dict[s
     model = build_encoder_regressor(spec)
     missing, unexpected = load_model(model, str(state_path), strict=False)
     _need(not missing and not unexpected, "saved standard Trainer model state does not match the encoder architecture")
+    # Reserve the preflight-validated output before constructing Trainer.  Recent
+    # Transformers versions create ``output_dir`` in ``TrainingArguments``;
+    # leaving directory creation until after prediction would therefore turn a
+    # successful evaluation into a FileExistsError.  ``exist_ok=False`` keeps
+    # the no-overwrite contract fail-closed even if another process races this
+    # evaluator after validation.
+    output = Path(config.output_dir)
+    output.mkdir(parents=True, exist_ok=False)
     args = TrainingArguments(
-        output_dir=str(Path(config.output_dir)), do_train=False, do_eval=False, per_device_eval_batch_size=config.per_device_eval_batch_size,
+        output_dir=str(output), do_train=False, do_eval=False, per_device_eval_batch_size=config.per_device_eval_batch_size,
         bf16=True, tf32=True, report_to=[], remove_unused_columns=False,
     )
     trainer = Trainer(model=model, args=args, data_collator=encoder_collator(tokenizer), compute_metrics=_metric_function)
     result = trainer.predict(build_encoder_dataset(rows, tokenizer, 2048), metric_key_prefix="eval")
     metrics = {key: float(value) for key, value in result.metrics.items() if isinstance(value, (int, float))}
     _need("eval_primary_macro_mae" in metrics, "Trainer prediction did not return macro MAE")
-    output = Path(config.output_dir)
-    output.mkdir(parents=True, exist_ok=False)
     payload = {
         "status": "completed", "run_id": config.run_id, "source": config.source,
         "training_run_id": metadata.get("run_id"), "model_state_sha256": _sha256(state_path),

@@ -6,7 +6,9 @@ import json
 import math
 from pathlib import Path
 import tempfile
+import types
 import unittest
+from unittest.mock import patch
 
 from mal2026.standard_decoder_data import FEEDBACK_FIELDS, RestrictedRow
 from mal2026.standard_encoder_data import encoder_input
@@ -252,6 +254,96 @@ class StandardEncoderMetricHealthTests(unittest.TestCase):
         finalizer = source[source.index("def _rank_zero_finalize"):source.index("def _broadcast_rank_zero_finalization")]
         self.assertLess(finalizer.index("_validate_encoder_metric_health"), finalizer.index("trainer.save_model"))
         self.assertLess(finalizer.index("_validate_encoder_metric_health"), finalizer.index("_write_complete(output, payload)"))
+
+
+class StandardEncoderEvaluationOutputTests(unittest.TestCase):
+    def test_output_is_reserved_once_before_training_arguments(self):
+        """A Trainer-created output directory cannot break post-prediction publication."""
+        from mal2026 import standard_encoder_eval as evaluation
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            eval_root = root / "standard-encoder-evals"
+            eval_root.mkdir()
+            output = eval_root / "eval-run"
+            manifest = root / "prepared-manifest.json"
+            manifest.write_text("{}", encoding="utf-8")
+            state = root / "model.safetensors"
+            state.write_bytes(b"safe-test-state")
+            config = evaluation.StandardEncoderEvalConfig(
+                run_id="eval-run", source="selection_dev", training_metadata_path=str(root / "training" / "standard_encoder_training_complete.json"),
+                prepared_manifest=str(manifest), validation_sha256="", output_dir=str(output),
+            )
+            events: list[tuple[str, bool]] = []
+            output_mkdir_calls: list[tuple[bool, bool]] = []
+            original_mkdir = Path.mkdir
+
+            def observing_mkdir(path: Path, *, mode=0o777, parents=False, exist_ok=False):
+                if path == output:
+                    output_mkdir_calls.append((parents, exist_ok))
+                return original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+            class FakeTrainingArguments:
+                def __init__(self, *, output_dir, **_kwargs):
+                    events.append(("training_arguments", Path(output_dir).is_dir()))
+                    self.output_dir = output_dir
+
+            class FakeTrainer:
+                def __init__(self, **_kwargs):
+                    events.append(("trainer", output.is_dir()))
+
+                def predict(self, _dataset, *, metric_key_prefix):
+                    if metric_key_prefix != "eval":
+                        raise AssertionError("evaluation must retain its aggregate metric prefix")
+                    events.append(("predict", output.is_dir()))
+                    return types.SimpleNamespace(metrics={"eval_primary_macro_mae": 0.25})
+
+            fake_transformers = types.ModuleType("transformers")
+            fake_transformers.Trainer = FakeTrainer
+            fake_transformers.TrainingArguments = FakeTrainingArguments
+            fake_safetensors = types.ModuleType("safetensors")
+            fake_safetensors_torch = types.ModuleType("safetensors.torch")
+            fake_safetensors_torch.load_model = lambda *_args, **_kwargs: ([], [])
+            fake_safetensors.torch = fake_safetensors_torch
+            fake_wandb = types.ModuleType("wandb")
+
+            class FakeWandbRun:
+                def log(self, _metrics):
+                    events.append(("wandb_log", output.is_dir()))
+
+                def finish(self):
+                    events.append(("wandb_finish", output.is_dir()))
+
+            def init_wandb(**_kwargs):
+                events.append(("wandb_init", output.is_dir()))
+                return FakeWandbRun()
+
+            fake_wandb.init = init_wandb
+
+            with (
+                patch.object(evaluation, "EVAL_ROOT", eval_root),
+                patch.object(evaluation, "DEFAULT_MANIFEST", manifest),
+                patch.object(evaluation, "_load_training_metadata", return_value=({"run_id": "training-run"}, object(), state)),
+                patch.object(evaluation, "load_prepared_split", return_value=[]),
+                patch.object(evaluation, "build_encoder_tokenizer", return_value=object()),
+                patch.object(evaluation, "build_encoder_regressor", return_value=object()),
+                patch.object(evaluation, "encoder_collator", return_value=object()),
+                patch.object(evaluation, "build_encoder_dataset", return_value=[]),
+                patch.object(Path, "mkdir", new=observing_mkdir),
+                patch.dict("sys.modules", {"transformers": fake_transformers, "safetensors": fake_safetensors, "safetensors.torch": fake_safetensors_torch, "wandb": fake_wandb}),
+            ):
+                payload = evaluation.run_standard_encoder_evaluation(config)
+
+            self.assertEqual([(True, False)], output_mkdir_calls)
+            self.assertEqual(
+                [
+                    ("training_arguments", True), ("trainer", True), ("predict", True),
+                    ("wandb_init", True), ("wandb_log", True), ("wandb_finish", True),
+                ],
+                events,
+            )
+            self.assertEqual(0.25, payload["metrics"]["eval_primary_macro_mae"])
+            self.assertEqual({"aggregate_metrics.json"}, {path.name for path in output.iterdir()})
 
 
 if __name__ == "__main__":
