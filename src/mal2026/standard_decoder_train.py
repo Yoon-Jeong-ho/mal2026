@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -147,6 +148,54 @@ def _verify_refit_selection(config: StandardSFTConfig) -> dict[str, Any]:
     return summary
 
 
+def _finite(value: Any, label: str) -> float:
+    if isinstance(value, bool):
+        raise StandardDecoderContractError(f"{label} must be a finite number")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise StandardDecoderContractError(f"{label} must be a finite number") from exc
+    if not math.isfinite(parsed):
+        raise StandardDecoderContractError(f"{label} must be finite")
+    return parsed
+
+
+def _observed_metrics(log_history: Any, key: str) -> list[float]:
+    if not isinstance(log_history, list):
+        raise StandardDecoderContractError("Trainer log history must be a list")
+    values: list[float] = []
+    for index, event in enumerate(log_history):
+        if not isinstance(event, dict):
+            raise StandardDecoderContractError("Trainer log history event must be an object")
+        if key in event:
+            values.append(_finite(event[key], f"Trainer log_history[{index}].{key}"))
+    return values
+
+
+def _validate_trainer_health(phase: str, trainer_state: Any, train_metrics: Any) -> None:
+    """Fail closed on non-finite Trainer metrics before any adapter is exported.
+
+    This reads standard Trainer state only; it neither implements an optimizer
+    nor alters the DDP/SFT lifecycle.  `grad_norm` is validated whenever the
+    Trainer recorded it, but is not required because some maintained backends
+    do not emit it.
+    """
+    if phase not in {"selection", "refit"} or not isinstance(train_metrics, dict):
+        raise StandardDecoderContractError("invalid Trainer health validation inputs")
+    _finite(train_metrics.get("train_loss"), "Trainer train_loss")
+    history = getattr(trainer_state, "log_history", None)
+    # `train_loss` is a mandatory Trainer.train summary. Periodic `loss` and
+    # `grad_norm` logs are backend/cadence-dependent, so validate every value
+    # that is observed without falsely rejecting a short successful refit.
+    _observed_metrics(history, "loss")
+    _observed_metrics(history, "grad_norm")
+    if phase == "selection":
+        eval_losses = _observed_metrics(history, "eval_loss")
+        if not eval_losses:
+            raise StandardDecoderContractError("selection Trainer did not record an observed eval loss")
+        _finite(getattr(trainer_state, "best_metric", None), "Trainer best_metric")
+
+
 def _prompt_completion_dataset(rows, mode: str):
     """TRL conversational prompt-completion form, independent of template masks.
 
@@ -219,7 +268,11 @@ def run_sft(config: StandardSFTConfig) -> None:
         eval_dataset=_prompt_completion_dataset(eval_rows, config.mode) if eval_rows else None,
         processing_class=tokenizer, peft_config=peft_config, callbacks=callbacks,
     )
-    trainer.train()
+    train_result = trainer.train()
+    # Abort before writing adapter/completion provenance if maintained Trainer
+    # telemetry shows numerical corruption. Existing checkpoints are preserved
+    # for inspection but cannot be mistaken for a completed artifact.
+    _validate_trainer_health(config.phase, trainer.state, train_result.metrics)
     trainer.save_model(str(Path(config.output_dir) / "adapter"))
     tokenizer.save_pretrained(str(Path(config.output_dir) / "adapter"))
     # Only aggregate/provenance metadata. Do not write row predictions, source text, or outputs.
@@ -233,6 +286,7 @@ def run_sft(config: StandardSFTConfig) -> None:
         "global_step": int(trainer.state.global_step), "best_metric": trainer.state.best_metric,
         "model_revision": config.model_revision, "tokenizer_revision": config.tokenizer_revision,
         "train_records": len(train_rows), "eval_records": len(eval_rows or []),
+        "train_metrics": {key: float(value) for key, value in train_result.metrics.items() if isinstance(value, (int, float))},
         "fallback_mean": score_mean(train_rows), "selection_candidate_steps": checkpoint_steps if config.phase == "selection" else [],
         "selection_lifecycle": "Trainer eval_loss early-stopping/checkpointing; external vLLM source-dev macro-MAE selects refit step" if config.phase == "selection" else "refit uses selected_global_step from aggregate vLLM summary",
         "selected_global_step": config.selected_global_step, "selection_summary_path": config.selection_summary_path,

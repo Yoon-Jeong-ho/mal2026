@@ -118,3 +118,28 @@ class StandardDecoderRefitProvenanceTests(unittest.TestCase):
                     module._verify_refit_selection(mismatched)
             finally:
                 module.ROOT = old_root
+
+class StandardDecoderHealthTests(unittest.TestCase):
+    class State:
+        def __init__(self, history, best_metric=None):
+            self.log_history = history
+            self.best_metric = best_metric
+
+    def test_selection_health_accepts_finite_standard_trainer_metrics(self):
+        from mal2026.standard_decoder_train import _validate_trainer_health
+        _validate_trainer_health("selection", self.State([
+            {"loss": 1.2, "grad_norm": 0.5}, {"eval_loss": 0.8},
+        ], best_metric=0.8), {"train_loss": 1.0})
+
+    def test_health_rejects_nonfinite_loss_grad_or_best_metric(self):
+        from mal2026.standard_decoder_train import _validate_trainer_health
+        cases = [
+            ("selection", self.State([{"loss": 1.0}, {"eval_loss": float("nan")}], 0.5), {"train_loss": 1.0}),
+            ("selection", self.State([{"loss": 1.0, "grad_norm": float("inf")}, {"eval_loss": 0.5}], 0.5), {"train_loss": 1.0}),
+            ("selection", self.State([{"loss": 1.0}, {"eval_loss": 0.5}], float("nan")), {"train_loss": 1.0}),
+            ("refit", self.State([{"loss": 1.0}], None), {"train_loss": float("inf")}),
+        ]
+        for phase, state, metrics in cases:
+            with self.subTest(phase=phase, metrics=metrics):
+                with self.assertRaises(StandardDecoderContractError):
+                    _validate_trainer_health(phase, state, metrics)
