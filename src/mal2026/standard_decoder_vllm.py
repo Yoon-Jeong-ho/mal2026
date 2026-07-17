@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 import math
+import os
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -17,6 +18,28 @@ from .standard_decoder_data import (
     load_frozen_validation, load_prepared_split, messages_for_generation,
     parse_decoder_scores, score_mean,
 )
+
+
+_FLASHINFER_SAMPLER_ENV = "VLLM_USE_FLASHINFER_SAMPLER"
+
+
+def _configure_flashinfer_sampler_environment(config: "VLLMEvalConfig") -> None:
+    """Disable the FlashInfer sampler before vLLM imports its sampling stack.
+
+    vLLM reads this environment variable while importing/initializing its
+    sampler implementation.  Keep the setting process-local and reject a
+    caller's incompatible choice rather than silently changing it.
+    """
+    if config.disable_flashinfer_sampler is not True:
+        raise StandardDecoderContractError(
+            "vLLM evaluator disable_flashinfer_sampler must be explicitly true"
+        )
+    caller_value = os.environ.get(_FLASHINFER_SAMPLER_ENV)
+    if caller_value is not None and caller_value != "0":
+        raise StandardDecoderContractError(
+            f"caller environment conflicts with required {_FLASHINFER_SAMPLER_ENV}=0"
+        )
+    os.environ[_FLASHINFER_SAMPLER_ENV] = "0"
 
 
 def _pearson(a: Sequence[float], b: Sequence[float]) -> float | None:
@@ -76,6 +99,9 @@ class VLLMEvalConfig:
     # bypasses TorchInductor/torch.compile and CUDA Graphs.  This avoids the
     # observed worker failure when the shared environment lacks `ninja`.
     enforce_eager: bool = True
+    # vLLM 0.25.1 still initializes FlashInfer's JIT sampler during warmup in
+    # eager mode.  Its documented native-sampler switch avoids that dependency.
+    disable_flashinfer_sampler: bool = True
     wandb_project: str = "mal2026-korean-writing-scoring"
     wandb_entity: str | None = None
 
@@ -91,6 +117,8 @@ class VLLMEvalConfig:
     def validate(self) -> int:
         if self.enforce_eager is not True:
             raise StandardDecoderContractError("vLLM evaluator enforce_eager must be explicitly true")
+        if self.disable_flashinfer_sampler is not True:
+            raise StandardDecoderContractError("vLLM evaluator disable_flashinfer_sampler must be explicitly true")
         if self.mode not in {"direct", "human_feedback"} or self.source not in {"selection_dev", "frozen_validation"}:
             raise StandardDecoderContractError("invalid vLLM mode or source")
         if Path(self.prepared_manifest).resolve() != DEFAULT_MANIFEST.resolve():
@@ -146,6 +174,7 @@ class VLLMEvalConfig:
 
 def run_vllm_evaluation(config: VLLMEvalConfig) -> dict[str, Any]:
     checkpoint_step = config.validate()
+    _configure_flashinfer_sampler_environment(config)
     rows = load_prepared_split("selection_dev", Path(config.prepared_manifest)) if config.source == "selection_dev" else load_frozen_validation(config.validation_sha256)
     fallback_rows = load_prepared_split("selection_train", Path(config.prepared_manifest))
     fallback = score_mean(fallback_rows)
@@ -185,7 +214,7 @@ def run_vllm_evaluation(config: VLLMEvalConfig) -> dict[str, Any]:
     # Explicit aggregate-only W&B event. No tables, samples, artifacts, or free text.
     try:
         import wandb
-        run = wandb.init(project=config.wandb_project, entity=config.wandb_entity, name=config.run_id, config={"mode": config.mode, "source": config.source, "model_revision": config.model_revision, "enforce_eager": config.enforce_eager})
+        run = wandb.init(project=config.wandb_project, entity=config.wandb_entity, name=config.run_id, config={"mode": config.mode, "source": config.source, "model_revision": config.model_revision, "enforce_eager": config.enforce_eager, "disable_flashinfer_sampler": config.disable_flashinfer_sampler})
         run.log({"eval/primary_macro_mae": metrics["primary_macro_mae"], "eval/parse_failure_rate": metrics["decoder_parse_failure_rate"], "eval/record_count": metrics["record_count"]})
         run.finish()
     except ImportError:

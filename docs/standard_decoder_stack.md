@@ -25,18 +25,29 @@ persisted. vLLM outputs are parsed in memory and invalid output receives the
 predeclared `selection_train` mean-score fallback. W&B receives aggregate
 metric scalars only, never tables, examples, prompts, output text, or artifacts.
 
-## vLLM eager compatibility contract
+## vLLM compatibility contract
 
-Every frozen decoder-evaluation config must set `"enforce_eager": true`; the
-evaluator rejects missing or false values. This is an explicit compatibility
-choice for the shared vLLM 0.25.1 environment after its TorchInductor worker
-failed because `ninja` is unavailable, and is not an automatic fallback. The
-official offline vLLM interface documents `LLM(..., enforce_eager=True)` as
-disabling the vLLM `torch.compile` integration and CUDA Graphs. That avoids the
-missing compiler dependency, but may reduce generation throughput because those
-optimizations are deliberately disabled. The field is persisted in the
-aggregate evaluator provenance and W&B run config. See the [official vLLM
-compile debugging guide](https://docs.vllm.ai/en/stable/design/debug_vllm_compile/).
+Every frozen decoder-evaluation config must set both `"enforce_eager": true`
+and `"disable_flashinfer_sampler": true`; the evaluator rejects missing or
+false values. These are two distinct, explicit compatibility choices for the
+shared vLLM 0.25.1 environment, not automatic fallbacks.
+
+`enforce_eager=True` disables vLLM's `torch.compile` integration and CUDA
+Graphs, as documented for the offline `LLM` interface. This was the initial
+compatibility setting after a TorchInductor worker required unavailable
+`ninja`, but it did **not** address the observed evaluation startup failure:
+vLLM warmup still initialized FlashInfer's sampler JIT and attempted to run
+`ninja`.
+
+Before importing vLLM, the evaluator sets the process-local documented switch
+`VLLM_USE_FLASHINFER_SAMPLER=0`, selecting vLLM's native sampler instead. An
+already-set caller value other than exactly `0` is a configuration conflict and
+is rejected; the evaluator never silently overwrites it. This avoids the
+FlashInfer JIT dependency, but native sampling and eager execution can both
+reduce decoding throughput. Both frozen fields are persisted in aggregate
+evaluator provenance and W&B run config. See the [official vLLM compile
+debugging guide](https://docs.vllm.ai/en/stable/design/debug_vllm_compile/) and
+the [vLLM environment-variable reference](https://docs.vllm.ai/en/stable/configuration/env_vars/).
 
 ## Commands
 

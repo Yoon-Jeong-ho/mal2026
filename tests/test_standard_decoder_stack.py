@@ -88,7 +88,7 @@ class StandardDecoderStackTests(unittest.TestCase):
         source = Path("src/mal2026/standard_decoder_train.py").read_text(encoding="utf-8")
         self.assertIn("ddp_find_unused_parameters=False", source)
 
-    def test_vllm_eager_contract_is_required_and_forwarded_to_llm(self):
+    def test_vllm_eager_and_flashinfer_contracts_are_required_and_forwarded(self):
         import json
         import tempfile
         from pathlib import Path
@@ -106,19 +106,68 @@ class StandardDecoderStackTests(unittest.TestCase):
         ).enforce_eager)
         with self.assertRaises(StandardDecoderContractError):
             config.validate()
+        flashinfer_config = VLLMEvalConfig(
+            run_id="flashinfer-contract", mode="direct", model_path="/model", model_revision="a" * 40,
+            adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
+            validation_sha256="", output_dir="/out", disable_flashinfer_sampler=False,
+        )
+        self.assertTrue(VLLMEvalConfig(
+            run_id="flashinfer-default", mode="direct", model_path="/model", model_revision="a" * 40,
+            adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
+            validation_sha256="", output_dir="/out",
+        ).disable_flashinfer_sampler)
+        with self.assertRaises(StandardDecoderContractError):
+            flashinfer_config.validate()
         with tempfile.TemporaryDirectory() as directory:
             false_path = Path(directory) / "false-eager.json"
             false_path.write_text(json.dumps({field: getattr(config, field) for field in config.__dataclass_fields__}), encoding="utf-8")
             with self.assertRaises(StandardDecoderContractError):
                 VLLMEvalConfig.from_json(false_path)
-            path = Path(directory) / "missing-eager.json"
-            path.write_text(json.dumps({}), encoding="utf-8")
+            false_flashinfer_path = Path(directory) / "false-flashinfer.json"
+            false_flashinfer_path.write_text(json.dumps({field: getattr(flashinfer_config, field) for field in flashinfer_config.__dataclass_fields__}), encoding="utf-8")
+            with self.assertRaises(StandardDecoderContractError):
+                VLLMEvalConfig.from_json(false_flashinfer_path)
+            path = Path(directory) / "missing-flashinfer.json"
+            missing_flashinfer = {field: getattr(VLLMEvalConfig(
+                run_id="missing-flashinfer", mode="direct", model_path="/model", model_revision="a" * 40,
+                adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
+                validation_sha256="", output_dir="/out",
+            ), field) for field in VLLMEvalConfig.__dataclass_fields__}
+            missing_flashinfer.pop("disable_flashinfer_sampler")
+            path.write_text(json.dumps(missing_flashinfer), encoding="utf-8")
             with self.assertRaises(StandardDecoderContractError):
                 VLLMEvalConfig.from_json(path)
         source = Path("src/mal2026/standard_decoder_vllm.py").read_text(encoding="utf-8")
         self.assertIn("enforce_eager=config.enforce_eager", source)
+        self.assertLess(source.index("_configure_flashinfer_sampler_environment(config)"), source.index("from vllm import LLM"))
         matrix = Path("scripts/run_standard_experiment_matrix.sh").read_text(encoding="utf-8")
         self.assertIn('"enforce_eager":True', matrix)
+        self.assertIn('"disable_flashinfer_sampler":True', matrix)
+
+    def test_vllm_flashinfer_environment_requires_native_sampler_before_import(self):
+        import os
+        from mal2026.standard_decoder_vllm import (
+            VLLMEvalConfig, _FLASHINFER_SAMPLER_ENV, _configure_flashinfer_sampler_environment,
+        )
+
+        config = VLLMEvalConfig(
+            run_id="flashinfer-env", mode="direct", model_path="/model", model_revision="a" * 40,
+            adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
+            validation_sha256="", output_dir="/out",
+        )
+        previous = os.environ.get(_FLASHINFER_SAMPLER_ENV)
+        try:
+            os.environ.pop(_FLASHINFER_SAMPLER_ENV, None)
+            _configure_flashinfer_sampler_environment(config)
+            self.assertEqual("0", os.environ[_FLASHINFER_SAMPLER_ENV])
+            os.environ[_FLASHINFER_SAMPLER_ENV] = "1"
+            with self.assertRaises(StandardDecoderContractError):
+                _configure_flashinfer_sampler_environment(config)
+        finally:
+            if previous is None:
+                os.environ.pop(_FLASHINFER_SAMPLER_ENV, None)
+            else:
+                os.environ[_FLASHINFER_SAMPLER_ENV] = previous
 
     def test_vllm_template_exactly_matches_the_frozen_config_schema(self):
         import json
@@ -128,6 +177,7 @@ class StandardDecoderStackTests(unittest.TestCase):
         template = json.loads(Path("configs/standard-decoder-vllm-eval.template.json").read_text(encoding="utf-8"))
         self.assertEqual(set(VLLMEvalConfig.__dataclass_fields__), set(template))
         self.assertIs(template["enforce_eager"], True)
+        self.assertIs(template["disable_flashinfer_sampler"], True)
 
     def test_aggregate_metrics_contains_no_row_text(self):
         target = row().score
