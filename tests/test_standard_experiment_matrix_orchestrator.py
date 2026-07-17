@@ -17,6 +17,194 @@ class StandardExperimentMatrixShellTests(unittest.TestCase):
     def test_shell_parses(self) -> None:
         subprocess.run(["bash", "-n", str(SCRIPT)], check=True, cwd=ROOT)
 
+    def test_decoder_refit_writer_executes_and_preserves_immutable_config(self) -> None:
+        """Execute the heredoc generator; ``bash -n`` cannot parse its Python."""
+        import os
+
+        source = SCRIPT.read_text(encoding="utf-8")
+        begin = "write_decoder_refit() {\n"
+        end = "\nwrite_decoder_eval()"
+        self.assertIn(begin, source)
+        self.assertIn(end, source)
+        writer = begin + source.split(begin, 1)[1].split(end, 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            configs = root / "configs"
+            configs.mkdir()
+            selection = root / "selection"
+            selection.mkdir()
+            refit = root / "refit"
+            base = {
+                "run_id": "selection", "phase": "selection", "mode": "direct",
+                "output_dir": str(selection), "eval_steps": 100, "save_steps": 100,
+                "selection_summary_path": None, "selected_global_step": None,
+                "wandb_project": "old-project", "wandb_entity": None,
+            }
+            (configs / "decoder-direct-selection.json").write_text(json.dumps(base), encoding="utf-8")
+            (selection / "selected_checkpoint.json").write_text(json.dumps({"selected_global_step": 600}), encoding="utf-8")
+            harness = root / "write-refit.sh"
+            harness.write_text(
+                "#!/usr/bin/env bash\nset -Eeuo pipefail\n" + writer
+                + "\nwrite_decoder_refit direct \"$PARENT_SELECTION\" \"$REFIT_DIR\"\n",
+                encoding="utf-8",
+            )
+            harness.chmod(0o755)
+            env = dict(
+                os.environ,
+                PYTHON=sys.executable,
+                CONFIGS=str(configs),
+                PARENT_SELECTION=str(selection),
+                REFIT_DIR=str(refit),
+                WANDB_PROJECT="new-project",
+                WANDB_ENTITY="new-entity",
+            )
+            first = subprocess.run([str(harness)], cwd=ROOT, text=True, capture_output=True, env=env)
+            self.assertEqual(0, first.returncode, first.stderr)
+            generated = json.loads((configs / "decoder-direct-refit.json").read_text(encoding="utf-8"))
+            self.assertEqual("refit", generated["run_id"])
+            self.assertEqual("refit", generated["phase"])
+            self.assertEqual(str(refit), generated["output_dir"])
+            self.assertEqual(600, generated["selected_global_step"])
+            self.assertEqual(str(selection / "selected_checkpoint.json"), generated["selection_summary_path"])
+            self.assertEqual("new-project", generated["wandb_project"])
+            self.assertEqual("new-entity", generated["wandb_entity"])
+            second = subprocess.run([str(harness)], cwd=ROOT, text=True, capture_output=True, env=env)
+            self.assertEqual(0, second.returncode, second.stderr)
+
+    def test_direct_evaluation_recovery_rejects_invalid_metrics_before_gpu_preflight(self) -> None:
+        """A cont4-shaped runtime with corrupt aggregate evidence must not reach GPUs."""
+        import hashlib
+        import os
+        import shutil
+        import uuid
+
+        def digest(path: Path) -> str:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = Path(directory)
+            for name in ("qwen", "qwen3", "nv"):
+                (fixture / name).mkdir()
+            manifest_input = fixture / "manifest.json"
+            manifest_input.write_text("{}", encoding="utf-8")
+            review = fixture / "review.json"
+            review.write_text(json.dumps({
+                "model_id": "nvidia/NV-Embed-v2", "revision": "3fa59658547db50a1e8e3346cf057fd0c77ed6ef",
+                "license_acknowledged": True, "use_case": "research_noncommercial", "reviewer": "test",
+                "outcome": "approved", "reviewed_files": {"modeling_nvembed.py": "0" * 64},
+            }), encoding="utf-8")
+            parent_prefix = "direct-recovery-parent-" + uuid.uuid4().hex
+            continuation_prefix = "direct-recovery-cont4-" + uuid.uuid4().hex
+            new_prefix = "direct-recovery-new-" + uuid.uuid4().hex
+            parent = ROOT / "outputs" / "standard-runs" / f"{parent_prefix}-decoder-direct-selection"
+            parent_runtime = ROOT / "outputs" / "experiment-matrix" / parent_prefix
+            continuation_runtime = ROOT / "outputs" / "experiment-matrix" / continuation_prefix
+            new_runtime = ROOT / "outputs" / "experiment-matrix" / new_prefix
+            checkpoint = parent / "checkpoint-1"
+            config = {
+                "run_id": parent.name, "phase": "selection", "mode": "direct",
+                "model_path": str(fixture / "qwen"), "tokenizer_path": str(fixture / "qwen"),
+                "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+                "tokenizer_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+                "prepared_manifest": str(manifest_input), "output_dir": str(parent), "seed": 2026,
+                "max_length": 2048, "learning_rate": 2e-5, "num_train_epochs": 12.0,
+                "per_device_train_batch_size": 1, "per_device_eval_batch_size": 1,
+                "gradient_accumulation_steps": 16, "eval_steps": 100, "save_steps": 100,
+                "logging_steps": 5, "early_stopping_patience": 4, "lora_r": 32, "lora_alpha": 64,
+                "lora_dropout": 0.05, "selection_summary_path": None, "selected_global_step": None,
+                "wandb_project": "test-project", "wandb_entity": None,
+            }
+            nvidia_calls = fixture / "nvidia-calls"
+            nvidia = fixture / "nvidia-smi"
+            nvidia.write_text(f"#!/bin/sh\nprintf x > {nvidia_calls}\nexit 99\n", encoding="utf-8")
+            torchrun = fixture / "torchrun"
+            torchrun.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+            nvidia.chmod(0o755); torchrun.chmod(0o755)
+            try:
+                (parent_runtime / "configs").mkdir(parents=True)
+                parent.mkdir(parents=True)
+                (parent_runtime / "configs" / "decoder-direct-selection.json").write_text(json.dumps(config), encoding="utf-8")
+                (parent / "standard_training_complete.json").write_text(json.dumps({
+                    "status": "completed", "phase": "selection", "mode": "direct", "run_id": parent.name,
+                    "global_step": 1, "selection_candidate_steps": [1], "config": config,
+                }), encoding="utf-8")
+                for adapter in (checkpoint, parent / "adapter"):
+                    adapter.mkdir(parents=True, exist_ok=True)
+                    (adapter / "adapter_config.json").write_text('{"r": 32}\n', encoding="utf-8")
+                    (adapter / "adapter_model.safetensors").write_bytes(b"adapter")
+                (continuation_runtime / "configs").mkdir(parents=True)
+                (continuation_runtime / "logs").mkdir()
+                for name in (
+                    "decoder-direct-selection.json", "decoder-human-feedback-selection.json",
+                    "encoder-qwen3-selection.json", "encoder-nvembed-selection.json",
+                ):
+                    payload = config if name == "decoder-direct-selection.json" else {}
+                    (continuation_runtime / "configs" / name).write_text(json.dumps(payload), encoding="utf-8")
+                name = f"{continuation_prefix}-decoder-direct-dev-step-1"
+                output = ROOT / "outputs" / "standard-evals" / name
+                expected_eval_config = {
+                    "run_id": name, "mode": "direct", "model_path": str(fixture / "qwen"),
+                    "model_revision": config["model_revision"], "adapter_path": str(checkpoint),
+                    "source": "selection_dev", "prepared_manifest": str(manifest_input), "validation_sha256": "",
+                    "output_dir": str(output), "tensor_parallel_size": 4, "max_model_len": 2048,
+                    "max_new_tokens": 256, "gpu_memory_utilization": 0.9, "enforce_eager": True,
+                    "disable_flashinfer_sampler": True, "max_lora_rank": 32,
+                    "wandb_project": "test-project", "wandb_entity": None,
+                }
+                (continuation_runtime / "configs" / f"{name}.json").write_text(json.dumps(expected_eval_config), encoding="utf-8")
+                output.mkdir(parents=True)
+                (output / "aggregate_metrics.json").write_text(json.dumps({
+                    "status": "completed", "run_id": name, "mode": "direct", "source": "selection_dev",
+                    "model_revision": config["model_revision"], "adapter_path": str(checkpoint.resolve()),
+                    "adapter_global_step": 1, "config": expected_eval_config,
+                    "metrics": {"primary_macro_mae": -0.1},
+                }), encoding="utf-8")
+                original_config = parent_runtime / "configs" / "decoder-direct-selection.json"
+                completion = parent / "standard_training_complete.json"
+                (continuation_runtime / "matrix_manifest.json").write_text(json.dumps({
+                    "schema_version": 3, "status": "started", "run_prefix": continuation_prefix,
+                    "git_sha": "4c6ed913d755c78ee2a3dabbc02c4cccc9ed0c99",
+                    "prepared_manifest": str(manifest_input), "prepared_manifest_sha256": digest(manifest_input),
+                    "nv_review_sha256": digest(review), "validation_sha256": HASH, "cuda_visible_devices": "0,1,2,3",
+                    "num_gpus": 4, "privacy": "aggregate_only_no_restricted_rows_or_credentials",
+                    "selection_configs": {name: digest(continuation_runtime / "configs" / name) for name in (
+                        "decoder-direct-selection.json", "decoder-human-feedback-selection.json",
+                        "encoder-qwen3-selection.json", "encoder-nvembed-selection.json",
+                    )},
+                    "continuation": {
+                        "kind": "bounded_decoder_direct_selection_reuse",
+                        "current_git_sha": "4c6ed913d755c78ee2a3dabbc02c4cccc9ed0c99",
+                        "parent_selection_run": str(parent), "parent_runtime_root": str(parent_runtime),
+                        "parent_artifacts": {
+                            "selection_config_path": str(original_config), "selection_config_sha256": digest(original_config),
+                            "completion_path": str(completion), "completion_sha256": digest(completion),
+                            "candidate_checkpoints": [1], "candidate_adapter_config_sha256": {"1": digest(checkpoint / "adapter_config.json")},
+                            "final_adapter_config_sha256": digest(parent / "adapter" / "adapter_config.json"),
+                        },
+                    },
+                }), encoding="utf-8")
+                (continuation_runtime / "matrix_ledger.jsonl").write_text(
+                    "\n".join(json.dumps({"step": f"decoder-direct-dev-step-1", "status": status}) for status in ("started", "completed")) + "\n",
+                    encoding="utf-8",
+                )
+                command = [
+                    str(SCRIPT), "--continue-from-direct-evaluation-runtime", str(continuation_runtime),
+                    "--runtime-root", str(new_runtime), "--run-prefix", new_prefix,
+                    "--prepared-manifest", str(manifest_input), "--validation-sha256", HASH,
+                    "--qwen-model", str(fixture / "qwen"), "--qwen3-model", str(fixture / "qwen3"),
+                    "--nv-model", str(fixture / "nv"), "--nv-review-json", str(review),
+                ]
+                completed = subprocess.run(
+                    command, cwd=ROOT, text=True, capture_output=True,
+                    env=dict(os.environ, MAL2026_NVIDIA_SMI=str(nvidia), MAL2026_TORCHRUN=str(torchrun), MAL2026_PYTHON=sys.executable),
+                )
+                self.assertEqual(1, completed.returncode)
+                self.assertIn("primary_macro_mae must be nonnegative", completed.stderr)
+                self.assertFalse(nvidia_calls.exists(), "invalid recovery evidence must fail before GPU preflight")
+            finally:
+                for path in (parent, parent_runtime, continuation_runtime, new_runtime, ROOT / "outputs" / "standard-evals" / f"{continuation_prefix}-decoder-direct-dev-step-1"):
+                    shutil.rmtree(path, ignore_errors=True)
+
     def test_dry_run_is_side_effect_free(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             runtime = Path(directory) / "new-runtime"
