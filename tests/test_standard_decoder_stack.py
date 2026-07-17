@@ -88,7 +88,7 @@ class StandardDecoderStackTests(unittest.TestCase):
         source = Path("src/mal2026/standard_decoder_train.py").read_text(encoding="utf-8")
         self.assertIn("ddp_find_unused_parameters=False", source)
 
-    def test_vllm_eager_and_flashinfer_contracts_are_required_and_forwarded(self):
+    def test_vllm_compatibility_contracts_are_required_and_forwarded(self):
         import json
         import tempfile
         from pathlib import Path
@@ -118,6 +118,18 @@ class StandardDecoderStackTests(unittest.TestCase):
         ).disable_flashinfer_sampler)
         with self.assertRaises(StandardDecoderContractError):
             flashinfer_config.validate()
+        lora_rank_config = VLLMEvalConfig(
+            run_id="lora-rank-contract", mode="direct", model_path="/model", model_revision="a" * 40,
+            adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
+            validation_sha256="", output_dir="/out", max_lora_rank=16,
+        )
+        self.assertEqual(32, VLLMEvalConfig(
+            run_id="lora-rank-default", mode="direct", model_path="/model", model_revision="a" * 40,
+            adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
+            validation_sha256="", output_dir="/out",
+        ).max_lora_rank)
+        with self.assertRaises(StandardDecoderContractError):
+            lora_rank_config.validate()
         with tempfile.TemporaryDirectory() as directory:
             false_path = Path(directory) / "false-eager.json"
             false_path.write_text(json.dumps({field: getattr(config, field) for field in config.__dataclass_fields__}), encoding="utf-8")
@@ -127,22 +139,30 @@ class StandardDecoderStackTests(unittest.TestCase):
             false_flashinfer_path.write_text(json.dumps({field: getattr(flashinfer_config, field) for field in flashinfer_config.__dataclass_fields__}), encoding="utf-8")
             with self.assertRaises(StandardDecoderContractError):
                 VLLMEvalConfig.from_json(false_flashinfer_path)
-            path = Path(directory) / "missing-flashinfer.json"
-            missing_flashinfer = {field: getattr(VLLMEvalConfig(
+            invalid_lora_rank_path = Path(directory) / "invalid-lora-rank.json"
+            invalid_lora_rank_path.write_text(json.dumps({field: getattr(lora_rank_config, field) for field in lora_rank_config.__dataclass_fields__}), encoding="utf-8")
+            with self.assertRaises(StandardDecoderContractError):
+                VLLMEvalConfig.from_json(invalid_lora_rank_path)
+            path = Path(directory) / "missing-lora-rank.json"
+            missing_lora_rank = {field: getattr(VLLMEvalConfig(
                 run_id="missing-flashinfer", mode="direct", model_path="/model", model_revision="a" * 40,
                 adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
                 validation_sha256="", output_dir="/out",
             ), field) for field in VLLMEvalConfig.__dataclass_fields__}
-            missing_flashinfer.pop("disable_flashinfer_sampler")
-            path.write_text(json.dumps(missing_flashinfer), encoding="utf-8")
+            missing_lora_rank.pop("max_lora_rank")
+            path.write_text(json.dumps(missing_lora_rank), encoding="utf-8")
             with self.assertRaises(StandardDecoderContractError):
                 VLLMEvalConfig.from_json(path)
         source = Path("src/mal2026/standard_decoder_vllm.py").read_text(encoding="utf-8")
         self.assertIn("enforce_eager=config.enforce_eager", source)
+        self.assertIn("max_lora_rank=config.max_lora_rank", source)
+        self.assertIn('"max_lora_rank": config.max_lora_rank', source)
+        self.assertLess(source.index("adapter_config_path = adapter / \"adapter_config.json\""), source.index("from vllm import LLM"))
         self.assertLess(source.index("_configure_flashinfer_sampler_environment(config)"), source.index("from vllm import LLM"))
         matrix = Path("scripts/run_standard_experiment_matrix.sh").read_text(encoding="utf-8")
         self.assertIn('"enforce_eager":True', matrix)
         self.assertIn('"disable_flashinfer_sampler":True', matrix)
+        self.assertIn('"max_lora_rank":32', matrix)
 
     def test_vllm_flashinfer_environment_requires_native_sampler_before_import(self):
         import os
@@ -169,6 +189,43 @@ class StandardDecoderStackTests(unittest.TestCase):
             else:
                 os.environ[_FLASHINFER_SAMPLER_ENV] = previous
 
+    def test_vllm_preflight_rejects_invalid_or_oversized_adapter_rank_before_import(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from mal2026 import standard_decoder_vllm as module
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = root / "data" / "manifests" / "manifest.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text("{}", encoding="utf-8")
+            adapter = root / "outputs" / "standard-runs" / "selection-run" / "checkpoint-12"
+            adapter.mkdir(parents=True)
+            run_root = adapter.parent
+            (run_root / "standard_training_complete.json").write_text(json.dumps({
+                "status": "completed", "phase": "selection", "mode": "direct",
+                "model_revision": "a" * 40, "selection_candidate_steps": [12],
+            }), encoding="utf-8")
+            old_root, old_manifest = module.ROOT, module.DEFAULT_MANIFEST
+            module.ROOT, module.DEFAULT_MANIFEST = root, manifest
+            try:
+                config = module.VLLMEvalConfig(
+                    run_id="adapter-rank-preflight", mode="direct", model_path="/model", model_revision="a" * 40,
+                    adapter_path=str(adapter), source="selection_dev", prepared_manifest=str(manifest),
+                    validation_sha256="", output_dir=str(root / "outputs" / "standard-evals" / "eval"),
+                    max_model_len=2048, max_new_tokens=256,
+                )
+                for rank in (None, True, 0, -1, 32.0, "32", 33):
+                    with self.subTest(rank=rank):
+                        (adapter / "adapter_config.json").write_text(json.dumps({"r": rank}), encoding="utf-8")
+                        with self.assertRaises(StandardDecoderContractError):
+                            config.validate()
+                (adapter / "adapter_config.json").write_text(json.dumps({"r": 32}), encoding="utf-8")
+                self.assertEqual(12, config.validate())
+            finally:
+                module.ROOT, module.DEFAULT_MANIFEST = old_root, old_manifest
+
     def test_vllm_template_exactly_matches_the_frozen_config_schema(self):
         import json
         from pathlib import Path
@@ -178,6 +235,7 @@ class StandardDecoderStackTests(unittest.TestCase):
         self.assertEqual(set(VLLMEvalConfig.__dataclass_fields__), set(template))
         self.assertIs(template["enforce_eager"], True)
         self.assertIs(template["disable_flashinfer_sampler"], True)
+        self.assertEqual(32, template["max_lora_rank"])
 
     def test_aggregate_metrics_contains_no_row_text(self):
         target = row().score

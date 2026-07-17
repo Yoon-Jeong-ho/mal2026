@@ -102,6 +102,9 @@ class VLLMEvalConfig:
     # vLLM 0.25.1 still initializes FlashInfer's JIT sampler during warmup in
     # eager mode.  Its documented native-sampler switch avoids that dependency.
     disable_flashinfer_sampler: bool = True
+    # Standard decoder SFT fixes its PEFT adapter rank at 32.  vLLM defaults to
+    # 16, so the evaluator must reserve capacity for the actual adapter.
+    max_lora_rank: int = 32
     wandb_project: str = "mal2026-korean-writing-scoring"
     wandb_entity: str | None = None
 
@@ -119,6 +122,8 @@ class VLLMEvalConfig:
             raise StandardDecoderContractError("vLLM evaluator enforce_eager must be explicitly true")
         if self.disable_flashinfer_sampler is not True:
             raise StandardDecoderContractError("vLLM evaluator disable_flashinfer_sampler must be explicitly true")
+        if self.max_lora_rank != 32:
+            raise StandardDecoderContractError("vLLM evaluator max_lora_rank must exactly match decoder LoRA rank 32")
         if self.mode not in {"direct", "human_feedback"} or self.source not in {"selection_dev", "frozen_validation"}:
             raise StandardDecoderContractError("invalid vLLM mode or source")
         if Path(self.prepared_manifest).resolve() != DEFAULT_MANIFEST.resolve():
@@ -160,8 +165,18 @@ class VLLMEvalConfig:
             checkpoint_step = int(completion.get("selected_global_step", -1))
             if adapter != run_root / "adapter":
                 raise StandardDecoderContractError("frozen validation requires the refit run's adapter export")
-        if not (adapter / "adapter_config.json").is_file():
+        adapter_config_path = adapter / "adapter_config.json"
+        if not adapter_config_path.is_file():
             raise StandardDecoderContractError("adapter directory lacks adapter_config.json")
+        try:
+            adapter_config = json.loads(adapter_config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise StandardDecoderContractError("adapter_config.json must be readable JSON") from exc
+        adapter_rank = adapter_config.get("r") if isinstance(adapter_config, dict) else None
+        if type(adapter_rank) is not int or adapter_rank <= 0:
+            raise StandardDecoderContractError("adapter_config.json r must be a positive integer")
+        if adapter_rank > self.max_lora_rank:
+            raise StandardDecoderContractError("adapter LoRA rank exceeds frozen vLLM max_lora_rank")
         expected_len, expected_new = (2048, 256) if self.mode == "direct" else (4096, 1536)
         if (self.max_model_len, self.max_new_tokens) != (expected_len, expected_new):
             raise StandardDecoderContractError("vLLM mode-specific token budget is frozen")
@@ -187,6 +202,7 @@ def run_vllm_evaluation(config: VLLMEvalConfig) -> dict[str, Any]:
         model=config.model_path, revision=config.model_revision, dtype="bfloat16", trust_remote_code=False,
         enable_lora=True, tensor_parallel_size=config.tensor_parallel_size, max_model_len=config.max_model_len,
         gpu_memory_utilization=config.gpu_memory_utilization, enforce_eager=config.enforce_eager,
+        max_lora_rank=config.max_lora_rank,
     )
     sampling = SamplingParams(temperature=0.0, top_p=1.0, max_tokens=config.max_new_tokens, skip_special_tokens=True)
     outputs = llm.chat(
@@ -214,7 +230,7 @@ def run_vllm_evaluation(config: VLLMEvalConfig) -> dict[str, Any]:
     # Explicit aggregate-only W&B event. No tables, samples, artifacts, or free text.
     try:
         import wandb
-        run = wandb.init(project=config.wandb_project, entity=config.wandb_entity, name=config.run_id, config={"mode": config.mode, "source": config.source, "model_revision": config.model_revision, "enforce_eager": config.enforce_eager, "disable_flashinfer_sampler": config.disable_flashinfer_sampler})
+        run = wandb.init(project=config.wandb_project, entity=config.wandb_entity, name=config.run_id, config={"mode": config.mode, "source": config.source, "model_revision": config.model_revision, "enforce_eager": config.enforce_eager, "disable_flashinfer_sampler": config.disable_flashinfer_sampler, "max_lora_rank": config.max_lora_rank})
         run.log({"eval/primary_macro_mae": metrics["primary_macro_mae"], "eval/parse_failure_rate": metrics["decoder_parse_failure_rate"], "eval/record_count": metrics["record_count"]})
         run.finish()
     except ImportError:

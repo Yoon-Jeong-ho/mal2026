@@ -28,9 +28,10 @@ metric scalars only, never tables, examples, prompts, output text, or artifacts.
 ## vLLM compatibility contract
 
 Every frozen decoder-evaluation config must set both `"enforce_eager": true`
-and `"disable_flashinfer_sampler": true`; the evaluator rejects missing or
-false values. These are two distinct, explicit compatibility choices for the
-shared vLLM 0.25.1 environment, not automatic fallbacks.
+and `"disable_flashinfer_sampler": true`, plus `"max_lora_rank": 32`; the
+evaluator rejects missing or incompatible values. These are explicit
+compatibility choices for the shared vLLM 0.25.1 environment, not automatic
+fallbacks.
 
 `enforce_eager=True` disables vLLM's `torch.compile` integration and CUDA
 Graphs, as documented for the offline `LLM` interface. This was the initial
@@ -44,10 +45,21 @@ Before importing vLLM, the evaluator sets the process-local documented switch
 already-set caller value other than exactly `0` is a configuration conflict and
 is rejected; the evaluator never silently overwrites it. This avoids the
 FlashInfer JIT dependency, but native sampling and eager execution can both
-reduce decoding throughput. Both frozen fields are persisted in aggregate
+reduce decoding throughput. These frozen fields are persisted in aggregate
 evaluator provenance and W&B run config. See the [official vLLM compile
 debugging guide](https://docs.vllm.ai/en/stable/design/debug_vllm_compile/) and
 the [vLLM environment-variable reference](https://docs.vllm.ai/en/stable/configuration/env_vars/).
+
+vLLM's `max_lora_rank` default is 16. The standard decoder SFT configuration
+uses `lora_r=32` for both direct-score and human-feedback adapters, so the
+evaluator freezes and passes `max_lora_rank=32` to `LLM`. This exact match
+prevents adapter loading from failing after model startup; it is included in
+the same aggregate provenance and W&B configuration as the other evaluator
+compatibility settings. Before vLLM imports or initializes GPUs, validation
+reads the adapter's `adapter_config.json` and requires its `r` to be a positive
+integer no greater than this frozen capacity; a malformed or incompatible
+adapter therefore fails before a vLLM worker is started. See the [official vLLM
+LoRA documentation](https://docs.vllm.ai/en/stable/features/lora.html).
 
 ## Commands
 
