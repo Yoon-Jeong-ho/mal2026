@@ -72,6 +72,10 @@ class VLLMEvalConfig:
     max_model_len: int = 4096
     max_new_tokens: int = 1536
     gpu_memory_utilization: float = 0.90
+    # Frozen compatibility contract: vLLM's documented offline eager mode
+    # bypasses TorchInductor/torch.compile and CUDA Graphs.  This avoids the
+    # observed worker failure when the shared environment lacks `ninja`.
+    enforce_eager: bool = True
     wandb_project: str = "mal2026-korean-writing-scoring"
     wandb_entity: str | None = None
 
@@ -85,6 +89,8 @@ class VLLMEvalConfig:
         return config
 
     def validate(self) -> int:
+        if self.enforce_eager is not True:
+            raise StandardDecoderContractError("vLLM evaluator enforce_eager must be explicitly true")
         if self.mode not in {"direct", "human_feedback"} or self.source not in {"selection_dev", "frozen_validation"}:
             raise StandardDecoderContractError("invalid vLLM mode or source")
         if Path(self.prepared_manifest).resolve() != DEFAULT_MANIFEST.resolve():
@@ -151,7 +157,7 @@ def run_vllm_evaluation(config: VLLMEvalConfig) -> dict[str, Any]:
     llm = LLM(
         model=config.model_path, revision=config.model_revision, dtype="bfloat16", trust_remote_code=False,
         enable_lora=True, tensor_parallel_size=config.tensor_parallel_size, max_model_len=config.max_model_len,
-        gpu_memory_utilization=config.gpu_memory_utilization,
+        gpu_memory_utilization=config.gpu_memory_utilization, enforce_eager=config.enforce_eager,
     )
     sampling = SamplingParams(temperature=0.0, top_p=1.0, max_tokens=config.max_new_tokens, skip_special_tokens=True)
     outputs = llm.chat(
@@ -179,7 +185,7 @@ def run_vllm_evaluation(config: VLLMEvalConfig) -> dict[str, Any]:
     # Explicit aggregate-only W&B event. No tables, samples, artifacts, or free text.
     try:
         import wandb
-        run = wandb.init(project=config.wandb_project, entity=config.wandb_entity, name=config.run_id, config={"mode": config.mode, "source": config.source, "model_revision": config.model_revision})
+        run = wandb.init(project=config.wandb_project, entity=config.wandb_entity, name=config.run_id, config={"mode": config.mode, "source": config.source, "model_revision": config.model_revision, "enforce_eager": config.enforce_eager})
         run.log({"eval/primary_macro_mae": metrics["primary_macro_mae"], "eval/parse_failure_rate": metrics["decoder_parse_failure_rate"], "eval/record_count": metrics["record_count"]})
         run.finish()
     except ImportError:

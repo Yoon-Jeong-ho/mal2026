@@ -25,6 +25,19 @@ persisted. vLLM outputs are parsed in memory and invalid output receives the
 predeclared `selection_train` mean-score fallback. W&B receives aggregate
 metric scalars only, never tables, examples, prompts, output text, or artifacts.
 
+## vLLM eager compatibility contract
+
+Every frozen decoder-evaluation config must set `"enforce_eager": true`; the
+evaluator rejects missing or false values. This is an explicit compatibility
+choice for the shared vLLM 0.25.1 environment after its TorchInductor worker
+failed because `ninja` is unavailable, and is not an automatic fallback. The
+official offline vLLM interface documents `LLM(..., enforce_eager=True)` as
+disabling the vLLM `torch.compile` integration and CUDA Graphs. That avoids the
+missing compiler dependency, but may reduce generation throughput because those
+optimizations are deliberately disabled. The field is persisted in the
+aggregate evaluator provenance and W&B run config. See the [official vLLM
+compile debugging guide](https://docs.vllm.ai/en/stable/design/debug_vllm_compile/).
+
 ## Commands
 
 Create an ignored runtime and install the pinned standard stack there; do not

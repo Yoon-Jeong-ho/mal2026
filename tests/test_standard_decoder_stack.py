@@ -88,6 +88,38 @@ class StandardDecoderStackTests(unittest.TestCase):
         source = Path("src/mal2026/standard_decoder_train.py").read_text(encoding="utf-8")
         self.assertIn("ddp_find_unused_parameters=False", source)
 
+    def test_vllm_eager_contract_is_required_and_forwarded_to_llm(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from mal2026.standard_decoder_vllm import VLLMEvalConfig
+
+        config = VLLMEvalConfig(
+            run_id="eager-contract", mode="direct", model_path="/model", model_revision="a" * 40,
+            adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
+            validation_sha256="", output_dir="/out", enforce_eager=False,
+        )
+        self.assertTrue(VLLMEvalConfig(
+            run_id="eager-default", mode="direct", model_path="/model", model_revision="a" * 40,
+            adapter_path="/adapter", source="selection_dev", prepared_manifest="/manifest",
+            validation_sha256="", output_dir="/out",
+        ).enforce_eager)
+        with self.assertRaises(StandardDecoderContractError):
+            config.validate()
+        with tempfile.TemporaryDirectory() as directory:
+            false_path = Path(directory) / "false-eager.json"
+            false_path.write_text(json.dumps({field: getattr(config, field) for field in config.__dataclass_fields__}), encoding="utf-8")
+            with self.assertRaises(StandardDecoderContractError):
+                VLLMEvalConfig.from_json(false_path)
+            path = Path(directory) / "missing-eager.json"
+            path.write_text(json.dumps({}), encoding="utf-8")
+            with self.assertRaises(StandardDecoderContractError):
+                VLLMEvalConfig.from_json(path)
+        source = Path("src/mal2026/standard_decoder_vllm.py").read_text(encoding="utf-8")
+        self.assertIn("enforce_eager=config.enforce_eager", source)
+        matrix = Path("scripts/run_standard_experiment_matrix.sh").read_text(encoding="utf-8")
+        self.assertIn('"enforce_eager":True', matrix)
+
     def test_aggregate_metrics_contains_no_row_text(self):
         target = row().score
         result = aggregate_metrics([target], [target], [True])
