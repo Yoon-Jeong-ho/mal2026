@@ -39,6 +39,9 @@ Options:
   --encoder-grad-accum N          encoder accumulation; defaults to global batch 64
   --resume-run-prefix PREFIX      resume this exact failed matrix runtime; requires
                                   --run-prefix PREFIX and immutable inputs unchanged
+  --continue-from-decoder-selection-run ABS_DIR
+                                  start a new, provenance-linked continuation from
+                                  a verified failed direct-selection parent
   --dry-run                       print planned outputs; do not check paths or write/run anything
   -h, --help                      show this text
 
@@ -51,6 +54,12 @@ stage's strict artifact contract.  It never rewrites configs, logs, ledgers,
 or stage outputs.  Only a recorded-and-verified completed stage is skipped;
 failed or not-started stages are retried only when their output path is absent.
 An incomplete pre-existing output is refused rather than overwritten.
+
+Continuation is a one-purpose, append-only exception for a verified direct
+selection whose downstream vLLM evaluation failed before producing output.  It
+creates a new runtime/prefix, records the parent/deviation evidence, never
+rewrites the parent, and appends its selected_checkpoint.json only after all
+new-prefix source-dev candidate evaluations complete.
 USAGE
 }
 
@@ -72,6 +81,7 @@ ENCODER_BATCH=1
 ENCODER_ACCUM=""
 DRY_RUN=false
 RESUME_RUN_PREFIX=""
+CONTINUE_PARENT_SELECTION=""
 
 need_value() { [[ $# -ge 2 && -n "$2" ]] || { echo "missing value for $1" >&2; exit 2; }; }
 while [[ $# -gt 0 ]]; do
@@ -93,6 +103,7 @@ while [[ $# -gt 0 ]]; do
     --encoder-batch-size) need_value "$@"; ENCODER_BATCH="$2"; shift 2;;
     --encoder-grad-accum) need_value "$@"; ENCODER_ACCUM="$2"; shift 2;;
     --resume-run-prefix) need_value "$@"; RESUME_RUN_PREFIX="$2"; shift 2;;
+    --continue-from-decoder-selection-run) need_value "$@"; CONTINUE_PARENT_SELECTION="$2"; shift 2;;
     --dry-run) DRY_RUN=true; shift;;
     -h|--help) usage; exit 0;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 2;;
@@ -128,6 +139,11 @@ if [[ -n "$RESUME_RUN_PREFIX" ]]; then
   [[ "$RESUME_RUN_PREFIX" == "$RUN_PREFIX" ]] || { echo "--resume-run-prefix must exactly match --run-prefix" >&2; exit 2; }
   [[ "$DRY_RUN" == false ]] || { echo "--resume-run-prefix cannot be combined with --dry-run" >&2; exit 2; }
 fi
+if [[ -n "$CONTINUE_PARENT_SELECTION" ]]; then
+  is_absolute "$CONTINUE_PARENT_SELECTION" || { echo "--continue-from-decoder-selection-run requires an absolute path" >&2; exit 2; }
+  [[ -z "$RESUME_RUN_PREFIX" ]] || { echo "--continue-from-decoder-selection-run cannot be combined with --resume-run-prefix" >&2; exit 2; }
+  [[ "$DRY_RUN" == false ]] || { echo "--continue-from-decoder-selection-run cannot be combined with --dry-run" >&2; exit 2; }
+fi
 [[ "$VALIDATION_SHA256" =~ ^[0-9a-f]{64}$ ]] || { echo "validation SHA-256 must be 64 lowercase hexadecimal characters" >&2; exit 2; }
 for path in "$RUNTIME_ROOT" "$MANIFEST" "$QWEN_MODEL" "$QWEN3_MODEL" "$NV_MODEL" "$NV_REVIEW_JSON"; do
   is_absolute "$path" || { echo "absolute path required: $path" >&2; exit 2; }
@@ -154,7 +170,29 @@ TORCHRUN="${MAL2026_TORCHRUN:-$TORCHRUN_DEFAULT}"
 NVIDIA_SMI="${MAL2026_NVIDIA_SMI:-nvidia-smi}"
 
 run_name() { printf '%s-%s' "$RUN_PREFIX" "$1"; }
-DIRECT_SELECTION="$RUNS/$(run_name decoder-direct-selection)"
+NEW_DIRECT_SELECTION="$RUNS/$(run_name decoder-direct-selection)"
+DIRECT_SELECTION="$NEW_DIRECT_SELECTION"
+CONTINUATION_MODE=false
+PARENT_RUNTIME_ROOT=""
+PARENT_PREFIX=""
+if [[ -n "$CONTINUE_PARENT_SELECTION" ]]; then
+  [[ -d "$CONTINUE_PARENT_SELECTION" ]] || { echo "continuation parent selection run is missing or not a directory: $CONTINUE_PARENT_SELECTION" >&2; exit 2; }
+  CONTINUE_PARENT_SELECTION="$(cd "$CONTINUE_PARENT_SELECTION" && pwd -P)"
+  [[ "$(dirname "$CONTINUE_PARENT_SELECTION")" == "$RUNS" ]] || {
+    echo "continuation parent selection run must be a direct child of $RUNS" >&2; exit 2;
+  }
+  parent_base="$(basename "$CONTINUE_PARENT_SELECTION")"
+  [[ "$parent_base" == *-decoder-direct-selection ]] || {
+    echo "continuation parent must be a direct decoder selection run" >&2; exit 2;
+  }
+  PARENT_PREFIX="${parent_base%-decoder-direct-selection}"
+  [[ "$PARENT_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$ && "$parent_base" == "$PARENT_PREFIX-decoder-direct-selection" ]] || {
+    echo "continuation parent selection basename is not a canonical run identifier" >&2; exit 2;
+  }
+  PARENT_RUNTIME_ROOT="$ROOT/outputs/experiment-matrix/$PARENT_PREFIX"
+  CONTINUATION_MODE=true
+  DIRECT_SELECTION="$CONTINUE_PARENT_SELECTION"
+fi
 DIRECT_REFIT="$RUNS/$(run_name decoder-direct-refit)"
 FEEDBACK_SELECTION="$RUNS/$(run_name decoder-human-feedback-selection)"
 FEEDBACK_REFIT="$RUNS/$(run_name decoder-human-feedback-refit)"
@@ -201,7 +239,8 @@ if [[ -n "$RESUME_RUN_PREFIX" ]]; then
   }
 else
   [[ ! -e "$RUNTIME_ROOT" ]] || { echo "runtime root already exists; use --resume-run-prefix for the exact failed run or choose a new root: $RUNTIME_ROOT" >&2; exit 2; }
-  for path in "$DIRECT_SELECTION" "$DIRECT_REFIT" "$FEEDBACK_SELECTION" "$FEEDBACK_REFIT" "$QWEN3_SELECTION" "$QWEN3_REFIT" "$NV_SELECTION" "$NV_REFIT"; do
+  output_paths=("$NEW_DIRECT_SELECTION" "$DIRECT_REFIT" "$FEEDBACK_SELECTION" "$FEEDBACK_REFIT" "$QWEN3_SELECTION" "$QWEN3_REFIT" "$NV_SELECTION" "$NV_REFIT")
+  for path in "${output_paths[@]}"; do
     [[ ! -e "$path" ]] || { echo "run output already exists; choose a new prefix: $path" >&2; exit 2; }
   done
   mkdir -p "$CONFIGS" "$LOGS"
@@ -244,9 +283,9 @@ assert_selected_gpus_idle() {
   done <<< "$gpu_process_table"
 }
 
-export ROOT RUNTIME_ROOT RUN_PREFIX MANIFEST VALIDATION_SHA256 QWEN_MODEL QWEN3_MODEL NV_MODEL NV_REVIEW_JSON NUM_GPUS CUDA_VISIBLE WANDB_PROJECT WANDB_ENTITY DECODER_BATCH DECODER_ACCUM ENCODER_BATCH ENCODER_ACCUM QWEN_REV QWEN3_REV NV_REV DIRECT_SELECTION DIRECT_REFIT FEEDBACK_SELECTION FEEDBACK_REFIT QWEN3_SELECTION QWEN3_REFIT NV_SELECTION NV_REFIT RESUME_MODE
+export ROOT RUNTIME_ROOT RUN_PREFIX MANIFEST VALIDATION_SHA256 QWEN_MODEL QWEN3_MODEL NV_MODEL NV_REVIEW_JSON NUM_GPUS CUDA_VISIBLE WANDB_PROJECT WANDB_ENTITY DECODER_BATCH DECODER_ACCUM ENCODER_BATCH ENCODER_ACCUM QWEN_REV QWEN3_REV NV_REV DIRECT_SELECTION DIRECT_REFIT FEEDBACK_SELECTION FEEDBACK_REFIT QWEN3_SELECTION QWEN3_REFIT NV_SELECTION NV_REFIT RESUME_MODE CONTINUATION_MODE CONTINUE_PARENT_SELECTION PARENT_RUNTIME_ROOT PARENT_PREFIX
 "$PYTHON" - <<'PY'
-import hashlib, json, os, subprocess
+import hashlib, json, math, os, subprocess
 from pathlib import Path
 root = Path(os.environ["RUNTIME_ROOT"]); configs = root / "configs"
 
@@ -264,18 +303,154 @@ def encoder(backbone, output):
     nv = backbone == "nv_embed_v2"; model = os.environ["NV_MODEL"] if nv else os.environ["QWEN3_MODEL"]; revision = os.environ["NV_REV"] if nv else os.environ["QWEN3_REV"]
     return {"run_id":Path(output).name, "phase":"selection", "backbone":backbone, "model_id":"nvidia/NV-Embed-v2" if nv else "Qwen/Qwen3-Embedding-8B", "model_revision":revision, "tokenizer_revision":revision, "model_path":model, "prepared_manifest":os.environ["MANIFEST"], "output_dir":output, "max_length":2048, "seed":2026, "learning_rate":1e-4, "weight_decay":0.01, "warmup_ratio":0.05, "num_train_epochs":20.0, "per_device_train_batch_size":int(os.environ["ENCODER_BATCH"]), "per_device_eval_batch_size":int(os.environ["ENCODER_BATCH"]), "gradient_accumulation_steps":int(os.environ["ENCODER_ACCUM"]), "eval_steps":100, "save_steps":100, "logging_steps":5, "early_stopping_patience":3, "lora_r":16, "lora_alpha":32, "lora_dropout":0.05, "lora_target_modules":["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"], "nv_snapshot_dir":model if nv else None, "nv_review":json.load(open(os.environ["NV_REVIEW_JSON"], encoding="utf-8")) if nv else None, "selection_metadata_path":None, "wandb_project":os.environ["WANDB_PROJECT"], "wandb_entity":os.environ["WANDB_ENTITY"] or None}
 
+
+def read_object(path, label):
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"continuation cannot read {label}: {path}: {exc}")
+    if not isinstance(payload, dict):
+        raise SystemExit(f"continuation {label} must be a JSON object: {path}")
+    return payload
+
+
+def finite(value, label):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        raise SystemExit(f"continuation parent {label} must be finite")
+
+
+def positive(value, label):
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise SystemExit(f"continuation parent {label} must be a positive integer")
+
+
+def validate_continuation_parent():
+    """Validate the bounded reusable parent before any stage can reach GPUs."""
+    parent = Path(os.environ["CONTINUE_PARENT_SELECTION"])
+    parent_runtime = Path(os.environ["PARENT_RUNTIME_ROOT"])
+    parent_config_path = parent_runtime / "configs" / "decoder-direct-selection.json"
+    parent_manifest_path = parent_runtime / "matrix_manifest.json"
+    parent_ledger_path = parent_runtime / "matrix_ledger.jsonl"
+    parent_completion_path = parent / "standard_training_complete.json"
+    for path, label in ((parent_runtime, "runtime root"), (parent_config_path, "direct selection config"),
+                        (parent_manifest_path, "runtime manifest"), (parent_ledger_path, "runtime ledger"),
+                        (parent_completion_path, "training completion")):
+        if not path.is_file() and not path.is_dir():
+            raise SystemExit(f"continuation parent {label} is missing: {path}")
+    parent_manifest = read_object(parent_manifest_path, "runtime manifest")
+    expected_parent_git = "dfa3c343b6fb58bf33835eacf730df1306ac0b5a"
+    if parent_manifest.get("run_prefix") != os.environ["PARENT_PREFIX"] or parent_manifest.get("git_sha") != expected_parent_git:
+        raise SystemExit("continuation parent runtime is not the approved pre-fix direct-selection run")
+    for key, expected in {
+        "prepared_manifest": os.environ["MANIFEST"], "validation_sha256": os.environ["VALIDATION_SHA256"],
+        "cuda_visible_devices": os.environ["CUDA_VISIBLE"], "num_gpus": int(os.environ["NUM_GPUS"]),
+    }.items():
+        if parent_manifest.get(key) != expected:
+            raise SystemExit(f"continuation parent manifest identity mismatch for {key}")
+    parent_config = read_object(parent_config_path, "direct selection config")
+    selection_hashes = parent_manifest.get("selection_configs")
+    if not isinstance(selection_hashes, dict) or selection_hashes.get("decoder-direct-selection.json") != sha256(parent_config_path):
+        raise SystemExit("continuation parent direct selection config hash does not match its manifest")
+    if not isinstance(parent_config.get("wandb_project"), str) or not parent_config["wandb_project"] or parent_config.get("wandb_entity") not in (None, "") and not isinstance(parent_config.get("wandb_entity"), str):
+        raise SystemExit("continuation parent W&B identity is malformed")
+    expected_parent_config = decoder("direct", str(parent))
+    expected_parent_config["wandb_project"] = parent_config["wandb_project"]
+    expected_parent_config["wandb_entity"] = parent_config.get("wandb_entity")
+    if parent_config != expected_parent_config:
+        raise SystemExit("continuation parent direct config differs from canonical architecture/data/model/batch/seed identity")
+    completion = read_object(parent_completion_path, "training completion")
+    if completion.get("status") != "completed" or completion.get("phase") != "selection" or completion.get("mode") != "direct" or completion.get("run_id") != parent.name:
+        raise SystemExit("continuation parent completion is not a completed direct selection")
+    positive(completion.get("global_step"), "global_step")
+    finite(completion.get("best_metric"), "best_metric")
+    metrics = completion.get("train_metrics")
+    if not isinstance(metrics, dict):
+        raise SystemExit("continuation parent train_metrics must be an object")
+    finite(metrics.get("train_loss"), "train_metrics.train_loss")
+    steps = completion.get("selection_candidate_steps")
+    if not isinstance(steps, list) or not steps or len(set(steps)) != len(steps):
+        raise SystemExit("continuation parent selection_candidate_steps must be a nonempty unique list")
+    adapter_configs = {}
+    for step in steps:
+        positive(step, "selection_candidate_steps entry")
+        checkpoint = parent / f"checkpoint-{step}"
+        config = checkpoint / "adapter_config.json"
+        model = checkpoint / "adapter_model.safetensors"
+        if not checkpoint.is_dir() or not config.is_file() or not model.is_file():
+            raise SystemExit(f"continuation parent checkpoint adapter is incomplete: {checkpoint}")
+        new_eval = Path(os.environ["ROOT"]) / "outputs" / "standard-evals" / f"{os.environ['RUN_PREFIX']}-decoder-direct-dev-step-{step}"
+        if new_eval.exists():
+            raise SystemExit(f"continuation new-prefix direct evaluation output already exists: {new_eval}")
+        adapter_configs[str(step)] = sha256(config)
+    final_adapter_config = parent / "adapter" / "adapter_config.json"
+    final_adapter_model = parent / "adapter" / "adapter_model.safetensors"
+    if not final_adapter_config.is_file() or not final_adapter_model.is_file():
+        raise SystemExit("continuation parent final adapter is incomplete")
+    failed = None
+    try:
+        lines = parent_ledger_path.read_text(encoding="utf-8").splitlines()
+        for number, line in enumerate(lines, start=1):
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            if not isinstance(entry, dict):
+                raise ValueError("not an object")
+            if entry.get("status") == "failed" and isinstance(entry.get("step"), str) and entry["step"].startswith("decoder-direct-dev-step-"):
+                candidate = entry["step"].removeprefix("decoder-direct-dev-step-")
+                if candidate.isdigit() and int(candidate) in steps:
+                    failed = entry
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"continuation cannot parse parent ledger: {exc}")
+    if failed is None or not isinstance(failed.get("detail"), str):
+        raise SystemExit("continuation parent lacks the required failed direct vLLM stage record")
+    failure_log = Path(failed["detail"])
+    expected_log = parent_runtime / "logs" / f"{failed['step']}.log"
+    if failure_log != expected_log or not failure_log.is_file():
+        raise SystemExit("continuation parent failed vLLM log is missing or does not match its ledger")
+    fix_commit = "68a3b4ff13ea062aad5b7f636b183f4efff11fda"
+    base_commit = "c46cf0e"
+    try:
+        changed = subprocess.check_output(["git", "-C", os.environ["ROOT"], "diff", "--name-only", f"{expected_parent_git}..{fix_commit}"], text=True).splitlines()
+        diff = subprocess.check_output(["git", "-C", os.environ["ROOT"], "diff", "--no-ext-diff", f"{expected_parent_git}..{fix_commit}", "--", "scripts/evaluate_standard_decoder_vllm.py"], text=True)
+        subprocess.run(["git", "-C", os.environ["ROOT"], "merge-base", "--is-ancestor", fix_commit, current_git_sha], check=True)
+        subprocess.run(["git", "-C", os.environ["ROOT"], "merge-base", "--is-ancestor", base_commit, current_git_sha], check=True)
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(f"continuation cannot verify the approved evaluator fix lineage: {exc}")
+    if set(changed) != {"scripts/evaluate_standard_decoder_vllm.py", "tests/test_standard_decoder_stack.py"} or not diff:
+        raise SystemExit("continuation evaluator fix diff is not the approved narrow entrypoint-only production change plus regression test")
+    return parent_config, {
+        "kind": "bounded_decoder_direct_selection_reuse",
+        "rationale": "The parent completed direct selection; its first vLLM source-dev evaluation failed before output because spawn re-imported an unguarded CLI entry point. The continuation reuses only the verified selection and evaluates all candidates under the guarded entry point.",
+        "parent_runtime_root": str(parent_runtime), "parent_selection_run": str(parent),
+        "parent_git_sha": expected_parent_git, "current_git_sha": current_git_sha,
+        "continuation_base_git_sha": base_commit, "entrypoint_fix_git_sha": fix_commit,
+        "entrypoint_fix_changed_files": changed,
+        "entrypoint_fix_diff": diff, "entrypoint_fix_diff_sha256": hashlib.sha256(diff.encode("utf-8")).hexdigest(),
+        "original_failed_vllm_stage": failed["step"], "original_failed_vllm_log": str(failure_log),
+        "parent_artifacts": {
+            "completion_path": str(parent_completion_path), "completion_sha256": sha256(parent_completion_path),
+            "selection_config_path": str(parent_config_path), "selection_config_sha256": sha256(parent_config_path),
+            "candidate_checkpoints": steps, "candidate_adapter_config_sha256": adapter_configs,
+            "final_adapter_config_sha256": sha256(final_adapter_config),
+        },
+    }
+
+current_git_sha = subprocess.check_output(["git", "-C", os.environ["ROOT"], "rev-parse", "HEAD"], text=True).strip()
+continuation = None
+direct_selection_config = decoder("direct", os.environ["DIRECT_SELECTION"])
+if os.environ["CONTINUATION_MODE"] == "true":
+    direct_selection_config, continuation = validate_continuation_parent()
 expected_configs = {
-    "decoder-direct-selection.json": decoder("direct", os.environ["DIRECT_SELECTION"]),
+    "decoder-direct-selection.json": direct_selection_config,
     "decoder-human-feedback-selection.json": decoder("human_feedback", os.environ["FEEDBACK_SELECTION"]),
     "encoder-qwen3-selection.json": encoder("qwen3_embedding", os.environ["QWEN3_SELECTION"]),
     "encoder-nvembed-selection.json": encoder("nv_embed_v2", os.environ["NV_SELECTION"]),
 }
-current_git_sha = subprocess.check_output(["git", "-C", os.environ["ROOT"], "rev-parse", "HEAD"], text=True).strip()
 if os.environ["RESUME_MODE"] == "false":
     for name, payload in expected_configs.items():
         dump_new(name, payload)
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3 if continuation else 2,
         "status":"started", "run_prefix":os.environ["RUN_PREFIX"], "git_sha":current_git_sha,
         "prepared_manifest":os.environ["MANIFEST"], "prepared_manifest_sha256":sha256(Path(os.environ["MANIFEST"])),
         "nv_review_sha256":sha256(Path(os.environ["NV_REVIEW_JSON"])),
@@ -283,6 +458,8 @@ if os.environ["RESUME_MODE"] == "false":
         "num_gpus":int(os.environ["NUM_GPUS"]), "privacy":"aggregate_only_no_restricted_rows_or_credentials",
         "selection_configs":{name:sha256(configs / name) for name in expected_configs},
     }
+    if continuation:
+        manifest["continuation"] = continuation
     with (root / "matrix_manifest.json").open("x", encoding="utf-8") as f: json.dump(manifest, f, indent=2, sort_keys=True); f.write("\n")
 else:
     manifest_path = root / "matrix_manifest.json"
@@ -586,6 +763,14 @@ verify_stage() {
 }
 maybe_skip_verified_stage() {
   local step="$1"; shift
+  if [[ "$CONTINUATION_MODE" == true && "$step" == "decoder-direct-selection" ]]; then
+    if ! validate_stage_artifacts "$step" "$@"; then
+      echo "continuation parent direct selection failed strict artifact validation" >&2
+      return 2
+    fi
+    ledger reused_verified_parent "$step" "$*"
+    return 0
+  fi
   [[ "$RESUME_MODE" == true ]] || return 1
   local ledger_result status
   if ledger_result="$("$PYTHON" - "$LEDGER" "$step" <<'PY'
@@ -653,7 +838,7 @@ write_decoder_refit() {
   MODE="$mode" SELECTION="$selection" REFIT="$refit" "$PYTHON" - "$CONFIGS/decoder-$config_mode-refit.json" <<'PY'
 import json, os, sys
 selection=json.load(open(os.environ["SELECTION"]+"/selected_checkpoint.json", encoding="utf-8")); base=json.load(open(f"{os.environ['RUNTIME_ROOT']}/configs/decoder-{os.environ['MODE'].replace('_','-')}-selection.json", encoding="utf-8")
-base.update({"run_id":os.path.basename(os.environ["REFIT"]), "phase":"refit", "output_dir":os.environ["REFIT"], "eval_steps":0, "save_steps":0, "selection_summary_path":os.environ["SELECTION"]+"/selected_checkpoint.json", "selected_global_step":selection["selected_global_step"]})
+base.update({"run_id":os.path.basename(os.environ["REFIT"]), "phase":"refit", "output_dir":os.environ["REFIT"], "eval_steps":0, "save_steps":0, "selection_summary_path":os.environ["SELECTION"]+"/selected_checkpoint.json", "selected_global_step":selection["selected_global_step"], "wandb_project":os.environ["WANDB_PROJECT"], "wandb_entity":os.environ["WANDB_ENTITY"] or None})
 path = os.path.abspath(sys.argv[1])
 if os.path.exists(path):
     if json.load(open(path, encoding="utf-8")) != base:

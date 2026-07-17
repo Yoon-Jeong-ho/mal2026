@@ -110,6 +110,48 @@ scripts/run_standard_experiment_matrix.sh \
   --nv-review-json /absolute/path/to/approved-nv-review.json
 ```
 
+### Provenance-linked direct-selection continuation
+
+`--continue-from-decoder-selection-run ABS_DIR` is narrower than resume. It is
+only for the recorded case in which an approved pre-fix direct decoder
+selection completed, but its first vLLM source-development checkpoint
+evaluation failed before producing an evaluation output. It must be combined
+with a **new** ignored runtime root and prefix; it cannot be combined with
+`--resume-run-prefix`. The parent must be a direct child of
+`outputs/standard-runs` named `PREFIX-decoder-direct-selection`.
+
+Before any GPU preflight, the launcher validates the parent runtime/config
+hash, exact direct-selection architecture/data/model/batch/seed identity,
+finite completion metrics, every retained checkpoint adapter, and the recorded
+failed vLLM stage/log. The new schema-v3 manifest records the parent paths and
+Git SHA, current continuation Git SHA, the exact guarded-entrypoint fix diff
+and rationale, failure identity, and SHA-256 evidence for the parent completion,
+selection config, and retained adapter configs. The new ledger records
+`reused_verified_parent` for direct selection; the parent ledger/config/logs
+remain unchanged.
+
+The new-prefix vLLM evaluations run for every retained parent checkpoint. Only
+after all candidate metrics pass their artifact gates may the selector append a
+previously absent canonical `selected_checkpoint.json` to the parent selection
+directory. It refuses an existing file rather than overwriting it. The direct
+refit, final evaluation, human-feedback decoder, and encoders all use the new
+prefix and retain the normal per-stage GPU-exclusive preflight and artifact
+gates.
+
+```bash
+scripts/run_standard_experiment_matrix.sh \
+  --continue-from-decoder-selection-run \
+    "$PWD/outputs/standard-runs/old-prefix-decoder-direct-selection" \
+  --runtime-root "$PWD/outputs/experiment-matrix/new-continuation-prefix" \
+  --run-prefix new-continuation-prefix \
+  --prepared-manifest /absolute/path/to/aihub_human_feedback_v1.json \
+  --validation-sha256 PINNED_VALIDATION_SHA256 \
+  --qwen-model /absolute/local/qwen2.5-snapshot \
+  --qwen3-model /absolute/local/qwen3-embedding-snapshot \
+  --nv-model /absolute/local/nv-embed-snapshot \
+  --nv-review-json /absolute/path/to/approved-nv-review.json
+```
+
 After every completed training or evaluation stage it rejects non-finite JSON
 metrics/provenance before proceeding. Inspect the aggregate metrics and ledger,
 not process existence, to determine completion.
