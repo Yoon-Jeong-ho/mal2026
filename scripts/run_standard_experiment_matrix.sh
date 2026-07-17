@@ -347,6 +347,17 @@ def validate_continuation_parent():
     }.items():
         if parent_manifest.get(key) != expected:
             raise SystemExit(f"continuation parent manifest identity mismatch for {key}")
+    manifest_path = Path(os.environ["MANIFEST"])
+    try:
+        relative_manifest = manifest_path.relative_to(Path(os.environ["ROOT"]))
+        expected_manifest_bytes = subprocess.check_output(
+            ["git", "-C", os.environ["ROOT"], "show", f"{expected_parent_git}:{relative_manifest.as_posix()}"],
+        )
+    except (ValueError, subprocess.CalledProcessError) as exc:
+        raise SystemExit(f"continuation cannot prove parent data manifest identity from approved Git content: {exc}")
+    expected_manifest_sha = hashlib.sha256(expected_manifest_bytes).hexdigest()
+    if sha256(manifest_path) != expected_manifest_sha:
+        raise SystemExit("continuation parent data manifest differs from the approved pre-fix Git content")
     parent_config = read_object(parent_config_path, "direct selection config")
     selection_hashes = parent_manifest.get("selection_configs")
     if not isinstance(selection_hashes, dict) or selection_hashes.get("decoder-direct-selection.json") != sha256(parent_config_path):
@@ -358,6 +369,9 @@ def validate_continuation_parent():
     expected_parent_config["wandb_entity"] = parent_config.get("wandb_entity")
     if parent_config != expected_parent_config:
         raise SystemExit("continuation parent direct config differs from canonical architecture/data/model/batch/seed identity")
+    selected_checkpoint = parent / "selected_checkpoint.json"
+    if selected_checkpoint.exists():
+        raise SystemExit("continuation parent already has selected_checkpoint.json; refusing to overwrite parent selection")
     completion = read_object(parent_completion_path, "training completion")
     if completion.get("status") != "completed" or completion.get("phase") != "selection" or completion.get("mode") != "direct" or completion.get("run_id") != parent.name:
         raise SystemExit("continuation parent completion is not a completed direct selection")
@@ -367,12 +381,27 @@ def validate_continuation_parent():
     if not isinstance(metrics, dict):
         raise SystemExit("continuation parent train_metrics must be an object")
     finite(metrics.get("train_loss"), "train_metrics.train_loss")
+    if completion.get("config") != parent_config:
+        raise SystemExit("continuation parent completion config does not exactly bind to its selection config")
+    identity = json.loads(json.dumps(parent_config, ensure_ascii=False))
+    for key in (
+        "run_id", "phase", "output_dir", "selection_summary_path", "selected_global_step",
+        "num_train_epochs", "eval_steps", "save_steps", "logging_steps", "early_stopping_patience",
+        "wandb_project", "wandb_entity",
+    ):
+        identity.pop(key)
+    if completion.get("identity") != identity:
+        raise SystemExit("continuation parent completion identity does not bind to its selection config")
+    if completion.get("model_revision") != parent_config["model_revision"] or completion.get("tokenizer_revision") != parent_config["tokenizer_revision"]:
+        raise SystemExit("continuation parent completion model/tokenizer revisions do not match its config")
     steps = completion.get("selection_candidate_steps")
     if not isinstance(steps, list) or not steps or len(set(steps)) != len(steps):
         raise SystemExit("continuation parent selection_candidate_steps must be a nonempty unique list")
     adapter_configs = {}
     for step in steps:
         positive(step, "selection_candidate_steps entry")
+        if step > completion["global_step"]:
+            raise SystemExit("continuation parent candidate checkpoint exceeds completed global_step")
         checkpoint = parent / f"checkpoint-{step}"
         config = checkpoint / "adapter_config.json"
         model = checkpoint / "adapter_model.safetensors"
@@ -382,10 +411,15 @@ def validate_continuation_parent():
         if new_eval.exists():
             raise SystemExit(f"continuation new-prefix direct evaluation output already exists: {new_eval}")
         adapter_configs[str(step)] = sha256(config)
+    old_eval_roots = sorted((Path(os.environ["ROOT"]) / "outputs" / "standard-evals").glob(f"{os.environ['PARENT_PREFIX']}-decoder-direct-dev-step-*"))
+    if old_eval_roots:
+        raise SystemExit(f"continuation parent already has direct source-dev evaluator output: {old_eval_roots[0]}")
     final_adapter_config = parent / "adapter" / "adapter_config.json"
     final_adapter_model = parent / "adapter" / "adapter_model.safetensors"
     if not final_adapter_config.is_file() or not final_adapter_model.is_file():
         raise SystemExit("continuation parent final adapter is incomplete")
+    first_candidate_step = f"decoder-direct-dev-step-{steps[0]}"
+    saw_first_candidate_start = False
     failed = None
     try:
         lines = parent_ledger_path.read_text(encoding="utf-8").splitlines()
@@ -395,14 +429,15 @@ def validate_continuation_parent():
             entry = json.loads(line)
             if not isinstance(entry, dict):
                 raise ValueError("not an object")
-            if entry.get("status") == "failed" and isinstance(entry.get("step"), str) and entry["step"].startswith("decoder-direct-dev-step-"):
-                candidate = entry["step"].removeprefix("decoder-direct-dev-step-")
-                if candidate.isdigit() and int(candidate) in steps:
+            if entry.get("step") == first_candidate_step:
+                if entry.get("status") == "started":
+                    saw_first_candidate_start = True
+                elif entry.get("status") == "failed" and saw_first_candidate_start:
                     failed = entry
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise SystemExit(f"continuation cannot parse parent ledger: {exc}")
     if failed is None or not isinstance(failed.get("detail"), str):
-        raise SystemExit("continuation parent lacks the required failed direct vLLM stage record")
+        raise SystemExit("continuation parent lacks the required started-then-failed first direct vLLM candidate record")
     failure_log = Path(failed["detail"])
     expected_log = parent_runtime / "logs" / f"{failed['step']}.log"
     if failure_log != expected_log or not failure_log.is_file():
@@ -430,6 +465,8 @@ def validate_continuation_parent():
         "parent_artifacts": {
             "completion_path": str(parent_completion_path), "completion_sha256": sha256(parent_completion_path),
             "selection_config_path": str(parent_config_path), "selection_config_sha256": sha256(parent_config_path),
+            "data_manifest_sha256": expected_manifest_sha,
+            "data_manifest_identity_source": f"git:{expected_parent_git}:{relative_manifest.as_posix()}",
             "candidate_checkpoints": steps, "candidate_adapter_config_sha256": adapter_configs,
             "final_adapter_config_sha256": sha256(final_adapter_config),
         },

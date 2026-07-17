@@ -122,11 +122,17 @@ with a **new** ignored runtime root and prefix; it cannot be combined with
 
 Before any GPU preflight, the launcher validates the parent runtime/config
 hash, exact direct-selection architecture/data/model/batch/seed identity,
-finite completion metrics, every retained checkpoint adapter, and the recorded
-failed vLLM stage/log. The new schema-v3 manifest records the parent paths and
-Git SHA, current continuation Git SHA, the exact guarded-entrypoint fix diff
-and rationale, failure identity, and SHA-256 evidence for the parent completion,
-selection config, and retained adapter configs. The new ledger records
+finite completion metrics, exact completion-to-config/identity binding, every
+retained checkpoint adapter, and the recorded **first-candidate** failed vLLM
+stage/log. The historical schema-v1 parent has no stored data-manifest hash, so
+the launcher proves the supplied canonical data manifest byte-for-byte against
+the immutable `dfa3c34` Git blob; a same-path mutation is rejected. It also
+refuses a pre-existing parent `selected_checkpoint.json` or any old
+parent-prefix direct source-development evaluator output. The new schema-v3
+manifest records the parent paths and Git SHA, current continuation Git SHA,
+the exact guarded-entrypoint fix diff and rationale, failure identity, and
+SHA-256 evidence for the parent completion, selection config, data manifest,
+and retained adapter configs. The new ledger records
 `reused_verified_parent` for direct selection; the parent ledger/config/logs
 remain unchanged.
 

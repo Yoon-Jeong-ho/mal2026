@@ -390,8 +390,8 @@ printf '{"status": "completed"}\n' > "$out/standard_training_complete.json"
             fixture = Path(directory)
             for name in ("qwen", "qwen3", "nv"):
                 (fixture / name).mkdir()
-            manifest_input = fixture / "manifest.json"
-            manifest_input.write_text("{}", encoding="utf-8")
+            manifest_input = ROOT / "data" / "manifests" / "aihub_human_feedback_v1.json"
+            manifest_input_bytes = manifest_input.read_bytes()
             review = fixture / "review.json"
             review.write_text(json.dumps({
                 "model_id": "nvidia/NV-Embed-v2", "revision": "3fa59658547db50a1e8e3346cf057fd0c77ed6ef",
@@ -430,17 +430,29 @@ printf '{"status": "completed"}\n' > "$out/standard_training_complete.json"
                     "cuda_visible_devices": "0,1,2,3", "num_gpus": 4,
                     "selection_configs": {"decoder-direct-selection.json": hashlib.sha256(parent_config_path.read_bytes()).hexdigest()},
                 }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                parent_identity = dict(parent_config)
+                for key in (
+                    "run_id", "phase", "output_dir", "selection_summary_path", "selected_global_step",
+                    "num_train_epochs", "eval_steps", "save_steps", "logging_steps", "early_stopping_patience",
+                    "wandb_project", "wandb_entity",
+                ):
+                    parent_identity.pop(key)
                 (parent / "standard_training_complete.json").write_text(json.dumps({
                     "status": "completed", "run_id": parent.name, "phase": "selection", "mode": "direct",
                     "global_step": 1, "best_metric": 0.2, "train_metrics": {"train_loss": 0.2},
-                    "selection_candidate_steps": [1],
+                    "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+                    "tokenizer_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+                    "selection_candidate_steps": [1], "identity": parent_identity, "config": parent_config,
                 }) + "\n", encoding="utf-8")
                 for adapter in (parent / "adapter", parent / "checkpoint-1"):
                     adapter.mkdir(parents=True, exist_ok=True)
                     (adapter / "adapter_config.json").write_text("{}\n", encoding="utf-8")
                     (adapter / "adapter_model.safetensors").write_bytes(b"test")
                 failure_log.write_text("spawn import failure\n", encoding="utf-8")
-                parent_ledger_before = json.dumps({"status": "failed", "step": failure_step, "detail": str(failure_log), "privacy": "aggregate_only"}) + "\n"
+                parent_ledger_before = (
+                    json.dumps({"status": "started", "step": failure_step, "detail": "mock evaluator", "privacy": "aggregate_only"}) + "\n"
+                    + json.dumps({"status": "failed", "step": failure_step, "detail": str(failure_log), "privacy": "aggregate_only"}) + "\n"
+                )
                 (parent_runtime / "matrix_ledger.jsonl").write_text(parent_ledger_before, encoding="utf-8")
                 nvidia_calls = fixture / "nvidia-calls"
                 nvidia = fixture / "nvidia-smi"
@@ -490,8 +502,54 @@ printf '{"status": "completed"}\n' > "$out/standard_training_complete.json"
                 self.assertEqual(1, rejected.returncode)
                 self.assertIn("config hash", rejected.stderr)
                 self.assertEqual(before_calls, nvidia_calls.read_text(encoding="utf-8"), "bad parent evidence must fail before GPU preflight")
+
+                parent_config["seed"] = 2026
+                parent_config_path.write_text(json.dumps(parent_config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                parent_manifest = json.loads((parent_runtime / "matrix_manifest.json").read_text())
+                parent_manifest["selection_configs"]["decoder-direct-selection.json"] = hashlib.sha256(parent_config_path.read_bytes()).hexdigest()
+                (parent_runtime / "matrix_manifest.json").write_text(json.dumps(parent_manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                selected = parent / "selected_checkpoint.json"
+                selected.write_text("{}\n", encoding="utf-8")
+                selected_prefix = "continuation-selected-" + uuid.uuid4().hex
+                selected_runtime = ROOT / "outputs" / "experiment-matrix" / selected_prefix
+                selected_command = list(command)
+                selected_command[4] = str(selected_runtime)
+                selected_command[6] = selected_prefix
+                before_calls = nvidia_calls.read_text(encoding="utf-8")
+                selected_rejected = subprocess.run(selected_command, cwd=ROOT, text=True, capture_output=True, env=env)
+                self.assertEqual(1, selected_rejected.returncode)
+                self.assertIn("already has selected_checkpoint", selected_rejected.stderr)
+                self.assertEqual(before_calls, nvidia_calls.read_text(encoding="utf-8"))
+                selected.unlink()
+
+                old_eval = ROOT / "outputs" / "standard-evals" / f"{parent_prefix}-decoder-direct-dev-step-1"
+                old_eval.mkdir(parents=True)
+                old_prefix = "continuation-old-eval-" + uuid.uuid4().hex
+                old_runtime = ROOT / "outputs" / "experiment-matrix" / old_prefix
+                old_command = list(command)
+                old_command[4] = str(old_runtime)
+                old_command[6] = old_prefix
+                before_calls = nvidia_calls.read_text(encoding="utf-8")
+                old_rejected = subprocess.run(old_command, cwd=ROOT, text=True, capture_output=True, env=env)
+                self.assertEqual(1, old_rejected.returncode)
+                self.assertIn("already has direct source-dev evaluator output", old_rejected.stderr)
+                self.assertEqual(before_calls, nvidia_calls.read_text(encoding="utf-8"))
+                shutil.rmtree(old_eval)
+
+                manifest_input.write_bytes(b'{"mutated":true}\n')
+                data_prefix = "continuation-data-" + uuid.uuid4().hex
+                data_runtime = ROOT / "outputs" / "experiment-matrix" / data_prefix
+                data_command = list(command)
+                data_command[4] = str(data_runtime)
+                data_command[6] = data_prefix
+                before_calls = nvidia_calls.read_text(encoding="utf-8")
+                data_rejected = subprocess.run(data_command, cwd=ROOT, text=True, capture_output=True, env=env)
+                self.assertEqual(1, data_rejected.returncode)
+                self.assertIn("data manifest differs", data_rejected.stderr)
+                self.assertEqual(before_calls, nvidia_calls.read_text(encoding="utf-8"))
             finally:
-                for path in (parent_runtime, parent, locals().get("runtime"), locals().get("bad_runtime")):
+                manifest_input.write_bytes(manifest_input_bytes)
+                for path in (parent_runtime, parent, locals().get("runtime"), locals().get("bad_runtime"), locals().get("selected_runtime"), locals().get("old_runtime"), locals().get("old_eval"), locals().get("data_runtime")):
                     if path is not None:
                         shutil.rmtree(path, ignore_errors=True)
 
