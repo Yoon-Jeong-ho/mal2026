@@ -1,0 +1,92 @@
+{
+  "schema_version": "mal2026-qwen36-native-fp8-vllm-distribution100-essay-only-v2",
+  "run_id_prefix": "qwen36-native-fp8-dist100-essay-only-v2-",
+  "output_subdirectories": {
+    "train": "judge_runs_essay_only_v2",
+    "validation": "frozen_validation_judge_runs_essay_only_v2"
+  },
+  "seed": 2026072026,
+  "model": {
+    "repository": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "revision": "95a723d08a9490559dae23d0cff1d9466213d989",
+    "format": "native-fp8-transformers"
+  },
+  "runtime": {
+    "engine": "vllm",
+    "required_vllm_version": "0.25.1",
+    "physical_gpus": [0, 1, 2, 3],
+    "topology": "one_self_contained_data_parallel_four_replica_server",
+    "tensor_parallel_size": 1,
+    "data_parallel_size": 4,
+    "context_size": 4096,
+    "max_num_seqs_per_dp_rank": 64,
+    "max_num_batched_tokens": 32768,
+    "client_max_inflight": 256,
+    "gpu_memory_utilization": 0.8,
+    "gdn_prefill_backend": "triton",
+    "enforce_eager": true,
+    "enable_prefix_caching": true,
+    "generation_config": "vllm",
+    "host": "127.0.0.1",
+    "port": 18340
+  },
+  "request": {
+    "chat_template_kwargs": {"enable_thinking": false},
+    "max_tokens": 192,
+    "top_p": 1.0
+  },
+  "sampling": {
+    "schedule": "crossed_layout_rubric_seed",
+    "temperature": 0.15,
+    "seeds": [2026072026, 2026072027, 2026072028, 2026072029],
+    "full_factorial": {"prompt_layouts": 5, "rubric_permutations": 5, "seeds_per_cell": 4, "samples_per_candidate": 100}
+  },
+  "protocol": {
+    "judge_prompt": "candidate-isolated v6 Korean feedback-quality pointwise rubric; score-blind to source writing labels; response schema is vLLM json_schema with post-decode fail-closed hard-gate validation",
+    "candidate_isolated": true,
+    "reference_score_in_prompt": false,
+    "axis_feedback_quality_rubric": {
+      "content": "Evaluate whether the feedback accurately diagnoses idea relevance, adequacy, specificity, or development from the essay; cites valid support; and gives an actionable content-improvement step.",
+      "organization": "Evaluate whether the feedback accurately diagnoses structure, sequence, paragraph linkage, coherence, or cohesion from the essay; cites valid support; and gives an actionable organization-improvement step.",
+      "expression": "Evaluate whether the feedback accurately diagnoses clarity, wording, grammar, sentence construction, or style from the essay; cites valid support; and gives an actionable expression-improvement step."
+    },
+    "selection_artifact_permitted": false,
+    "sft_dpo_grpo_permitted": false,
+    "train_scoring": "score observations only; may not use validation observations",
+    "validation_scoring": "frozen evaluation-only; may not influence train selection, prompt choice, SFT, DPO, or GRPO",
+    "raw_prompts_or_responses_persisted": false,
+    "score_observations_restricted": true,
+    "prompt_layouts": ["rubric_then_essay", "essay_then_rubric", "rubric_compact", "essay_compact", "interleaved"],
+    "rubric_permutations": [
+      ["content", "organization", "expression"],
+      ["content", "expression", "organization"],
+      ["organization", "content", "expression"],
+      ["organization", "expression", "content"],
+      ["expression", "content", "organization"]
+    ]
+  },
+  "inputs": {
+    "batch_run_id": "openai-rationale-terra-full-20260719-001",
+    "train": {
+      "candidate_artifact": "derived/train-only-candidates-v1-20260719-001/candidates.train.jsonl",
+      "candidate_manifest": "derived/train-only-candidates-v1-20260719-001/candidates.train.manifest.json",
+      "source_file": "eval/train.jsonl",
+      "expected_essays": 2000,
+      "expected_candidates": 6000
+    },
+    "validation": {
+      "candidate_artifact": "derived/validation-only-candidates-v1-20260720-001/candidates.validation.jsonl",
+      "candidate_manifest": "derived/validation-only-candidates-v1-20260720-001/candidates.validation.manifest.json",
+      "source_file": "eval/validation.jsonl",
+      "expected_essays": 400,
+      "expected_candidates": 1200
+    }
+  },
+  "hard_gates": {
+    "transport_or_schema_failures_max": 0,
+    "scored_observations_min_rate": 0.98,
+    "complete_candidates_min_rate": 1.0,
+    "max_prompt_tokens_plus_completion": 4096,
+    "invalid_source_or_candidate_rows_equals": 0
+  }
+}

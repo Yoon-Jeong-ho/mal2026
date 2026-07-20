@@ -1,0 +1,92 @@
+{
+  "schema_version": "mal2026-qwen36-native-fp8-vllm-essay-only-prompt5x10-v3",
+  "run_id_prefix": "qwen36-native-fp8-essay-only-prompt5x10-v3-",
+  "output_subdirectories": {
+    "train": "judge_runs_essay_only_prompt5x10_v3",
+    "validation": "frozen_validation_judge_runs_essay_only_prompt5x10_v3"
+  },
+  "seed": 2026072030,
+  "model": {
+    "repository": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "revision": "95a723d08a9490559dae23d0cff1d9466213d989",
+    "format": "native-fp8-transformers"
+  },
+  "runtime": {
+    "engine": "vllm",
+    "required_vllm_version": "0.25.1",
+    "physical_gpus": [0, 1, 2, 3],
+    "topology": "one_self_contained_data_parallel_four_replica_server",
+    "tensor_parallel_size": 1,
+    "data_parallel_size": 4,
+    "context_size": 4096,
+    "max_num_seqs_per_dp_rank": 96,
+    "max_num_batched_tokens": 49152,
+    "client_max_inflight": 384,
+    "gpu_memory_utilization": 0.9,
+    "gdn_prefill_backend": "triton",
+    "enforce_eager": true,
+    "enable_prefix_caching": true,
+    "generation_config": "vllm",
+    "host": "127.0.0.1",
+    "port": 18340
+  },
+  "request": {
+    "chat_template_kwargs": {"enable_thinking": false},
+    "max_tokens": 192,
+    "top_p": 1.0
+  },
+  "sampling": {
+    "schedule": "prompt_type_repeats",
+    "temperature": 0.15,
+    "seeds": [2026072030, 2026072031, 2026072032, 2026072033, 2026072034, 2026072035, 2026072036, 2026072037, 2026072038, 2026072039],
+    "full_factorial": {"prompt_types": 5, "repeats_per_prompt_type": 10, "samples_per_candidate": 50}
+  },
+  "protocol": {
+    "judge_prompt": "candidate-isolated v7 Korean feedback-quality pointwise rubric; source-score blind; five fixed prompt types with ten seed repeats each; vLLM json_schema with post-decode fail-closed validation",
+    "candidate_isolated": true,
+    "reference_score_in_prompt": false,
+    "assess_communication_quality": true,
+    "axis_feedback_quality_rubric": {
+      "content": "Evaluate whether the feedback accurately diagnoses idea relevance, adequacy, specificity, or development from the essay; cites valid support; and gives an actionable content-improvement step.",
+      "organization": "Evaluate whether the feedback accurately diagnoses structure, sequence, paragraph linkage, coherence, or cohesion from the essay; cites valid support; and gives an actionable organization-improvement step.",
+      "expression": "Evaluate whether the feedback accurately diagnoses clarity, wording, grammar, sentence construction, or style from the essay; cites valid support; and gives an actionable expression-improvement step."
+    },
+    "prompt_types": [
+      {"id": "evidence_audit", "layout": "rubric_then_essay", "review_emphasis": "Use a conservative evidence-audit pass: verify every cited sentence ID before evaluating the diagnosis."},
+      {"id": "diagnosis_entailment", "layout": "essay_then_rubric", "review_emphasis": "Prioritize whether each diagnosis is entailed by the cited wording or by a clearly verifiable absence in the essay."},
+      {"id": "actionability_check", "layout": "rubric_compact", "review_emphasis": "Give equal weight to whether each next step is concrete, feasible, and follows from its diagnosis."},
+      {"id": "axis_boundary", "layout": "essay_compact", "review_emphasis": "Check that content, organization, and expression claims remain within their stated axis rather than borrowing unsupported claims from another axis."},
+      {"id": "communication_quality", "layout": "interleaved", "review_emphasis": "Also assess whether the feedback reads as clear, internally consistent, natural Korean with a logical diagnosis-to-next-step flow; this lowers quality when weak but does not by itself trigger abstention."}
+    ],
+    "selection_artifact_permitted": false,
+    "sft_dpo_grpo_permitted": false,
+    "train_scoring": "score observations only; may not use validation observations",
+    "validation_scoring": "frozen evaluation-only; may not influence train selection, prompt choice, SFT, DPO, or GRPO",
+    "raw_prompts_or_responses_persisted": false,
+    "score_observations_restricted": true
+  },
+  "inputs": {
+    "batch_run_id": "openai-rationale-terra-full-20260719-001",
+    "train": {
+      "candidate_artifact": "derived/train-only-candidates-v1-20260719-001/candidates.train.jsonl",
+      "candidate_manifest": "derived/train-only-candidates-v1-20260719-001/candidates.train.manifest.json",
+      "source_file": "eval/train.jsonl",
+      "expected_essays": 2000,
+      "expected_candidates": 6000
+    },
+    "validation": {
+      "candidate_artifact": "derived/validation-only-candidates-v1-20260720-001/candidates.validation.jsonl",
+      "candidate_manifest": "derived/validation-only-candidates-v1-20260720-001/candidates.validation.manifest.json",
+      "source_file": "eval/validation.jsonl",
+      "expected_essays": 400,
+      "expected_candidates": 1200
+    }
+  },
+  "hard_gates": {
+    "transport_or_schema_failures_max": 0,
+    "scored_observations_min_rate": 0.98,
+    "complete_candidates_min_rate": 1.0,
+    "max_prompt_tokens_plus_completion": 4096,
+    "invalid_source_or_candidate_rows_equals": 0
+  }
+}

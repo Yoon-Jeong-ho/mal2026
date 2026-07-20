@@ -1,0 +1,59 @@
+{
+  "schema_version": "mal2026-qwen36-native-fp8-vllm-v1",
+  "seed": 2026072008,
+  "model": {
+    "repository": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "revision": "resolved-at-download-and-pinned-in-manifest",
+    "official_repository_bytes": 37493015668,
+    "format": "native-fp8-transformers"
+  },
+  "runtime": {
+    "engine": "vllm",
+    "required_vllm_version": "0.25.1",
+    "physical_gpus": [0, 1, 2, 3],
+    "topology": "four-independent-single-gpu-workers",
+    "context_size": 4096,
+    "max_num_seqs": 4,
+    "gpu_memory_utilization": 0.8,
+    "gdn_prefill_backend": "triton",
+    "host": "127.0.0.1",
+    "ports": {"0": 18300, "1": 18301, "2": 18302, "3": 18303}
+  },
+  "request": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 192, "top_p": 1.0},
+  "retry": {"max_attempts": 2, "policy": "only_timeout_connection_http_429_http_5xx; unchanged_endpoint_seed_and_bytes"},
+  "selection": {
+    "split": "train",
+    "max_essays": 2000,
+    "rank_algorithm": "sha256(seed:source_id)",
+    "required_candidate_artifact": "derived/train-only-candidates-v1-20260719-001/candidates.train.jsonl",
+    "required_candidate_manifest": "derived/train-only-candidates-v1-20260719-001/candidates.train.manifest.json"
+  },
+  "sampling": {
+    "deterministic": {"temperature": 0.0, "seed": 2026072008, "repeats": 5},
+    "dispersion": {"temperature": 0.15, "seeds": [2026072011, 2026072012, 2026072013, 2026072014, 2026072015], "repeats": 5}
+  },
+  "protocol": {
+    "prompt_rubric_and_semantic_gates": "byte-for-byte inherited from openai_explanation_repeat_distribution.v5_2.gpu0_3.py dependencies",
+    "validation_policy": "never_open_validation_or_construct_validation_requests",
+    "selection_artifact_permitted": false,
+    "candidate_isolated": true,
+    "controls": {"duplicate_identity": true, "invalid_evidence": true, "padded_verbosity": true, "repeats": 5},
+    "prompt_layouts": ["rubric_then_essay", "essay_then_rubric", "rubric_compact", "essay_compact", "interleaved"],
+    "rubric_permutations": [["content", "organization", "expression"], ["content", "expression", "organization"], ["organization", "content", "expression"], ["organization", "expression", "content"], ["expression", "content", "organization"]],
+    "contract_comparison": "synthetic-only; schema, no-thinking placement, latency and throughput aggregates; never verdict quality or selection"
+  },
+  "hard_gates": {
+    "validation_rows_loaded_equals": 0,
+    "validation_requests_equals": 0,
+    "sample_essays_min": 1,
+    "sample_essays_max": 2000,
+    "transport_or_schema_failures_equals": 0,
+    "evidence_valid_rate_min": 0.98,
+    "deterministic_repeat_agreement_min": 0.98,
+    "cross_gpu_agreement_min": 0.98,
+    "invalid_control_abstain_rate_min": 0.99,
+    "duplicate_identity_agreement_min": 0.99,
+    "padded_verbosity_non_improvement": true,
+    "watchdog_faults_equals": 0
+  }
+}

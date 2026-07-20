@@ -7,6 +7,10 @@ wandb/
 # AI-Hub raw downloads and operational logs (large and/or restricted data)
 data/raw/
 data/processed/
+# Restricted OpenAI Batch requests/responses/mappings/candidates.  This
+# explicit rule documents the canonical isolation root in addition to the
+# legacy broad processed-data exclusion above.
+data/processed/restricted/openai_rationale_batches/
 data/logs/
 eval/
 

@@ -1,0 +1,35 @@
+{
+  "schema_version": "mal2026-qwen36-native-fp8-vllm-tp4-v1",
+  "seed": 2026072020,
+  "model": {
+    "repository": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "revision": "95a723d08a9490559dae23d0cff1d9466213d989",
+    "format": "native-fp8-transformers"
+  },
+  "runtime": {
+    "engine": "vllm",
+    "required_vllm_version": "0.25.1",
+    "physical_gpus": [0, 1, 2, 3],
+    "topology": "one_tensor_parallel_four_worker_server",
+    "tensor_parallel_size": 4,
+    "data_parallel_size": 1,
+    "context_size": 4096,
+    "max_num_seqs": 64,
+    "max_num_batched_tokens": 32768,
+    "gpu_memory_utilization": 0.8,
+    "gdn_prefill_backend": "triton",
+    "host": "127.0.0.1",
+    "port": 18320
+  },
+  "request": {
+    "chat_template_kwargs": {"enable_thinking": false},
+    "max_tokens": 192,
+    "top_p": 1.0
+  },
+  "protocol": {
+    "scope": "synthetic runtime/throughput gate only; no project data, selection, SFT, DPO, or GRPO",
+    "raw_prompts_or_responses_persisted": false,
+    "synthetic_calls": 20,
+    "client_concurrency": 64
+  }
+}

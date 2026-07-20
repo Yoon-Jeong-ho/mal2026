@@ -8,6 +8,8 @@ datasets==5.0.0
 peft==0.19.1
 trl==0.29.1
 vllm==0.25.1
+# Required by FlashInfer first-use JIT; installed only in .venv-standard.
+ninja==1.13.0
 # Required for Trainer's aggregate-only WandbCallback; install/login remains local.
 wandb==0.28.0
 safetensors==0.5.3
