@@ -22,12 +22,15 @@ DP4_SMOKE_ID="${MAL2026_DIST100_DP4_SMOKE_ID:-${MAL2026_DIST100_ESSAY_ONLY_DP4_S
 TRAIN_DEST="$BATCH/$TRAIN_SUBDIR/$TRAIN_ID"; VALIDATION_DEST="$BATCH/$VALIDATION_SUBDIR/$VALIDATION_ID"
 OUT="$ROOT/outputs/$OUTPUT_ROOT/$TRAIN_ID"; PORT=18340; PID=""
 [[ -x "$PY" && -x "$VLLM" && -x "$SCORE" && -x "$DERIVE" && -f "$CFG" && -d "$MODEL" ]] || { echo "essay-only distribution runtime prerequisite is unavailable" >&2; exit 1; }
-read -r GPU_MEMORY_UTILIZATION MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS < <("$PY" - "$CFG" <<'PY'
+read -r GPU_MEMORY_UTILIZATION MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS EAGER_FLAG < <("$PY" - "$CFG" <<'PY'
 import json,sys
 r=json.load(open(sys.argv[1]))['runtime']
-print(r['gpu_memory_utilization'],r['max_num_seqs_per_dp_rank'],r['max_num_batched_tokens'])
+assert isinstance(r.get('enforce_eager'), bool)
+print(r['gpu_memory_utilization'],r['max_num_seqs_per_dp_rank'],r['max_num_batched_tokens'], int(r['enforce_eager']))
 PY
 )
+[[ "$EAGER_FLAG" == 0 || "$EAGER_FLAG" == 1 ]] || { echo "invalid eager runtime flag" >&2; exit 2; }
+EAGER_ARGS=(); [[ "$EAGER_FLAG" == 1 ]] && EAGER_ARGS=(--enforce-eager)
 "$PY" - "$BATCH/$TRAIN_SUBDIR/$GPU0_SMOKE_ID/aggregate_score_report.json" "$BATCH/$TRAIN_SUBDIR/$DP4_SMOKE_ID/aggregate_score_report.json" <<'PY'
 import json,sys
 for p in sys.argv[1:]:
@@ -47,7 +50,7 @@ trap cleanup EXIT INT TERM
 env CUDA_VISIBLE_DEVICES=0,1,2,3 MAL2026_RESERVED_PHYSICAL_GPUS=0,1,2,3 "$VLLM" serve "$MODEL" \
   --served-model-name "$MODEL_ID" --host 127.0.0.1 --port "$PORT" \
   --tensor-parallel-size 1 --data-parallel-size 4 --max-model-len 4096 --max-num-seqs "$MAX_NUM_SEQS" --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS" \
-  --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" --gdn-prefill-backend triton --generation-config vllm --enable-prefix-caching --enforce-eager \
+  --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" --gdn-prefill-backend triton --generation-config vllm --enable-prefix-caching "${EAGER_ARGS[@]}" \
   >"$OUT/server.log" 2>&1 & PID="$!"
 for _ in $(seq 1 240); do curl --fail --silent "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 && break; sleep 1; done
 curl --fail --silent "http://127.0.0.1:$PORT/health" >/dev/null

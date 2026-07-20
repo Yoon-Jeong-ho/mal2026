@@ -83,6 +83,66 @@ def test_essay_only_v3_has_five_prompt_types_with_ten_repeats_each() -> None:
         RUNNER.CONFIG_PATH, RUNNER.SCHEMA, RUNNER.token_count = original_path, original_schema, original_token_count
 
 
+def test_essay_only_v4_requires_scores_and_has_no_semantic_abstention_path() -> None:
+    original_path, original_schema, original_token_count = RUNNER.CONFIG_PATH, RUNNER.SCHEMA, RUNNER.token_count
+    try:
+        RUNNER.CONFIG_PATH = ROOT / "configs/qwen36_native_fp8_vllm_essay_only_score5x10.v4.json"
+        RUNNER.SCHEMA = "mal2026-qwen36-native-fp8-vllm-essay-only-score5x10-v4"
+        cfg = RUNNER.config()
+        entry = {"custom_id": "synthetic-only-key", "candidate_number": 1,
+                 "sentences": ["합성 통제 문장입니다."],
+                 "rationale": {"schema_version": "rationale-v3-sentence-id", **{axis: {"evidence_sentence_ids": [1], "diagnosis": "근거가 있다.", "next_step": "근거를 구체화하세요."} for axis in RUNNER.AXES}}}
+        task = next(RUNNER.task_stream(cfg, "train", "qwen36-native-fp8-essay-only-score5x10-v4-train-20260720-gpu0_smoke-999", "model", [entry], set()))
+        schema = task["body"]["response_format"]["json_schema"]["schema"]
+        text = task["body"]["messages"][0]["content"]
+        assert cfg["protocol"]["response_contract"] == "required_scores_only_v1"
+        assert set(schema["required"]) == {"schema_version", "scores"}
+        assert "verdict" not in schema["properties"] and "hard_gates" not in schema["properties"]
+        assert "lowest appropriate score rather than withholding a score" in text
+        assert "return verdict abstain" not in text
+        assert RUNNER.normalize_judge_response({"schema_version": RUNNER.SCHEMA, "scores": {axis: 1 for axis in RUNNER.AXES}}, "required_scores_only_v1") == ({axis: 1 for axis in RUNNER.AXES}, None)
+        RUNNER.token_count = lambda endpoint, content: 11
+        assert RUNNER.prompt_budget("http://synthetic", cfg, "model", [entry])["max_prompt_tokens"] == 11
+    finally:
+        RUNNER.CONFIG_PATH, RUNNER.SCHEMA, RUNNER.token_count = original_path, original_schema, original_token_count
+
+
+def test_rationale_only_v5_projects_out_candidate_score_ids_and_next_steps() -> None:
+    original_path, original_schema = RUNNER.CONFIG_PATH, RUNNER.SCHEMA
+    try:
+        RUNNER.CONFIG_PATH = ROOT / "configs/qwen36_native_fp8_vllm_rationale_only_score5x10.v5.json"
+        RUNNER.SCHEMA = "mal2026-qwen36-native-fp8-vllm-rationale-only-score5x10-v5"
+        cfg = RUNNER.config()
+        source_candidate = {"schema_version": "rationale-v3-sentence-id", **{axis: {"evidence_sentence_ids": [1], "diagnosis": f"{axis} 근거", "next_step": "수정 제안"} for axis in RUNNER.AXES}}
+        projected = RUNNER.project_candidate(source_candidate, cfg)
+        assert projected == {"schema_version": "rationale-only-v1", **{axis: {"rationale": f"{axis} 근거"} for axis in RUNNER.AXES}}
+        entry = {"custom_id": "synthetic-only-key", "candidate_number": 1, "sentences": ["합성 통제 문장입니다."], "rationale": projected}
+        body = RUNNER.request_body(cfg, "model", entry, list(RUNNER.AXES), "rubric_then_essay", 2026072050, cfg["protocol"]["prompt_types"][0]["review_emphasis"])
+        text = body["messages"][0]["content"]
+        assert '"next_step"' not in text and '"evidence_sentence_ids"' not in text and '"score"' not in text
+        assert "no candidate writing score, sentence ID, or improvement proposal" in text
+        assert cfg["protocol"]["response_contract"] == "required_scores_only_v1"
+    finally:
+        RUNNER.CONFIG_PATH, RUNNER.SCHEMA = original_path, original_schema
+
+
+def test_rationale_only_v6_only_changes_runtime_throughput_controls() -> None:
+    original_path, original_schema = RUNNER.CONFIG_PATH, RUNNER.SCHEMA
+    try:
+        RUNNER.CONFIG_PATH = ROOT / "configs/qwen36_native_fp8_vllm_rationale_only_score5x10.v6.json"
+        RUNNER.SCHEMA = "mal2026-qwen36-native-fp8-vllm-rationale-only-score5x10-v6"
+        cfg = RUNNER.config()
+        runtime = cfg["runtime"]
+        assert runtime["enforce_eager"] is False
+        assert runtime["max_num_seqs_per_dp_rank"] == 192
+        assert runtime["max_num_batched_tokens"] == 65536
+        assert runtime["client_max_inflight"] == 768
+        assert cfg["protocol"]["candidate_projection"] == "diagnosis_only_rationale_v1"
+        assert cfg["protocol"]["response_contract"] == "required_scores_only_v1"
+    finally:
+        RUNNER.CONFIG_PATH, RUNNER.SCHEMA = original_path, original_schema
+
+
 def test_validation_artifact_derivation_never_opens_train_source_text() -> None:
     source = (ROOT / "scripts" / "derive_validation_only_candidates.py").read_text(encoding="utf-8")
     assert "eval/train.jsonl" not in source

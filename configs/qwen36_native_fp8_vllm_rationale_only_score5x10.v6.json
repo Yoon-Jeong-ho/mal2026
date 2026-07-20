@@ -1,0 +1,46 @@
+{
+  "schema_version": "mal2026-qwen36-native-fp8-vllm-rationale-only-score5x10-v6",
+  "run_id_prefix": "qwen36-native-fp8-rationale-only-score5x10-v6-",
+  "output_subdirectories": {"train": "judge_runs_rationale_only_score5x10_v6", "validation": "frozen_validation_judge_runs_rationale_only_score5x10_v6"},
+  "seed": 2026072050,
+  "model": {"repository": "Qwen/Qwen3.6-35B-A3B-FP8", "revision": "95a723d08a9490559dae23d0cff1d9466213d989", "format": "native-fp8-transformers"},
+  "runtime": {
+    "engine": "vllm", "required_vllm_version": "0.25.1", "physical_gpus": [0, 1, 2, 3],
+    "topology": "one_self_contained_data_parallel_four_replica_server", "tensor_parallel_size": 1, "data_parallel_size": 4,
+    "context_size": 4096, "max_num_seqs_per_dp_rank": 192, "max_num_batched_tokens": 65536,
+    "client_max_inflight": 768, "gpu_memory_utilization": 0.9, "gdn_prefill_backend": "triton",
+    "enforce_eager": false, "enable_prefix_caching": true, "generation_config": "vllm", "host": "127.0.0.1", "port": 18340
+  },
+  "request": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 192, "top_p": 1.0},
+  "sampling": {
+    "schedule": "prompt_type_repeats", "temperature": 0.15,
+    "seeds": [2026072050, 2026072051, 2026072052, 2026072053, 2026072054, 2026072055, 2026072056, 2026072057, 2026072058, 2026072059],
+    "full_factorial": {"prompt_types": 5, "repeats_per_prompt_type": 10, "samples_per_candidate": 50}
+  },
+  "protocol": {
+    "judge_prompt": "candidate-isolated v6 rationale-only Korean feedback-quality rubric; source-score blind; score-only JSON; five prompt emphases with ten seed repeats; throughput-tuned runtime only",
+    "candidate_isolated": true, "reference_score_in_prompt": false, "candidate_projection": "diagnosis_only_rationale_v1", "response_contract": "required_scores_only_v1", "assess_communication_quality": true,
+    "axis_feedback_quality_rubric": {
+      "content": "Evaluate whether the rationale accurately and specifically explains the essay's ideas, relevance, adequacy, or development. Unsupported or overclaimed rationale receives a lower score.",
+      "organization": "Evaluate whether the rationale accurately and specifically explains the essay's structure, sequence, paragraph linkage, coherence, or cohesion. Unsupported or overclaimed rationale receives a lower score.",
+      "expression": "Evaluate whether the rationale accurately and specifically explains the essay's clarity, wording, grammar, sentence construction, or style. Unsupported or overclaimed rationale receives a lower score."
+    },
+    "prompt_types": [
+      {"id": "balanced_rationale", "layout": "rubric_then_essay", "review_emphasis": "Apply all stated rationale-quality criteria evenly. Use the full 1-to-5 scale; do not infer an external writing label."},
+      {"id": "grounding_specificity", "layout": "rubric_then_essay", "review_emphasis": "Give special weight to whether each rationale is grounded in the essay and names a sufficiently specific strength or weakness; unsupported or generic rationale must receive a low score."},
+      {"id": "diagnosis_calibration", "layout": "rubric_then_essay", "review_emphasis": "Penalize rationale that overclaims, understates, or misreads the essay. Calibrate its severity to what the text actually supports."},
+      {"id": "axis_fidelity", "layout": "rubric_then_essay", "review_emphasis": "Give special weight to whether each rationale stays within content, organization, or expression rather than confusing the three axes."},
+      {"id": "communication_quality", "layout": "rubric_then_essay", "review_emphasis": "Give special weight to clear, internally consistent, natural Korean rationale without repetition or vague filler; weak communication must receive a low score."}
+    ],
+    "selection_artifact_permitted": false, "sft_dpo_grpo_permitted": false,
+    "train_scoring": "score observations only; may not use validation observations",
+    "validation_scoring": "frozen evaluation-only; may not influence train selection, prompt choice, SFT, DPO, or GRPO",
+    "raw_prompts_or_responses_persisted": false, "score_observations_restricted": true
+  },
+  "inputs": {
+    "batch_run_id": "openai-rationale-terra-full-20260719-001",
+    "train": {"candidate_artifact": "derived/train-only-candidates-v1-20260719-001/candidates.train.jsonl", "candidate_manifest": "derived/train-only-candidates-v1-20260719-001/candidates.train.manifest.json", "source_file": "eval/train.jsonl", "expected_essays": 2000, "expected_candidates": 6000},
+    "validation": {"candidate_artifact": "derived/validation-only-candidates-v1-20260720-001/candidates.validation.jsonl", "candidate_manifest": "derived/validation-only-candidates-v1-20260720-001/candidates.validation.manifest.json", "source_file": "eval/validation.jsonl", "expected_essays": 400, "expected_candidates": 1200}
+  },
+  "hard_gates": {"transport_or_schema_failures_max": 0, "scored_observations_min_rate": 0.98, "complete_candidates_min_rate": 1.0, "max_prompt_tokens_plus_completion": 4096, "invalid_source_or_candidate_rows_equals": 0}
+}

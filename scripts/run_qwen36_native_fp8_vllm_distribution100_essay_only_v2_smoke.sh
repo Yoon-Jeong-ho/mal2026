@@ -18,12 +18,15 @@ OUTPUT_ROOT="${MAL2026_DIST100_OUTPUT_ROOT:-native-fp8-vllm-distribution100-essa
 SUFFIX="${MAL2026_DIST100_SMOKE_SUFFIX:-${MAL2026_DIST100_ESSAY_ONLY_SMOKE_SUFFIX:-001}}"
 [[ "$SUFFIX" =~ ^[0-9]{3}$ ]] || { echo "smoke suffix must be three digits" >&2; exit 2; }
 [[ -x "$PY" && -x "$VLLM" && -x "$SCORE" && -f "$CFG" && -d "$MODEL" ]] || { echo "native FP8 runtime prerequisite is unavailable" >&2; exit 1; }
-read -r GPU_MEMORY_UTILIZATION MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS < <("$PY" - "$CFG" <<'PY'
+read -r GPU_MEMORY_UTILIZATION MAX_NUM_SEQS MAX_NUM_BATCHED_TOKENS EAGER_FLAG < <("$PY" - "$CFG" <<'PY'
 import json,sys
 r=json.load(open(sys.argv[1]))['runtime']
-print(r['gpu_memory_utilization'],r['max_num_seqs_per_dp_rank'],r['max_num_batched_tokens'])
+assert isinstance(r.get('enforce_eager'), bool)
+print(r['gpu_memory_utilization'],r['max_num_seqs_per_dp_rank'],r['max_num_batched_tokens'], int(r['enforce_eager']))
 PY
 )
+[[ "$EAGER_FLAG" == 0 || "$EAGER_FLAG" == 1 ]] || { echo "invalid eager runtime flag" >&2; exit 2; }
+EAGER_ARGS=(); [[ "$EAGER_FLAG" == 1 ]] && EAGER_ARGS=(--enforce-eager)
 if [[ "$MODE" == gpu0 ]]; then
   PHASE=gpu0_smoke; RUN_ID="${RUN_PREFIX}train-20260720-gpu0_smoke-$SUFFIX"; PORT=18343; CVD=0; DP=1; GPUS=(0)
 else
@@ -47,7 +50,7 @@ trap cleanup EXIT INT TERM
 env CUDA_VISIBLE_DEVICES="$CVD" MAL2026_RESERVED_PHYSICAL_GPUS="$CVD" "$VLLM" serve "$MODEL" \
   --served-model-name "$MODEL_ID" --host 127.0.0.1 --port "$PORT" \
   --tensor-parallel-size 1 --data-parallel-size "$DP" --max-model-len 4096 --max-num-seqs "$MAX_NUM_SEQS" --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS" \
-  --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" --gdn-prefill-backend triton --generation-config vllm --enable-prefix-caching --enforce-eager \
+  --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION" --gdn-prefill-backend triton --generation-config vllm --enable-prefix-caching "${EAGER_ARGS[@]}" \
   >"$OUT/server.log" 2>&1 & PID="$!"
 for _ in $(seq 1 240); do curl --fail --silent "http://127.0.0.1:$PORT/health" >/dev/null 2>&1 && break; sleep 1; done
 curl --fail --silent "http://127.0.0.1:$PORT/health" >/dev/null
