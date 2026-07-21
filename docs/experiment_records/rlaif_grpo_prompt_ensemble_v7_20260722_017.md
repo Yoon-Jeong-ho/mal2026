@@ -57,6 +57,12 @@ all-five then random-one 320-group pilot.  A second allocator-independent
 memory failure will be preserved; no data reduction or reward/prompt retuning
 will be selected from validation.
 
+The reproducibility source revision for the `-018` command is
+`0b7de49` (`Add TP2 RLAIF GRPO prompt ensemble pipeline`); it contains the
+versioned v7 config, allocator setting, no-eager Qwen runner path, and all
+contract tests.  The runner command is
+`MAL2026_RLAIF_CONFIG=configs/rlaif_grpo_prompt_ensemble.v7.json MAL2026_RLAIF_RUNTIME_ID=20260722-018 PYTHONPATH=src .venv-standard/bin/python scripts/run_rlaif_grpo_prompt_ensemble_v1.py midm-pilot`.
+
 ## Static verification before launch
 
 - `python -m json.tool configs/rlaif_grpo_prompt_ensemble.v7.json`
