@@ -1,0 +1,84 @@
+{
+  "schema_version": "mal2026-rlaif-grpo-prompt-ensemble-v7",
+  "run_id_prefix": "rlaif-grpo-prompt-ensemble-v7-",
+  "fixed_v6_config": "configs/qwen36_native_fp8_vllm_rationale_only_score5x10.v6.json",
+  "fixed_v6_config_sha256": "b7ed2004a61bfd05deb2926967eb4d3fc284bfd5cea04f4bdbf1fd43813a33c0",
+  "judge": {
+    "model_id": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "model_revision": "95a723d08a9490559dae23d0cff1d9466213d989",
+    "model_path": "outputs/model-cache/Qwen--Qwen3.6-35B-A3B-FP8-native-fp8-v1",
+    "temperature": 0.15,
+    "top_p": 1.0,
+    "max_tokens": 192,
+    "training_seed_by_prompt_index": [2026072210, 2026072211, 2026072212, 2026072213, 2026072214],
+    "response_contract": "required_scores_only_v1"
+  },
+  "policy": {
+    "algorithm": "grpo",
+    "rollout_backend": "vllm_structured_outputs_http_v1",
+    "rollout_structured_output_mode": "json_object",
+    "rollout_json_schema_enforces_field_limit": false,
+    "num_generations": 4,
+    "num_train_epochs": 1.0,
+    "learning_rate": 1e-06,
+    "beta": 0.02,
+    "loss_type": "dr_grpo",
+    "scale_rewards": "none",
+    "sampling_temperature": 0.7,
+    "sampling_top_p": 0.95,
+    "max_completion_tokens": 512,
+    "per_device_train_batch_size_full": 16,
+    "generation_batch_size_full": 64,
+    "steps_per_generation_full": 4,
+    "gradient_accumulation_steps": 1,
+    "training_dtype": "float32",
+    "seed": 2026072209
+  },
+  "arms": ["all5", "random1"],
+  "inputs": {
+    "train_expected_essays": 2000,
+    "train_source_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "train_candidate_sha256": "d69dd9bc349c117a55b4bf652507135f084c9045d95d5939da3980223893aecf",
+    "validation_expected_essays": 400,
+    "validation_source_sha256": "0805445029328848164cf15f34b90b88fb5f7896d7b73f24f1717b733a9a00a4",
+    "contrastive_holdout_run_id": "qwen36-native-fp8-rationale-contrastive-v1-train-20260720-full-001",
+    "contrastive_holdout_count": 80,
+    "contrastive_holdout_digest": "8306146ac6597dc84f4ded667e1c8ce96157ae775dcfef683f30bfb55fcd692a"
+  },
+  "reward": {
+    "invalid_completion_reward": -1.0,
+    "field_character_limit": 192,
+    "max_transport_attempts": 3,
+    "client_max_inflight_per_rank": 192,
+    "zero_std_fraction_max": 0.8,
+    "parse_valid_rate_min": 0.98
+  },
+  "runtime": {
+    "physical_gpus": [0, 1, 2, 3],
+    "full_rollout_gpus": [0, 1],
+    "full_reward_gpus": [3],
+    "full_policy_gpus": [2],
+    "rollout_tensor_parallel_size": 2,
+    "rollout_max_model_len": 3072,
+    "rollout_max_num_seqs": 192,
+    "reward_data_parallel_size": 1,
+    "reward_max_model_len": 4096,
+    "reward_max_num_seqs_per_rank": 192,
+    "reward_max_num_batched_tokens": 65536,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": false,
+    "policy_training_cuda_alloc_conf": "expandable_segments:True"
+  },
+  "hard_gates": {
+    "judge_transport_or_schema_failures_equals": 0,
+    "policy_parse_valid_rate_min": 0.98,
+    "reward_zero_std_fraction_max": 0.8,
+    "validation_parse_valid_rate_min": 1.0,
+    "validation_judge_failures_equals": 0
+  },
+  "privacy": {
+    "source_writing_scores_read_or_prompted": false,
+    "candidate_scores_read_or_prompted": false,
+    "raw_prompts_or_completions_tracked": false
+  }
+}
