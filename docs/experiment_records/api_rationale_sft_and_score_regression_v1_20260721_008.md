@@ -174,3 +174,76 @@ and higher tie-aware Spearman are better.
   score-only API-rationale condition is the empirical reference to preserve
   before any reward-model or reinforcement-learning stage. No post-validation
   retuning was performed.
+
+## Post-completion score-metric audit — 2026-07-22
+
+The completed score-regression outputs were re-audited after the question
+whether their RMSE was unexpectedly high. This was an aggregate-only audit of
+the saved model-state checksums, fixed validation configuration, label scale,
+tokenization path, grouping rule, and metric implementation; it did not train
+or generate another model output.
+
+### Calculation and population checks
+
+- The canonical data contract remains 2,000 train and 400 validation essays,
+  with no source-ID overlap. The evaluation output binds all six saved model
+  state checksums and uses every one of the 400 validation essays.
+- For the API-rationale condition, the evaluator makes 1,200 predictions (the
+  three GPT/API rationales for each essay), then averages the three prediction
+  vectors **by essay before** calculating RMSE and tie-aware Spearman on 400
+  essay-level labels. Direct and decoder-rationale conditions each use 400
+  inputs and 400 essay-level labels.
+- The target score scale is continuous within 1--5, not an integer class
+  label. On validation the observed axis ranges are 1.1--4.7 (content),
+  1.0--5.0 (organization), and 1.25--5.0 (expression).
+- A direct tokenizer audit found no input truncation: all six conditions have
+  zero validation records above the fixed 3,072-token cap. The longest input
+  was 1,386 Qwen tokens and 1,132 KURE tokens, so the appended rationale is
+  not being silently removed by sequence truncation.
+- The metric implementation computes the standard square root of the mean
+  squared error separately for each axis and averages the three axis RMSEs for
+  the reported macro value. Its tie-aware rank calculation is applied only to
+  the corresponding 400-element prediction/label vector for each axis.
+
+### Magnitude relative to a train-mean predictor
+
+The RMSE values are mathematically valid, but the concern about their absolute
+magnitude is justified: the best API-rationale condition leaves substantial
+unexplained validation variation. The train-mean baseline below uses no essay
+input and is evaluated on the same 400 validation essays.
+
+| Axis | Validation SD | Train-mean baseline RMSE | Best observed RMSE (Qwen + API rationale) | RMSE reduction | R² vs. train-mean |
+|---|---:|---:|---:|---:|---:|
+| Content | 0.653000 | 0.654817 | 0.551263 | 15.81% | 0.291274 |
+| Organization | 0.870012 | 0.871477 | 0.692677 | 20.52% | 0.368244 |
+| Expression | 0.680163 | 0.680176 | 0.612106 | 10.01% | 0.190138 |
+
+The best macro RMSE, 0.618682, is about 15.5% of the full four-point score
+range, but it is still roughly 84% of the average validation axis standard
+deviation. Thus it is better than a constant predictor, not yet a strong
+score-estimation result.
+
+| Encoder / condition | Macro RMSE | Macro Spearman | Mean axis R² vs. train mean |
+|---|---:|---:|---:|
+| Qwen2.5-7B, essay only | 0.655690 | 0.485988 | 0.200947 |
+| Qwen2.5-7B, API rationale | **0.618682** | **0.613479** | **0.283219** |
+| Qwen2.5-7B, decoder rationale | 0.674831 | 0.505564 | 0.154637 |
+| KURE-v1, essay only | 0.670711 | 0.416966 | 0.167511 |
+| KURE-v1, API rationale | **0.619088** | **0.556956** | **0.288106** |
+| KURE-v1, decoder rationale | 0.666532 | 0.401996 | 0.178066 |
+
+### Training-loss interpretation
+
+The distributed Trainer `train_loss` values should not be compared directly to
+the validation MSE. They are accumulated logging scalars: the final Qwen API
+value 14.004202 divided by its four ranks and eight accumulation steps is
+0.437631; the KURE value 3.392730 divided by four ranks and two accumulation
+steps is 0.424091. These are consistent in magnitude with the independently
+computed validation mean-axis MSEs of 0.386122 and 0.388198, respectively.
+There is therefore no evidence here of an RMSE formula, candidate grouping,
+score-range, split, or truncation error.
+
+The correct conclusion is that this fixed protocol produces a real but modest
+API-rationale gain, while the selected decoder rationale remains noncompetitive.
+Any improvement experiment should be recorded as a new protocol rather than
+retroactively replacing these reported validation results.
