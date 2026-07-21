@@ -73,3 +73,65 @@ contract tests.  The runner command is
 The GPU-free contract suite validates the score-blind five-form setup,
 rationale-only schema, v6 TP2 batch cardinality, v7's sole allocator
 difference, and the future full-run TP2-policy/GPU3-judge topology.
+
+## Fresh v7 two-arm Midm pilot (`20260722-018`)
+
+The fresh lineage completed all declared gates on GPUs 0--3.  It used the
+same source SFT adapter for both arms, 320 opaque train-only groups from the
+declared 1,920 eligible rows, four policy completions per group, and no source
+writing scores or validation source text.  The TP2 policy rollout batch gate
+completed 64/64 canonical parses in 36.376 seconds (limit: 240 seconds).
+Both one-update actual-input gates, the 80-update `all5` pilot, and the
+80-update deterministic `random1` pilot passed.
+
+Training-signal aggregates (not post-RL quality metrics) were:
+
+| arm | groups / updates | policy completions | Qwen calls | parse-valid | mapped reward mean / sd | zero group-sd fraction |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `all5` | 320 / 80 | 1,280 | 6,400 | 1,280/1,280 | 0.384271 / 0.313104 | 0.0 |
+| `random1` | 320 / 80 | 1,280 | 1,280 | 1,280/1,280 | 0.376432 / 0.391739 | 0.0 |
+
+For `random1`, deterministic prompt-form assignments were 259
+`axis_fidelity`, 274 `balanced_rationale`, 259 `communication_quality`, 243
+`diagnosis_calibration`, and 245 `grounding_specificity`.  The frozen source
+adapter SHA-256 was unchanged before and after both runs.  The ignored
+completion records retain the detailed provenance; no raw writing, prompt, or
+rationale was added to this record.
+
+### Frozen-v6 validation result
+
+Each arm generated one deterministic rationale for each of 400 held-out
+essays.  Frozen v6 then made 20,000 calls per arm (five independently posed
+judge forms × ten replications), with 20,000 schema-valid scored observations,
+zero abstentions, and zero transport/schema failures per arm.  The evaluation
+never supplied candidate/source writing scores to the policy or judge.
+
+The frozen SFT baseline macro mean is **3.867967**.  The paired outcomes are:
+
+| arm | macro mean | content | organization | expression | paired macro delta (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `all5` | 3.864400 | 3.857600 | 3.853700 | 3.881900 | -0.003567 [-0.075983, 0.067033] |
+| `random1` | 3.909850 | 3.935150 | 3.858100 | 3.936300 | +0.041883 [-0.029300, 0.112800] |
+
+`all5` is a null/slightly negative macro result.  `random1` is directionally
+positive but its primary macro interval includes zero; it is therefore **not a
+verified macro improvement**.  Its content-axis paired delta is +0.095400
+(95% CI [0.016200, 0.177800]), while organization is -0.038000 (95% CI
+[-0.115900, 0.039700]).  This preserves both the promising content signal and
+the unresolved macro result without choosing a reward estimator from
+validation.
+
+The five frozen prompt forms retain material calibration variation: for
+`all5`, macro means ranged from 3.618417 (`grounding_specificity`) to 4.033750
+(`axis_fidelity`), with axis ranges 0.472000 (content), 0.295750
+(organization), and 0.479750 (expression).  The analogous `random1` ranges
+were 0.451000, 0.299000, and 0.471500.  Thus a lower score here is not evidence
+that the supervised 2,000-example corpus should be reduced; it is evidence to
+keep the fixed full comparison and later assess reward disagreement/low-margin
+filtering as a separately declared ablation.
+
+Aggregate evidence is retained only under ignored roots:
+
+- `outputs/rlaif-grpo-prompt-ensemble-v7/20260722-018/aggregate/midm2_bundle_v7_full_batch_gate.json`
+- `outputs/rlaif-grpo-prompt-ensemble-v7/rlaif-grpo-prompt-ensemble-v7-midm2_base-bundle-{all5,random1}-pilot-018/training_complete.json`
+- `data/processed/restricted/openai_rationale_batches/openai-rationale-terra-full-20260719-001/rlaif_grpo_v7/rlaif-grpo-prompt-ensemble-v7-midm2_base-bundle-{all5,random1}-pilot-validation-001/aggregate_judge_report.json`
