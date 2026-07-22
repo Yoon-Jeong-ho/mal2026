@@ -135,3 +135,45 @@ Aggregate evidence is retained only under ignored roots:
 - `outputs/rlaif-grpo-prompt-ensemble-v7/20260722-018/aggregate/midm2_bundle_v7_full_batch_gate.json`
 - `outputs/rlaif-grpo-prompt-ensemble-v7/rlaif-grpo-prompt-ensemble-v7-midm2_base-bundle-{all5,random1}-pilot-018/training_complete.json`
 - `data/processed/restricted/openai_rationale_batches/openai-rationale-terra-full-20260719-001/rlaif_grpo_v7/rlaif-grpo-prompt-ensemble-v7-midm2_base-bundle-{all5,random1}-pilot-validation-001/aggregate_judge_report.json`
+
+## Fixed full Midm bundle result (`20260722-019`)
+
+After a fresh GPU0-first preflight, the unchanged full recipe completed the
+Midm bundle arm for both estimators: 1,920 opaque train-only groups, 480
+updates, and four policy completions per group.  The full `all5` arm made
+38,395 aggregate Qwen calls, with 7,679/7,680 valid policy completions
+(99.987%); `random1` made 7,678 calls, with 7,678/7,680 valid policy
+completions (99.974%).  Both parse rates exceed the declared 0.98 gate.  The
+zero-reward-standard-deviation fractions were 0.0 (`all5`) and 0.011458
+(`random1`), both within the declared 0.8 limit.  Reference adapter digests
+were identical before and after each arm; source/candidate writing scores were
+not read or prompted.
+
+Frozen-v6 evaluation used the same 400 held-out essays and five-form,
+ten-replication, 20,000-observation protocol per arm as the pilot.  Both arms
+had zero abstentions, 20,000/20,000 valid scores, and zero transport/schema
+failures.  Relative to the frozen SFT macro baseline (3.867967), both are now
+clear positive results:
+
+| arm | macro mean | content | organization | expression | paired macro delta (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `all5` | 4.149600 | 4.145400 | 4.096950 | 4.206450 | +0.281633 [0.216633, 0.347800] |
+| `random1` | 4.100667 | 4.117900 | 4.026400 | 4.157700 | +0.232700 [0.166100, 0.301117] |
+
+Every requested axis improves with a positive 95% paired interval.  For
+`all5`, deltas are +0.305650 content [0.234350, 0.378950], +0.200850
+organization [0.123000, 0.276750], and +0.338400 expression [0.254900,
+0.424250].  For `random1`, they are +0.278150 [0.206100, 0.352700],
++0.130300 [0.045850, 0.213650], and +0.289650 [0.198250, 0.380900],
+respectively.  `all5` is higher in this Midm bundle comparison, but the
+predeclared remaining-model run retains both arms rather than selecting from
+this validation result.
+
+This full result reverses the pilot's macro-inconclusive outcome and is direct
+evidence **against reducing the supervised/eligible RL population**.  The
+fixed all-model matrix therefore proceeds without changing data, prompt forms,
+reward settings, or validation protocol.  Aggregate-only evidence is retained
+under ignored roots:
+
+- `outputs/rlaif-grpo-prompt-ensemble-v7/rlaif-grpo-prompt-ensemble-v7-midm2_base-bundle-{all5,random1}-full-019/training_complete.json`
+- `data/processed/restricted/openai_rationale_batches/openai-rationale-terra-full-20260719-001/rlaif_grpo_v7/rlaif-grpo-prompt-ensemble-v7-midm2_base-bundle-{all5,random1}-validation-001/aggregate_judge_report.json`
