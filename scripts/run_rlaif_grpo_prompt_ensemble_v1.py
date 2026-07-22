@@ -568,14 +568,42 @@ def completed_task_evaluations(base_key: str, task: str) -> bool:
     overwritten.  Incomplete pairs intentionally return false and are trained
     in the fresh lineage.
     """
+    cfg = config()
     for arm in ARMS:
-        path = EVALUATION_ROOT / f"{config()['run_id_prefix']}{base_key}-{task}-{arm}-validation-001" / "aggregate_judge_report.json"
-        if not path.is_file():
+        run_id = f"{cfg['run_id_prefix']}{base_key}-{task}-{arm}-validation-001"
+        root = EVALUATION_ROOT / run_id
+        judge_path, generation_path, manifest_path = root / "aggregate_judge_report.json", root / "aggregate_generation_report.json", root / "manifest.json"
+        if not all(path.is_file() for path in (judge_path, generation_path, manifest_path)):
             return False
-        value = read_json(path)
-        if not (value.get("status") == "completed" and value.get("base_key") == base_key and value.get("task") == task and value.get("arm") == arm and
-                value.get("fixed_v6_config_sha256") == config()["fixed_v6_config_sha256"] and all(value.get("hard_gates", {}).values())):
-            return False
+        value, generation, manifest = read_json(judge_path), read_json(generation_path), read_json(manifest_path)
+        expected_judge_counts = {"expected_calls": 20000, "observations": 20000, "scored": 20000, "schema_valid": 20000, "abstain": 0, "generated_candidates": 400}
+        expected_generation_counts = {"expected": 400, "observations": 400, "parse_valid": 400}
+        privacy_keys = ("source_writing_scores_read_or_prompted", "candidate_scores_read_or_prompted", "raw_prompts_or_completions_tracked")
+        ensure(value.get("status") == "completed" and value.get("run_id") == run_id and value.get("base_key") == base_key and value.get("task") == task and value.get("arm") == arm,
+               "existing frozen-v6 evaluation identity differs")
+        ensure(value.get("fixed_v6_config_sha256") == cfg["fixed_v6_config_sha256"] and value.get("counts") == expected_judge_counts and value.get("failure_categories") == {} and all(value.get("hard_gates", {}).values()),
+               "existing frozen-v6 evaluation aggregate gate differs")
+        ensure(all(value.get(key) is False for key in privacy_keys), "existing frozen-v6 evaluation privacy contract differs")
+        ensure(generation.get("status") == "completed" and generation.get("run_id") == run_id and generation.get("base_key") == base_key and generation.get("task") == task and generation.get("arm") == arm,
+               "existing post-RL generation identity differs")
+        ensure(generation.get("counts") == expected_generation_counts and generation.get("failure_categories") == {} and all(generation.get("hard_gates", {}).values()) and all(generation.get(key) is False for key in privacy_keys),
+               "existing post-RL generation aggregate gate differs")
+        ensure(value.get("generation_report_sha256") == sha(generation_path) and manifest.get("aggregate_generation_report_sha256") == sha(generation_path) and manifest.get("aggregate_judge_report_sha256") == sha(judge_path),
+               "existing evaluation artifact hashes differ")
+        manifest_config = manifest.get("config")
+        ensure(isinstance(manifest_config, dict) and manifest.get("status") == "completed" and manifest.get("run_id") == run_id and manifest.get("rlaif_config_sha256") == sha(CONFIG) and
+               manifest_config.get("run_id") == run_id and manifest_config.get("base_key") == base_key and manifest_config.get("task") == task and manifest_config.get("arm") == arm and
+               manifest_config.get("rl_phase") == "full" and manifest_config.get("output_dir") == str(root.resolve()) and manifest_config.get("deterministic_max_new_tokens") == (512 if task == "bundle" else 192) and manifest_config.get("character_limit") == 192,
+               "existing evaluation manifest provenance differs")
+        training_dir = Path(str(manifest_config.get("rl_training_dir", ""))).resolve()
+        training_path = training_dir / "training_complete.json"
+        ensure(training_dir.parent == ARM_ROOT.resolve() and training_dir.is_dir() and not training_dir.is_symlink() and training_path.is_file() and (training_dir / "adapter" / "adapter_config.json").is_file(),
+               "existing RLAIF training provenance is unavailable")
+        training = read_json(training_path)
+        training_sha = sha(training_path)
+        ensure(training.get("status") == "completed" and all(training.get(key) == expected for key, expected in (("base_key", base_key), ("task", task), ("arm", arm), ("phase", "full"))) and
+               training.get("rlaif_config_sha256") == sha(CONFIG) and generation.get("rlaif_training_complete_sha256") == training_sha and manifest.get("rlaif_training_complete_sha256") == training_sha,
+               "existing RLAIF training/evaluation binding differs")
     return True
 
 

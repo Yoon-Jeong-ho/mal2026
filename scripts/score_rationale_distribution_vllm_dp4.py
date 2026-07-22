@@ -37,7 +37,7 @@ CONFIG_PATH = Path(os.environ.get(
 RESTRICTED = ROOT / "data/processed/restricted/openai_rationale_batches"
 AXES = ("content", "organization", "expression")
 SCHEMA = os.environ.get("MAL2026_DIST100_SCHEMA", "mal2026-qwen36-native-fp8-vllm-distribution100-v1")
-RETRIABLE = {"timeout", "connection", "http_429", "http_5xx"}
+RETRIABLE = {"timeout", "connection", "http_429", "http_5xx", "envelope_error"}
 
 
 def sha(path: Path) -> str:
@@ -493,7 +493,18 @@ def request_once(endpoint: str, wire: bytes, response_contract: str) -> tuple[di
     if not isinstance(outer, dict) or not isinstance(outer.get("choices"), list) or len(outer["choices"]) != 1:
         return None, "envelope_choices"
     choice = outer["choices"][0]
-    if not isinstance(choice, dict) or choice.get("finish_reason") != "stop" or not isinstance(choice.get("message"), dict):
+    if not isinstance(choice, dict) or not isinstance(choice.get("message"), dict):
+        return None, "envelope_finish"
+    finish_reason = choice.get("finish_reason")
+    if finish_reason != "stop":
+        # vLLM distinguishes an internal generation ``error`` (retryable) from
+        # a max-token ``length`` finish (incomplete).  Keep those aggregate
+        # categories separate so training cannot accidentally accept a
+        # resampled truncated answer as a transport recovery.
+        if finish_reason == "error":
+            return None, "envelope_error"
+        if finish_reason == "length":
+            return None, "envelope_length"
         return None, "envelope_finish"
     message = choice["message"]
     if any(message.get(key) not in (None, "") for key in ("reasoning", "reasoning_content")):
@@ -507,23 +518,25 @@ def request_once(endpoint: str, wire: bytes, response_contract: str) -> tuple[di
         return None, "content_json"
 
 
-def judge_call(endpoint: str, request_body: dict[str, Any], response_contract: str) -> dict[str, Any]:
+def judge_call(endpoint: str, request_body: dict[str, Any], response_contract: str, max_attempts: int = 2) -> dict[str, Any]:
     wire = json.dumps(request_body, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    if max_attempts < 1:
+        raise RuntimeError("judge transport-attempt limit is invalid")
     categories: Counter[str] = Counter()
-    for attempt in range(1, 3):
+    for attempt in range(1, max_attempts + 1):
         scores, category = request_once(endpoint, wire, response_contract)
         if category is None:
             return {"scores": scores, "attempts": attempt, "failure": None}
         categories[category] += 1
-        if category not in RETRIABLE or attempt == 2:
+        if category not in RETRIABLE or attempt == max_attempts:
             return {"scores": None, "attempts": attempt, "failure": category, "attempt_categories": dict(categories)}
         time.sleep(0.15 * attempt)
     raise AssertionError("retry loop exhausted unexpectedly")
 
 
-def call(endpoint: str, task: dict[str, Any]) -> dict[str, Any]:
+def _call(endpoint: str, task: dict[str, Any], max_attempts: int) -> dict[str, Any]:
     try:
-        result = judge_call(endpoint, task["body"], str(task["response_contract"]))
+        result = judge_call(endpoint, task["body"], str(task["response_contract"]), max_attempts=max_attempts)
         failure = result["failure"]
         return {key: task[key] for key in task if key != "body"} | {"scores": result["scores"], "schema_valid": failure is None,
                 "scored": failure is None and result["scores"] is not None, "abstain": failure is None and result["scores"] is None,
@@ -531,6 +544,16 @@ def call(endpoint: str, task: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         return {key: task[key] for key in task if key != "body"} | {"scores": None, "schema_valid": False, "scored": False,
                 "abstain": False, "failure_category": "unexpected_client_exception", "attempts": 0}
+
+
+def call(endpoint: str, task: dict[str, Any]) -> dict[str, Any]:
+    """Frozen-v6 evaluator call: fixed two-attempt transport policy."""
+    return _call(endpoint, task, max_attempts=2)
+
+
+def call_with_transport_attempts(endpoint: str, task: dict[str, Any], max_attempts: int) -> dict[str, Any]:
+    """Training-only bounded transport call; score contract is unchanged."""
+    return _call(endpoint, task, max_attempts=max_attempts)
 
 
 def score_distribution(rows: list[dict[str, Any]]) -> dict[str, Any]:

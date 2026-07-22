@@ -38,7 +38,12 @@
 - Decoder hard gates: canonical counts/checksums, zero invalid rows, valid chat template, finite Trainer metrics, completed adapter, 400/400 parseable frozen-validation outputs, and zero judge transport/schema failures. The 50-score judge distribution is not used to filter training candidates.
 - The bundled decoder generation budget is 512 new tokens plus a schema-level 192-character maximum per axis in the explicitly versioned `-003` lineage. This is a uniform closure recovery after a preserved Phi request reached the cap in both `-001` (384 tokens) and `-002` (512 tokens); all three bundled bases, and the selected base's train generation, use the same repaired contract. A Phi content-only `-001` job also reached `finish=length`; all axis-only systems therefore use the exact same schema bound with their fixed 192-token budget in fresh `-002` lineage. The local installed XGrammar compiler accepted that strict JSON schema with the Phi tokenizer before the fresh run.
 - Encoder hard gates: canonical counts/checksums, no candidate-score access, finite Trainer metrics, completed state checksum, 400/400 predictions, finite RMSE/Spearman, and no row-level outputs.
-- No external API call, new writing dataset, selection artifact, reward-model/RL job, raw text, prompt, rationale, identifier, candidate score, or prediction is committed. Generated train/validation rationales required by the downstream stage remain only in the ignored restricted root.
+- As of this 2026-07-21 SFT/regression record, no reward-model/RL job was part
+  of this matrix.  No external API call, new writing dataset, raw text, prompt,
+  rationale, identifier, candidate score, prediction, or raw RL artifact is
+  committed.  The separately versioned later score-blind RLAIF study is
+  documented in `rlaif_grpo_prompt_ensemble_v7_20260722_017.md`; generated
+  train/validation rationales remain only in the ignored restricted root.
 
 ## Execution order and recovery envelope
 

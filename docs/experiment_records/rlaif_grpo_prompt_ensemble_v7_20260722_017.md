@@ -1,9 +1,13 @@
 # RLAIF/GRPO prompt-ensemble v7 allocator repair — 2026-07-22
 
-- **Status:** the first v7 launcher (`20260722-017`) reached only the policy
-  server synthetic health request and was stopped before Qwen health, policy
-  rollout, reward, update, validation generation, or score comparison.  A
-  fresh v7 lineage is prepared after the runner repair below.
+- **Current matrix status (2026-07-22):** Midm bundle and A.X-4.0-Light bundle
+  each completed both reward-estimator arms and the frozen-v6 comparison.  The
+  A.X content/`all5` `-019` arm is a preserved runtime failure at 444/480,
+  with no adapter or validation evaluation.  A `-020` recovery was stopped
+  before any training update when review found that it did not distinguish
+  vLLM `error` from `length` finishes; `-021` is the fresh pending continuation
+  after that correction.  The remaining task/model arms are not yet results.
+  The initial `-017` policy-server-only start remains preserved below.
 - **Fixed science:** the score-blind train-only 320-group pilot population,
   opaque selection/holdout, four completions per essay, five Qwen prompt
   forms/seeds, `all5` and deterministic `random1` reward estimators, JSON
@@ -153,14 +157,15 @@ Frozen-v6 evaluation used the same 400 held-out essays and five-form,
 ten-replication, 20,000-observation protocol per arm as the pilot.  Both arms
 had zero abstentions, 20,000/20,000 valid scores, and zero transport/schema
 failures.  Relative to the frozen SFT macro baseline (3.867967), both are now
-clear positive results:
+positive results under the fixed Qwen-v6 judge proxy:
 
 | arm | macro mean | content | organization | expression | paired macro delta (95% bootstrap CI) |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `all5` | 4.149600 | 4.145400 | 4.096950 | 4.206450 | +0.281633 [0.216633, 0.347800] |
 | `random1` | 4.100667 | 4.117900 | 4.026400 | 4.157700 | +0.232700 [0.166100, 0.301117] |
 
-Every requested axis improves with a positive 95% paired interval.  For
+Every requested axis has a positive 95% paired interval under that same judge.
+For
 `all5`, deltas are +0.305650 content [0.234350, 0.378950], +0.200850
 organization [0.123000, 0.276750], and +0.338400 expression [0.254900,
 0.424250].  For `random1`, they are +0.278150 [0.206100, 0.352700],
@@ -201,7 +206,8 @@ paired comparison to the frozen A.X SFT baseline is:
 | `all5` | 4.186950 | 4.157050 | 4.141350 | 4.262450 | +0.420767 [0.348783, 0.496533] |
 | `random1` | 4.192283 | 4.105850 | 4.197500 | 4.273500 | +0.426100 [0.355700, 0.499650] |
 
-All requested-axis intervals are positive.  `all5` has content +0.471550
+All requested-axis intervals are positive under the frozen Qwen-v6 judge.
+`all5` has content +0.471550
 [0.386950, 0.558650], organization +0.271550 [0.188250, 0.354800], and
 expression +0.519200 [0.412850, 0.630500].  `random1` has +0.420350
 [0.336950, 0.506950], +0.327700 [0.245300, 0.408750], and +0.530250
@@ -214,32 +220,59 @@ Aggregate-only evidence is retained under ignored roots:
 - `outputs/rlaif-grpo-prompt-ensemble-v7/rlaif-grpo-prompt-ensemble-v7-ax4_light-bundle-{all5,random1}-full-019/training_complete.json`
 - `data/processed/restricted/openai_rationale_batches/openai-rationale-terra-full-20260719-001/rlaif_grpo_v7/rlaif-grpo-prompt-ensemble-v7-ax4_light-bundle-{all5,random1}-validation-001/aggregate_judge_report.json`
 
-## Preserved A.X content runtime interruption and fresh resume (`20260722-019` → `-020`)
+## Preserved A.X content runtime interruption and fresh resume (`20260722-019` → `-021`)
 
 The next declared arm, A.X-4.0-Light `content`/`all5`, was interrupted at
 global step 444/480.  It had completed 7,104 score-valid policy completions
 and 35,520 logical Qwen observations before a returned Qwen OpenAI envelope
-had a non-`stop` finish reason (`envelope_finish`).  The reward callable
-correctly refused to turn that response into a reward, the runner preserved
+had a non-`stop` finish reason, recorded at the time only as
+`envelope_finish`.  That historical category does not retain raw output or
+distinguish an internal `error` from an incomplete `length` finish.  The reward
+callable correctly refused to turn it into a reward, the runner preserved
 `training_failed_runtime.json`, stopped all servers, and did not export an
 adapter or open/evaluate validation text for that partial arm.  This is an
 execution-envelope failure, not a metric or data-quality observation.
 
-The repaired caller now applies the already-declared bounded
-`max_transport_attempts: 3` specifically to this scoreless response-envelope
-case: it reissues the identical private request, keeps parsed-invalid scores
-and abstentions non-retriable, and records aggregate-only extra retry counts.
-It does not alter prompts, data, seeds, response schemas, reward mapping,
-optimizer settings, or the frozen-v6 evaluator.  vLLM documents that an
-`error` finish reason is retryable while a `length` finish is incomplete;
-the caller retains the strict requirement for a usable `stop`/schema-valid
-score and preserves a failure if the bounded reissues are exhausted:
+The repaired caller retains the strict requirement for a usable
+`stop`/schema-valid score and distinguishes finish reasons without retaining
+any response text.  The already-declared `max_transport_attempts: 3` applies
+only to the explicit vLLM internal `error` finish, with an identical-request
+reissue and aggregate-only retry count.  A `length` finish is incomplete and
+terminal; parsed-invalid scores and abstentions are also non-retriable.  The
+frozen-v6 evaluator preserves its own fixed two-attempt transport behavior.
+No prompts, data, seeds, response schemas, reward mapping, optimizer settings,
+or evaluator rubric changed.  vLLM documents the `error`/`length` distinction:
 <https://docs.vllm.ai/en/v0.17.0/api/vllm/entrypoints/openai/responses/serving/>.
 
-The fresh `20260722-020` runner lineage verifies and reuses the already
-complete A.X bundle two-arm frozen evaluations, then starts fresh ignored arm
-directories for the incomplete content task and all later matrix tasks.  It
-does not overwrite the partial `-019` artifact.  Static compilation and the
-15-test contract suite passed; the suite includes simulated first-attempt
-envelope failure/success and all-attempt failure bounds before the resumed
-long run.
+`20260722-020` was deliberately stopped after server startup and before a
+training stage when this distinction was identified; it is preserved separately
+and contains no RL update.  The fresh `20260722-021` runner verifies and reuses
+the complete A.X bundle two-arm frozen evaluations, then starts fresh ignored
+arm directories for the incomplete content task and later matrix tasks.  It
+cannot overwrite either `-019` or `-020`.  Static compilation, strict resume
+provenance validation, and the 16-test contract suite passed, including
+`error` recovery, terminal `length`, and bounded-retry simulations.
+
+The completed `-019` aggregate lineage binds Git
+`672180d836b2e533da4e7297d2e54c43f3f7f0fd`, RLAIF-config SHA-256
+`3957d93cac07e4ae8a84822c48ad4e586bfd3720c8dabe5f4491d811af94e5ab`,
+fixed-v6 SHA-256
+`b7ed2004a61bfd05deb2926967eb4d3fc284bfd5cea04f4bdbf1fd43813a33c0`, and
+physical GPUs 0--3.  It is an immutable historical output, not an in-place
+rerun target.  The pending continuation command is
+`MAL2026_RLAIF_CONFIG=configs/rlaif_grpo_prompt_ensemble.v7.json MAL2026_RLAIF_RUNTIME_ID=20260722-021 PYTHONPATH=src .venv-standard/bin/python scripts/run_rlaif_grpo_prompt_ensemble_v1.py remaining`.
+
+## Scope of the completed comparisons
+
+The 400-essay split is held out from RLAIF updates, but it was previously used
+for user-authorized decoder selection.  It is therefore a fixed descriptive
+RL validation comparison, not a newly untouched test set.  The reward judge
+and frozen evaluator are the same Qwen/rubric family, so these results establish
+improvement under that target proxy only; they do not establish independent
+human rationale quality, score-regression RMSE/Spearman improvement, or a
+winner between `all5` and `random1`.  In Midm `all5` is higher by 0.048933;
+in A.X `random1` is higher by 0.005333, but neither contrast has a direct
+paired estimator-vs-estimator interval or repeated training seeds.  The five
+prompt forms themselves have larger absolute calibration ranges, so arm
+selection remains deferred until the declared matrix and an independent
+selection protocol are complete.

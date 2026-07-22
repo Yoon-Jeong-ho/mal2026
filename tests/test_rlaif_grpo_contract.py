@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from mal2026.rlaif_evaluation import _response_schema
 from mal2026.api_rationale_data import ROOT
-from mal2026.rlaif_grpo import StructuredVLLMRollout, RLAIFSettings, _call_reward_judge, _policy_response_schema, canonical_completion, canonical_completion_text, random_prompt_index
+from mal2026.rlaif_grpo import JUDGE, StructuredVLLMRollout, RLAIFSettings, _call_reward_judge, _policy_response_schema, canonical_completion, canonical_completion_text, random_prompt_index
 
 
 class RLAIFGRPOContractTest(unittest.TestCase):
@@ -52,24 +52,33 @@ class RLAIFGRPOContractTest(unittest.TestCase):
         indices = {random_prompt_index(2026072209, "random1", f"opaque-{index}", canonical) for index in range(100)}
         self.assertEqual(indices, {0, 1, 2, 3, 4})
 
-    def test_reward_envelope_failure_reissues_only_the_identical_request(self) -> None:
-        failed = {"failure_category": "envelope_finish", "scored": False, "schema_valid": False}
-        valid = {"failure_category": None, "scored": True, "schema_valid": True, "scores": {axis: 3 for axis in self.axes}}
-        with patch("mal2026.rlaif_grpo.JUDGE.call", side_effect=[failed, valid]) as call, patch("mal2026.rlaif_grpo.time.sleep") as sleep:
-            result, retries = _call_reward_judge("http://127.0.0.1:1", {"opaque_request_key": "opaque"}, 3)
+    def test_reward_transport_limit_is_forwarded_to_the_fixed_client(self) -> None:
+        valid = {"failure_category": None, "scored": True, "schema_valid": True, "scores": {axis: 3 for axis in self.axes}, "attempts": 2}
+        task = {"opaque_request_key": "opaque"}
+        with patch("mal2026.rlaif_grpo.JUDGE.call_with_transport_attempts", return_value=valid) as call:
+            result, retries = _call_reward_judge("http://127.0.0.1:1", task, 3)
         self.assertEqual(result, valid)
         self.assertEqual(retries, 1)
-        self.assertEqual(call.call_count, 2)
-        self.assertEqual(call.call_args_list[0], call.call_args_list[1])
-        sleep.assert_called_once_with(0.15)
+        call.assert_called_once_with("http://127.0.0.1:1", task, 3)
 
-    def test_reward_envelope_retry_is_bounded(self) -> None:
-        failed = {"failure_category": "envelope_finish", "scored": False, "schema_valid": False}
-        with patch("mal2026.rlaif_grpo.JUDGE.call", return_value=failed) as call, patch("mal2026.rlaif_grpo.time.sleep"):
-            result, retries = _call_reward_judge("http://127.0.0.1:1", {"opaque_request_key": "opaque"}, 3)
-        self.assertEqual(result, failed)
-        self.assertEqual(retries, 2)
-        self.assertEqual(call.call_count, 3)
+    def test_vllm_error_finish_retries_but_length_does_not(self) -> None:
+        scores = {axis: 3 for axis in self.axes}
+        with patch.object(JUDGE, "request_once", side_effect=[(None, "envelope_error"), (scores, None)]) as request, patch.object(JUDGE.time, "sleep"):
+            recovered = JUDGE.judge_call("http://127.0.0.1:1", {}, "required_scores_only_v1", max_attempts=3)
+        self.assertEqual(recovered, {"scores": scores, "attempts": 2, "failure": None})
+        self.assertEqual(request.call_count, 2)
+        with patch.object(JUDGE, "request_once", return_value=(None, "envelope_length")) as request:
+            incomplete = JUDGE.judge_call("http://127.0.0.1:1", {}, "required_scores_only_v1", max_attempts=3)
+        self.assertEqual(incomplete["failure"], "envelope_length")
+        self.assertEqual(incomplete["attempts"], 1)
+        self.assertEqual(request.call_count, 1)
+
+    def test_vllm_error_finish_retry_is_bounded(self) -> None:
+        with patch.object(JUDGE, "request_once", return_value=(None, "envelope_error")) as request, patch.object(JUDGE.time, "sleep"):
+            failed = JUDGE.judge_call("http://127.0.0.1:1", {}, "required_scores_only_v1", max_attempts=3)
+        self.assertEqual(failed["failure"], "envelope_error")
+        self.assertEqual(failed["attempts"], 3)
+        self.assertEqual(request.call_count, 3)
 
     def test_generation_schema_has_no_score_field(self) -> None:
         schema = _response_schema(self.axes, 192)

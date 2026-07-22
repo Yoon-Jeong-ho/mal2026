@@ -18,7 +18,6 @@ import os
 from pathlib import Path
 import shutil
 import statistics
-import time
 from typing import Any, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -92,31 +91,20 @@ def _judge_module() -> Any:
 JUDGE = _judge_module()
 
 
-# The fixed judge client already retries ordinary HTTP transport failures. A
-# vLLM OpenAI envelope with a non-``stop`` finish reason carries no usable
-# score either, so the declared reward transport-attempt limit reissues the
-# identical private request a bounded number of times. This never relaxes the
-# score schema or turns an envelope failure into a policy label.
-_RETRIABLE_REWARD_ENVELOPE_FAILURES = frozenset({"envelope_finish"})
-
-
 def _call_reward_judge(endpoint: str, task: Mapping[str, Any], max_transport_attempts: int) -> tuple[dict[str, Any], int]:
-    """Return the terminal fixed-judge result and extra envelope retries.
+    """Return the terminal fixed-judge result and bounded transport retries.
 
-    Parsed-invalid scores and abstentions are intentionally not retried. The
-    retry counter lets aggregate records separate logical judge observations
-    from transient vLLM response-envelope recovery.
+    The fixed client retries only HTTP/connection failures and vLLM's explicit
+    internal ``finish_reason=error``. Incomplete ``length`` finishes, parsed
+    invalid scores, and abstentions remain terminal. The counter separates
+    logical judge observations from transient recovery in aggregate records.
     """
     _need(max_transport_attempts >= 1, "reward transport-attempt limit is invalid")
-    result: dict[str, Any] | None = None
-    for attempt in range(1, max_transport_attempts + 1):
-        value = JUDGE.call(endpoint, dict(task))
-        _need(isinstance(value, dict), "fixed judge call did not return an object")
-        result = value
-        if value.get("failure_category") not in _RETRIABLE_REWARD_ENVELOPE_FAILURES or attempt == max_transport_attempts:
-            return result, attempt - 1
-        time.sleep(0.15 * attempt)
-    raise AssertionError("bounded reward-judge retry loop exhausted unexpectedly")
+    value = JUDGE.call_with_transport_attempts(endpoint, dict(task), max_transport_attempts)
+    _need(isinstance(value, dict), "fixed judge call did not return an object")
+    attempts = value.get("attempts")
+    _need(type(attempts) is int and 1 <= attempts <= max_transport_attempts, "fixed judge retry count is invalid")
+    return value, attempts - 1
 
 
 @dataclass(frozen=True)
