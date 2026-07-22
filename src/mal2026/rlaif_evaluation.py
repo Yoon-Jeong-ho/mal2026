@@ -71,7 +71,7 @@ class RLAIFEvaluationConfig:
         expected_schema = f"mal2026-rlaif-grpo-evaluation-{settings.schema_version.rsplit('-', 1)[-1]}"
         _need(self.schema_version == expected_schema, "RLAIF evaluation schema differs")
         _need(self.base_key in SUPPORTED_MODELS and self.task in {"bundle", *AXES} and self.arm in settings.arms, "evaluation system identity differs")
-        _need(self.rl_phase in ({"full", "pilot"} if settings.schema_version.endswith(("-v3", "-v4", "-v5", "-v6", "-v7")) else {"full"}), "evaluation policy phase differs")
+        _need(self.rl_phase in ({"full", "pilot"} if settings.schema_version.endswith(("-v3", "-v4", "-v5", "-v6", "-v7", "-v8")) else {"full"}), "evaluation policy phase differs")
         suffix = "validation-001" if self.rl_phase == "full" else "pilot-validation-001"
         _need(self.run_id == f"{settings.run_id_prefix}{self.base_key}-{self.task}-{self.arm}-{suffix}", "evaluation run id differs")
         output = Path(self.output_dir)

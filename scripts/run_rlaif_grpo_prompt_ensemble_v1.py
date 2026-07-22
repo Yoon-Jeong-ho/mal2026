@@ -45,9 +45,9 @@ MODELS = {
 }
 TASKS = ("bundle", "content", "organization", "expression")
 ARMS = ("all5", "random1")
-STRUCTURED_SCHEMA_SUFFIXES = ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7")
-PILOT_SCHEMA_SUFFIXES = ("-v3", "-v4", "-v5", "-v6", "-v7")
-TP2_SCHEMA_SUFFIXES = ("-v6", "-v7")
+STRUCTURED_SCHEMA_SUFFIXES = ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7", "-v8")
+PILOT_SCHEMA_SUFFIXES = ("-v3", "-v4", "-v5", "-v6", "-v7", "-v8")
+TP2_SCHEMA_SUFFIXES = ("-v6", "-v7", "-v8")
 
 
 class RunnerError(RuntimeError):
@@ -403,7 +403,7 @@ def train_arm(base_key: str, task: str, arm: str, phase: str, endpoint: str, att
                             "MAL2026_RLAIF_ROLLOUT_ATTESTATION": str(rollout_attestation.resolve()), "MAL2026_RLAIF_ROLLOUT_SYNC_DIR": str((output / "rollout_sync").resolve())})
     allocator_conf = config()["runtime"].get("policy_training_cuda_alloc_conf")
     if allocator_conf is not None:
-        ensure(config()["schema_version"].endswith("-v7") and allocator_conf == "expandable_segments:True", "unrecognized policy-training allocator configuration")
+        ensure(config()["schema_version"].endswith(("-v7", "-v8")) and allocator_conf == "expandable_segments:True", "unrecognized policy-training allocator configuration")
         environment["PYTORCH_CUDA_ALLOC_CONF"] = str(allocator_conf)
     run_stage(f"train-{base_key}-{task}-{arm}-{phase}", command, environment)
     completed = verify_training(base_key, task, arm, phase); ledger({"stage": f"train-{base_key}-{task}-{arm}-{phase}", "event": "hard_gates_pass", "resource_scope": policy_gpus, "evidence_ref": str((output / "training_complete.json").relative_to(ROOT)), "decision": "continue"})
@@ -514,7 +514,7 @@ def run_midm() -> None:
 def run_midm_pilot() -> None:
     """Run the fixed 320-group, two-arm v3--v7 decision experiment before full scale."""
     ensure(config()["schema_version"].endswith(PILOT_SCHEMA_SUFFIXES), "Midm pilot is only authorized by v3--v7")
-    if config()["schema_version"].endswith(("-v4", "-v5", "-v6", "-v7")):
+    if config()["schema_version"].endswith(("-v4", "-v5", "-v6", "-v7", "-v8")):
         # v3's single 64-choice gate passed but exact DDP rollouts exhibited
         # long structured-decoding tails.  Every post-v3 repair must therefore
         # prove its changed grammar on one fresh full batch *before* any policy update. Keeping

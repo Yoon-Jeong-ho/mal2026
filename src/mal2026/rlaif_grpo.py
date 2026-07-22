@@ -39,9 +39,9 @@ from .api_rationale_sft import SUPPORTED_MODELS
 
 
 DEFAULT_CONFIG_PATH = ROOT / "configs" / "rlaif_grpo_prompt_ensemble.v1.json"
-STRUCTURED_SCHEMA_SUFFIXES = ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7")
-PILOT_SCHEMA_SUFFIXES = ("-v3", "-v4", "-v5", "-v6", "-v7")
-TP2_SCHEMA_SUFFIXES = ("-v6", "-v7")
+STRUCTURED_SCHEMA_SUFFIXES = ("-v2", "-v3", "-v4", "-v5", "-v6", "-v7", "-v8")
+PILOT_SCHEMA_SUFFIXES = ("-v3", "-v4", "-v5", "-v6", "-v7", "-v8")
+TP2_SCHEMA_SUFFIXES = ("-v6", "-v7", "-v8")
 
 
 def active_config_path() -> Path:
@@ -164,7 +164,7 @@ class RLAIFSettings:
         return raw
 
     def validate(self) -> None:
-        _need(self.schema_version in {"mal2026-rlaif-grpo-prompt-ensemble-v1", "mal2026-rlaif-grpo-prompt-ensemble-v2", "mal2026-rlaif-grpo-prompt-ensemble-v3", "mal2026-rlaif-grpo-prompt-ensemble-v4", "mal2026-rlaif-grpo-prompt-ensemble-v5", "mal2026-rlaif-grpo-prompt-ensemble-v6", "mal2026-rlaif-grpo-prompt-ensemble-v7"}, "unexpected RLAIF config schema")
+        _need(self.schema_version in {"mal2026-rlaif-grpo-prompt-ensemble-v1", "mal2026-rlaif-grpo-prompt-ensemble-v2", "mal2026-rlaif-grpo-prompt-ensemble-v3", "mal2026-rlaif-grpo-prompt-ensemble-v4", "mal2026-rlaif-grpo-prompt-ensemble-v5", "mal2026-rlaif-grpo-prompt-ensemble-v6", "mal2026-rlaif-grpo-prompt-ensemble-v7", "mal2026-rlaif-grpo-prompt-ensemble-v8"}, "unexpected RLAIF config schema")
         expected_prefix = self.schema_version.removeprefix("mal2026-") + "-"
         _need(self.run_id_prefix == expected_prefix, "RLAIF run prefix differs")
         _need(self.arms == ("all5", "random1"), "RLAIF arms must be all5 and random1")
@@ -208,6 +208,12 @@ class RLAIFSettings:
                 _need(self.policy.get("rollout_json_schema_enforces_field_limit") is False, "TP2 policy cannot claim a JSON-schema field cap")
             if self.schema_version.endswith("-v7"):
                 _need(self.runtime.get("policy_training_cuda_alloc_conf") == "expandable_segments:True", "v7 allocator repair differs")
+            if self.schema_version.endswith("-v8"):
+                _need(self.runtime.get("policy_training_cuda_alloc_conf") == "expandable_segments:True", "v8 allocator repair differs")
+                _need(self.reward.get("unscorable_judge_group_policy") == "discard_generation_group", "v8 judge-failure policy differs")
+                _need(self.reward.get("unscorable_judge_group_reward") == 0.0, "v8 discarded-group reward differs")
+                _need(self.reward.get("max_unscorable_judge_fraction") == 0.001, "v8 judge-failure ceiling differs")
+                _need(self.reward.get("max_discarded_reward_group_fraction") == 0.01, "v8 discarded-group ceiling differs")
         _need(self.privacy == {"source_writing_scores_read_or_prompted": False, "candidate_scores_read_or_prompted": False, "raw_prompts_or_completions_tracked": False}, "privacy contract differs")
         self.fixed_prompt_template()
 
@@ -386,6 +392,7 @@ class QwenPointReward:
         self.prompt_types = list(self.template["protocol"]["prompt_types"])
         self.totals: Counter[str] = Counter()
         self.form_counts: Counter[str] = Counter()
+        self.failure_categories: Counter[str] = Counter()
 
     def _task(self, *, source_key: str, entry: Mapping[str, Any], rationale: Mapping[str, Any], prompt_index: int, canonical_text: str) -> dict[str, Any]:
         prompt_type = self.prompt_types[prompt_index]
@@ -411,7 +418,7 @@ class QwenPointReward:
             import torch.distributed as dist
         except ImportError:  # pragma: no cover - runtime dependency
             return values, forms
-        names = ("completions", "parse_valid", "parse_invalid", "judge_calls", "transport_retries", "reward_scaled_sum", "reward_scaled_sq_sum")
+        names = ("completions", "parse_valid", "parse_invalid", "judge_requests", "judge_calls", "judge_unscorable", "transport_retries", "discarded_reward_groups", "discarded_reward_completions", "reward_scaled_sum", "reward_scaled_sq_sum")
         form_ids = tuple(str(item["id"]) for item in self.prompt_types)
         packed = torch.tensor([float(values.get(name, 0.0)) for name in names] + [float(forms.get(name, 0.0)) for name in form_ids], dtype=torch.float64, device="cuda" if torch.cuda.is_available() else "cpu")
         if dist.is_available() and dist.is_initialized():
@@ -423,10 +430,15 @@ class QwenPointReward:
 
     def __call__(self, prompts: list[Any], completions: list[Any], completion_ids: list[Any], source_key: list[str], judge_entry: list[Mapping[str, Any]], **_: Any) -> list[float]:
         _need(len(prompts) == len(completions) == len(completion_ids) == len(source_key) == len(judge_entry), "GRPO reward batch columns differ")
+        groups: dict[str, list[int]] = {}
+        for index, value in enumerate(source_key):
+            groups.setdefault(str(value), []).append(index)
+        _need(all(len(indices) == int(self.settings.policy["num_generations"]) for indices in groups.values()), "GRPO reward groups differ from the declared generation count")
         rewards: list[float | None] = [None] * len(completions)
         tasks: list[tuple[int, dict[str, Any]]] = []
         local = Counter(completions=len(completions))
         local_forms: Counter[str] = Counter()
+        local_failures: Counter[str] = Counter()
         limit = int(self.settings.reward["field_character_limit"])
         for index, completion in enumerate(completions):
             raw_text = _completion_text(completion)
@@ -442,7 +454,9 @@ class QwenPointReward:
                 tasks.append((index, task)); local_forms[str(task["prompt_type_id"])] += 1
             local["parse_valid"] += 1
         scores: dict[int, list[float]] = {index: [] for index in range(len(completions))}
+        unscorable_indices: set[int] = set()
         if tasks:
+            local["judge_requests"] += len(tasks)
             workers = min(int(self.settings.reward["client_max_inflight_per_rank"]), len(tasks))
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 attempts = int(self.settings.reward["max_transport_attempts"])
@@ -455,9 +469,27 @@ class QwenPointReward:
                         raise RLAIFGRPOError("reward judge worker failed") from exc
                     local["transport_retries"] += int(extra_retries)
                     if not result.get("scored") or not result.get("schema_valid") or result.get("failure_category") is not None or not isinstance(result.get("scores"), dict):
-                        raise RLAIFGRPOError(f"reward judge transport/schema failure: {result.get('failure_category')}")
+                        # Never convert an incomplete/failed judge response into
+                        # a low-quality rationale label. v8 discards the whole
+                        # four-completion GRPO group, giving it equal rewards and
+                        # therefore no relative-advantage update. Earlier
+                        # protocols retain their fail-closed behavior.
+                        if self.settings.reward.get("unscorable_judge_group_policy") != "discard_generation_group":
+                            raise RLAIFGRPOError(f"reward judge transport/schema failure: {result.get('failure_category')}")
+                        unscorable_indices.add(index)
+                        local["judge_unscorable"] += 1
+                        local_failures[str(result.get("failure_category") or "unscored_response")] += 1
+                        continue
                     scores[index].append(_score_to_reward(result["scores"], self.axes))
                     local["judge_calls"] += 1
+        if unscorable_indices:
+            discarded_sources = {str(source_key[index]) for index in unscorable_indices}
+            local["discarded_reward_groups"] += len(discarded_sources)
+            for source in discarded_sources:
+                indices = groups[source]
+                local["discarded_reward_completions"] += len(indices)
+                for index in indices:
+                    rewards[index] = float(self.settings.reward["unscorable_judge_group_reward"])
         for index, value in enumerate(rewards):
             if value is None:
                 observations = scores[index]
@@ -466,18 +498,27 @@ class QwenPointReward:
             local["reward_scaled_sum"] += float(rewards[index])
             local["reward_scaled_sq_sum"] += float(rewards[index]) ** 2
         reduced, reduced_forms = self._all_reduce(local, local_forms)
-        self.totals.update(reduced); self.form_counts.update(reduced_forms)
+        self.totals.update(reduced); self.form_counts.update(reduced_forms); self.failure_categories.update(local_failures)
         return [float(value) for value in rewards]
 
     def aggregate(self) -> dict[str, Any]:
         completed = float(self.totals.get("completions", 0.0))
         parsed = float(self.totals.get("parse_valid", 0.0))
+        requested = float(self.totals.get("judge_requests", 0.0))
+        group_count = completed / float(self.settings.policy["num_generations"]) if completed else 0.0
         mean = self.totals.get("reward_scaled_sum", 0.0) / completed if completed else None
         variance = self.totals.get("reward_scaled_sq_sum", 0.0) / completed - float(mean) ** 2 if completed and mean is not None else None
         return {
             "policy_completions": int(completed), "parse_valid": int(parsed), "parse_invalid": int(self.totals.get("parse_invalid", 0.0)),
             "parse_valid_rate": round(parsed / completed, 6) if completed else None,
-            "judge_calls": int(self.totals.get("judge_calls", 0.0)), "transport_retries": int(self.totals.get("transport_retries", 0.0)),
+            "judge_requests": int(requested), "judge_calls": int(self.totals.get("judge_calls", 0.0)),
+            "judge_unscorable": int(self.totals.get("judge_unscorable", 0.0)),
+            "judge_unscorable_fraction": round(float(self.totals.get("judge_unscorable", 0.0)) / requested, 8) if requested else None,
+            "judge_failure_categories": dict(sorted(self.failure_categories.items())),
+            "discarded_reward_groups": int(self.totals.get("discarded_reward_groups", 0.0)),
+            "discarded_reward_completions": int(self.totals.get("discarded_reward_completions", 0.0)),
+            "discarded_reward_group_fraction": round(float(self.totals.get("discarded_reward_groups", 0.0)) / group_count, 8) if group_count else None,
+            "transport_retries": int(self.totals.get("transport_retries", 0.0)),
             "mapped_reward_mean": round(float(mean), 6) if mean is not None else None,
             "mapped_reward_std": round(math.sqrt(max(0.0, float(variance))), 6) if variance is not None else None,
             "prompt_form_calls": {key: int(value) for key, value in sorted(self.form_counts.items())},
@@ -858,7 +899,13 @@ def run_rlaif_grpo(run: RLAIFRunConfig) -> dict[str, Any]:
             _need(parse_rate is not None and parse_rate >= float(settings.hard_gates["policy_parse_valid_rate_min"]), "policy parse-validity gate failed")
             _need(zero_std is not None and zero_std < float(settings.hard_gates["reward_zero_std_fraction_max"]), "GRPO reward zero-variance gate failed")
             expected_calls = reward_summary["parse_valid"] * (5 if run.arm == "all5" else 1)
-            _need(reward_summary["judge_calls"] == expected_calls, "judge call count differs from reward arm")
+            _need(reward_summary["judge_requests"] == expected_calls, "judge request count differs from reward arm")
+            _need(reward_summary["judge_calls"] + reward_summary["judge_unscorable"] == expected_calls, "judge terminal outcome count differs from reward arm")
+            if settings.schema_version.endswith("-v8"):
+                _need(reward_summary["judge_unscorable_fraction"] is not None and reward_summary["judge_unscorable_fraction"] <= float(settings.reward["max_unscorable_judge_fraction"]), "judge unscorable-rate gate failed")
+                _need(reward_summary["discarded_reward_group_fraction"] is not None and reward_summary["discarded_reward_group_fraction"] <= float(settings.reward["max_discarded_reward_group_fraction"]), "discarded reward-group rate gate failed")
+            else:
+                _need(reward_summary["judge_unscorable"] == 0 and reward_summary["judge_calls"] == expected_calls, "judge call count differs from reward arm")
             adapter = output / "adapter"; _need(not adapter.exists(), "RLAIF adapter output already exists")
             unwrapped.save_pretrained(str(adapter), selected_adapters=["default"], safe_serialization=True)
             tokenizer.save_pretrained(str(adapter))

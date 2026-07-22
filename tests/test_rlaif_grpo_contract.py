@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from mal2026.rlaif_evaluation import _response_schema
 from mal2026.api_rationale_data import ROOT
-from mal2026.rlaif_grpo import JUDGE, StructuredVLLMRollout, RLAIFSettings, _call_reward_judge, _policy_response_schema, canonical_completion, canonical_completion_text, random_prompt_index
+from mal2026.rlaif_grpo import JUDGE, QwenPointReward, StructuredVLLMRollout, RLAIFSettings, _call_reward_judge, _policy_response_schema, canonical_completion, canonical_completion_text, random_prompt_index
 
 
 class RLAIFGRPOContractTest(unittest.TestCase):
@@ -143,6 +143,30 @@ class RLAIFGRPOContractTest(unittest.TestCase):
         runtime = dict(v7.runtime)
         self.assertEqual(runtime.pop("policy_training_cuda_alloc_conf"), "expandable_segments:True")
         self.assertEqual(runtime, v6.runtime)
+
+    def test_v8_discards_an_unscorable_judge_generation_group_without_low_quality_label(self) -> None:
+        settings = RLAIFSettings.from_json(ROOT / "configs" / "rlaif_grpo_prompt_ensemble.v8.json")
+        self.assertEqual(settings.reward["unscorable_judge_group_policy"], "discard_generation_group")
+        reward = QwenPointReward(settings, SimpleNamespace(task="content", arm="all5", run_id="rlaif-contract", reward_endpoint="http://127.0.0.1:1"))
+        completion = json.dumps({"schema_version": "rationale-only-v1", "content": {"rationale": "근거와 주장의 연결이 글의 문장을 근거로 설명된다."}}, ensure_ascii=False)
+
+        def judge(*_args, **kwargs):
+            task = _args[1]
+            if task["prompt_type_id"] == "balanced_rationale":
+                return {"failure_category": "envelope_length", "scored": False, "schema_valid": False, "scores": None, "attempts": 1}, 0
+            return {"failure_category": None, "scored": True, "schema_valid": True, "scores": {axis: 3 for axis in self.axes}, "attempts": 1}, 0
+
+        with patch("mal2026.rlaif_grpo._call_reward_judge", side_effect=judge):
+            values = reward([{"role": "user", "content": "x"}] * 4, [completion] * 4, ["id"] * 4, ["same-source"] * 4,
+                            [{"sentences": ["문장입니다."]}] * 4)
+        self.assertEqual(values, [0.0] * 4)
+        summary = reward.aggregate()
+        self.assertEqual(summary["judge_requests"], 20)
+        self.assertEqual(summary["judge_calls"], 16)
+        self.assertEqual(summary["judge_unscorable"], 4)
+        self.assertEqual(summary["judge_failure_categories"], {"envelope_length": 4})
+        self.assertEqual(summary["discarded_reward_groups"], 1)
+        self.assertEqual(summary["discarded_reward_completions"], 4)
 
     def test_tp2_full_runner_reuses_policy_and_gpu3_judge_for_both_arms(self) -> None:
         """The later full matrix must not silently fall back to the v2 layout."""
