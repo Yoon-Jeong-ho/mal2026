@@ -559,13 +559,39 @@ def require_midm() -> None:
         value = read_json(path); ensure(value.get("status") == "completed" and all(value.get("hard_gates", {}).values()), "Midm full evaluation is not complete")
 
 
+def completed_task_evaluations(base_key: str, task: str) -> bool:
+    """Return true only for a fully frozen-v6-evaluated two-arm task.
+
+    A later fresh runtime lineage may safely resume after a preserved failed
+    arm.  Evaluation identities do not include the runtime suffix, so verified
+    already-complete pairs must be reused rather than regenerated or
+    overwritten.  Incomplete pairs intentionally return false and are trained
+    in the fresh lineage.
+    """
+    for arm in ARMS:
+        path = EVALUATION_ROOT / f"{config()['run_id_prefix']}{base_key}-{task}-{arm}-validation-001" / "aggregate_judge_report.json"
+        if not path.is_file():
+            return False
+        value = read_json(path)
+        if not (value.get("status") == "completed" and value.get("base_key") == base_key and value.get("task") == task and value.get("arm") == arm and
+                value.get("fixed_v6_config_sha256") == config()["fixed_v6_config_sha256"] and all(value.get("hard_gates", {}).values())):
+            return False
+    return True
+
+
 def run_remaining() -> None:
     require_midm(); index = 0
     for base_key in ("ax4_light", "phi4_mini", "midm2_base"):
         for task in TASKS:
             if (base_key, task) == ("midm2_base", "bundle"):
                 continue
-            run_full_task_arms(base_key, task, 18600 + index * 20); index += 1
+            port = 18600 + index * 20
+            if completed_task_evaluations(base_key, task):
+                ledger({"stage": f"resume-{base_key}-{task}", "event": "verified_existing_two_arm_evaluation", "resource_scope": "none",
+                        "decision": "skip_completed_task", "evidence_ref": str((EVALUATION_ROOT / f"{config()['run_id_prefix']}{base_key}-{task}-all5-validation-001" / "aggregate_judge_report.json").relative_to(ROOT))})
+            else:
+                run_full_task_arms(base_key, task, port)
+            index += 1
     final_summary()
 
 

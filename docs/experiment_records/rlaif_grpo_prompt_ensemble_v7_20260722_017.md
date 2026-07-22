@@ -213,3 +213,33 @@ Aggregate-only evidence is retained under ignored roots:
 
 - `outputs/rlaif-grpo-prompt-ensemble-v7/rlaif-grpo-prompt-ensemble-v7-ax4_light-bundle-{all5,random1}-full-019/training_complete.json`
 - `data/processed/restricted/openai_rationale_batches/openai-rationale-terra-full-20260719-001/rlaif_grpo_v7/rlaif-grpo-prompt-ensemble-v7-ax4_light-bundle-{all5,random1}-validation-001/aggregate_judge_report.json`
+
+## Preserved A.X content runtime interruption and fresh resume (`20260722-019` → `-020`)
+
+The next declared arm, A.X-4.0-Light `content`/`all5`, was interrupted at
+global step 444/480.  It had completed 7,104 score-valid policy completions
+and 35,520 logical Qwen observations before a returned Qwen OpenAI envelope
+had a non-`stop` finish reason (`envelope_finish`).  The reward callable
+correctly refused to turn that response into a reward, the runner preserved
+`training_failed_runtime.json`, stopped all servers, and did not export an
+adapter or open/evaluate validation text for that partial arm.  This is an
+execution-envelope failure, not a metric or data-quality observation.
+
+The repaired caller now applies the already-declared bounded
+`max_transport_attempts: 3` specifically to this scoreless response-envelope
+case: it reissues the identical private request, keeps parsed-invalid scores
+and abstentions non-retriable, and records aggregate-only extra retry counts.
+It does not alter prompts, data, seeds, response schemas, reward mapping,
+optimizer settings, or the frozen-v6 evaluator.  vLLM documents that an
+`error` finish reason is retryable while a `length` finish is incomplete;
+the caller retains the strict requirement for a usable `stop`/schema-valid
+score and preserves a failure if the bounded reissues are exhausted:
+<https://docs.vllm.ai/en/v0.17.0/api/vllm/entrypoints/openai/responses/serving/>.
+
+The fresh `20260722-020` runner lineage verifies and reuses the already
+complete A.X bundle two-arm frozen evaluations, then starts fresh ignored arm
+directories for the incomplete content task and all later matrix tasks.  It
+does not overwrite the partial `-019` artifact.  Static compilation and the
+15-test contract suite passed; the suite includes simulated first-attempt
+envelope failure/success and all-attempt failure bounds before the resumed
+long run.

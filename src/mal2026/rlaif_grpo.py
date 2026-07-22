@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import shutil
 import statistics
+import time
 from typing import Any, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -89,6 +90,33 @@ def _judge_module() -> Any:
 
 
 JUDGE = _judge_module()
+
+
+# The fixed judge client already retries ordinary HTTP transport failures. A
+# vLLM OpenAI envelope with a non-``stop`` finish reason carries no usable
+# score either, so the declared reward transport-attempt limit reissues the
+# identical private request a bounded number of times. This never relaxes the
+# score schema or turns an envelope failure into a policy label.
+_RETRIABLE_REWARD_ENVELOPE_FAILURES = frozenset({"envelope_finish"})
+
+
+def _call_reward_judge(endpoint: str, task: Mapping[str, Any], max_transport_attempts: int) -> tuple[dict[str, Any], int]:
+    """Return the terminal fixed-judge result and extra envelope retries.
+
+    Parsed-invalid scores and abstentions are intentionally not retried. The
+    retry counter lets aggregate records separate logical judge observations
+    from transient vLLM response-envelope recovery.
+    """
+    _need(max_transport_attempts >= 1, "reward transport-attempt limit is invalid")
+    result: dict[str, Any] | None = None
+    for attempt in range(1, max_transport_attempts + 1):
+        value = JUDGE.call(endpoint, dict(task))
+        _need(isinstance(value, dict), "fixed judge call did not return an object")
+        result = value
+        if value.get("failure_category") not in _RETRIABLE_REWARD_ENVELOPE_FAILURES or attempt == max_transport_attempts:
+            return result, attempt - 1
+        time.sleep(0.15 * attempt)
+    raise AssertionError("bounded reward-judge retry loop exhausted unexpectedly")
 
 
 @dataclass(frozen=True)
@@ -395,7 +423,7 @@ class QwenPointReward:
             import torch.distributed as dist
         except ImportError:  # pragma: no cover - runtime dependency
             return values, forms
-        names = ("completions", "parse_valid", "parse_invalid", "judge_calls", "reward_scaled_sum", "reward_scaled_sq_sum")
+        names = ("completions", "parse_valid", "parse_invalid", "judge_calls", "transport_retries", "reward_scaled_sum", "reward_scaled_sq_sum")
         form_ids = tuple(str(item["id"]) for item in self.prompt_types)
         packed = torch.tensor([float(values.get(name, 0.0)) for name in names] + [float(forms.get(name, 0.0)) for name in form_ids], dtype=torch.float64, device="cuda" if torch.cuda.is_available() else "cpu")
         if dist.is_available() and dist.is_initialized():
@@ -429,13 +457,15 @@ class QwenPointReward:
         if tasks:
             workers = min(int(self.settings.reward["client_max_inflight_per_rank"]), len(tasks))
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                futures = {pool.submit(JUDGE.call, self.run.reward_endpoint, task): index for index, task in tasks}
+                attempts = int(self.settings.reward["max_transport_attempts"])
+                futures = {pool.submit(_call_reward_judge, self.run.reward_endpoint, task, attempts): index for index, task in tasks}
                 for future in as_completed(futures):
                     index = futures[future]
                     try:
-                        result = future.result()
+                        result, extra_retries = future.result()
                     except Exception as exc:  # network/worker integration failure, never a policy label
                         raise RLAIFGRPOError("reward judge worker failed") from exc
+                    local["transport_retries"] += int(extra_retries)
                     if not result.get("scored") or not result.get("schema_valid") or result.get("failure_category") is not None or not isinstance(result.get("scores"), dict):
                         raise RLAIFGRPOError(f"reward judge transport/schema failure: {result.get('failure_category')}")
                     scores[index].append(_score_to_reward(result["scores"], self.axes))
@@ -459,7 +489,7 @@ class QwenPointReward:
         return {
             "policy_completions": int(completed), "parse_valid": int(parsed), "parse_invalid": int(self.totals.get("parse_invalid", 0.0)),
             "parse_valid_rate": round(parsed / completed, 6) if completed else None,
-            "judge_calls": int(self.totals.get("judge_calls", 0.0)),
+            "judge_calls": int(self.totals.get("judge_calls", 0.0)), "transport_retries": int(self.totals.get("transport_retries", 0.0)),
             "mapped_reward_mean": round(float(mean), 6) if mean is not None else None,
             "mapped_reward_std": round(math.sqrt(max(0.0, float(variance))), 6) if variance is not None else None,
             "prompt_form_calls": {key: int(value) for key, value in sorted(self.form_counts.items())},
