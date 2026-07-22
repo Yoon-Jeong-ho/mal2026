@@ -73,3 +73,33 @@ topology before Midm full training.  Both one-update arms passed all gates:
 No retry, terminal judge failure, policy parse failure, source-score access, or
 raw text persistence occurred.  The runner then started the declared Midm full
 two-arm continuation automatically.
+
+## Midm bundle full continuation and frozen evaluation (completed)
+
+Both declared Midm bundle continuations reached all 480 updates.  `all5`
+produced 7,680 parse-valid policy completions and 38,400/38,400 scored judge
+requests.  `random1` produced 7,679 parse-valid completions and one canonical
+policy-format invalid completion (therefore 7,679/7,679 scored judge
+requests).  Both arms had zero unscorable judge outcomes, discarded groups,
+transport retries, or judge failure categories; their training hard gates
+passed.  The single policy-format failure in `random1` is distinct from a
+judge failure and used the existing invalid-policy reward mapping.
+
+Frozen-v6 evaluation used the same held-out 400-essay population and the
+declared five forms by ten repeats for SFT, `all5`, and `random1`.  Every arm
+has 20,000/20,000 schema-valid scores, zero abstentions, zero evaluator
+failures, and all frozen-evaluation gates pass.  Aggregate-only results:
+
+| decoder / arm | macro | content | organization | expression | paired macro Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.867967 | 3.839750 | 3.896100 | 3.868050 | — |
+| GRPO `all5` | 4.174283 | 4.097300 | 4.268900 | 4.156650 | +0.306317 [+0.237733, +0.376617] |
+| GRPO `random1` | 4.189100 | 4.104300 | 4.274600 | 4.188400 | +0.321133 [+0.252633, +0.392667] |
+
+All three axes improve over SFT with positive paired 95% bootstrap intervals
+in each arm.  This is target-proxy evidence only: the frozen evaluator is the
+same Qwen family as the training judge (with a distinct fixed evaluation
+protocol), so it is not human-quality evidence.  The two arm intervals above
+compare each arm to SFT, not each other; one seed and no direct paired
+`all5`-versus-`random1` confidence interval do not support declaring either
+reward construction superior.
