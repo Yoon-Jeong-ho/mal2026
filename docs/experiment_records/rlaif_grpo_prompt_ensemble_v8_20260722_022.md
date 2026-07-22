@@ -37,7 +37,8 @@ becoming low-quality targets while preserving all successful judge scores.
 
 - Config: `configs/rlaif_grpo_prompt_ensemble.v8.json`
 - Command: `MAL2026_RLAIF_CONFIG=configs/rlaif_grpo_prompt_ensemble.v8.json MAL2026_RLAIF_RUNTIME_ID=20260722-022 PYTHONPATH=src .venv-standard/bin/python scripts/run_rlaif_grpo_prompt_ensemble_v1.py all`
-- Git commit: recorded at launch in the ignored runner manifest.
+- Git source commit at launch: `54955a6fd7979d9ed1be7cd821a7ac4f85e59dcc`.
+- Config SHA-256: `9528b01263d3e4bd2f5cbdf7f272beedd2fdbff697592a36462f1ec9d51fe375`.
 - GPUs: rollout vLLM tensor-parallel GPUs 0–1; float32 LoRA GRPO GPU 2;
   Qwen3.6-35B-A3B FP8 reward judge GPU 3.  GPUs 4–7 are never queried or used.
 - Full arm contract: 1,920 eligible train-only groups, four completions per
