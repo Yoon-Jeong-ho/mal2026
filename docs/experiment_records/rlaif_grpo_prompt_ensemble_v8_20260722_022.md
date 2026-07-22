@@ -103,3 +103,31 @@ protocol), so it is not human-quality evidence.  The two arm intervals above
 compare each arm to SFT, not each other; one seed and no direct paired
 `all5`-versus-`random1` confidence interval do not support declaring either
 reward construction superior.
+
+## A.X bundle rollout-terminal recovery
+
+The first A.X-4.0-Light bundle/`all5` continuation (`20260722-022`) stopped
+at global update 204.  Its aggregate-only failure record shows 3,264/3,264
+canonical policy completions, 16,320/16,320 successful Qwen judge calls, and
+zero judge failures, retries, or discarded groups before a vLLM policy choice
+returned a terminal reason other than `stop`.  No adapter or evaluation was
+accepted from that partial arm.
+
+The failure was in policy transport handling, not a Qwen reward label: the
+client previously rejected a returned completion before canonical parsing just
+because its `finish_reason` was not `stop`.  In vLLM the terminal reason is
+transport metadata; a returned completion can still be canonical, while a
+truncated or malformed completion is already handled by the score-blind
+canonical policy parser and existing invalid-policy reward path.  Recovery
+commit `d3e8c6e2e1324d4d068c385976f918a43552e875` therefore retains each
+returned string, records aggregate terminal-reason counts, and leaves
+canonical validity—not the terminal tag—as the acceptance boundary.  It does
+not retry, resample, assign a judge-derived substitute, or change the model,
+prompts, sampling, reward, data, or optimizer.
+
+The failed partial output remains preserved under the ignored runtime root. A
+fresh `20260722-023` run invokes `remaining` with the unchanged v8 config and
+the repaired source.  Its initial Midm pair is reused only because both
+previously completed under the stricter `stop` condition; the fresh A.X arm
+starts from its SFT adapter rather than resuming the partial adapter.  All
+subsequent records expose non-`stop` completion counts in aggregate metadata.
