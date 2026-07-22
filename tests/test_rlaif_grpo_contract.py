@@ -5,10 +5,12 @@ import json
 import importlib.util
 import os
 import unittest
+from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Lock
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from mal2026.rlaif_evaluation import _response_schema
 from mal2026.api_rationale_data import ROOT
@@ -72,6 +74,23 @@ class RLAIFGRPOContractTest(unittest.TestCase):
         self.assertEqual(incomplete["failure"], "envelope_length")
         self.assertEqual(incomplete["attempts"], 1)
         self.assertEqual(request.call_count, 1)
+
+    def test_policy_rollout_records_non_stop_response_and_defers_validity_to_parser(self) -> None:
+        """A returned completion must not abort GRPO merely for `length` metadata."""
+        rollout = StructuredVLLMRollout.__new__(StructuredVLLMRollout)
+        rollout.settings = RLAIFSettings.from_json(ROOT / "configs" / "rlaif_grpo_prompt_ensemble.v8.json")
+        rollout.axes = self.axes
+        rollout.alias = "policy"
+        rollout.endpoint = "http://127.0.0.1:1"
+        rollout.finish_reason_counts = Counter()
+        rollout.finish_reason_lock = Lock()
+        response = MagicMock()
+        response.read.return_value = json.dumps({"choices": [{"finish_reason": "length", "message": {"content": "{}"}}]}).encode("utf-8")
+        context = MagicMock()
+        context.__enter__.return_value = response
+        with patch("mal2026.rlaif_grpo.urlopen", return_value=context):
+            self.assertEqual(rollout._request([{"role": "user", "content": "x"}], 1, 1), ["{}"])
+        self.assertEqual(rollout.finish_reason_counts, {"length": 1})
 
     def test_vllm_error_finish_retry_is_bounded(self) -> None:
         with patch.object(JUDGE, "request_once", return_value=(None, "envelope_error")) as request, patch.object(JUDGE.time, "sleep"):

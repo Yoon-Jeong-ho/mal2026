@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import shutil
 import statistics
+from threading import Lock
 from typing import Any, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -572,6 +573,13 @@ class StructuredVLLMRollout:
         self.sync_calls = 0
         self.request_count = 0
         self.completion_count = 0
+        # A completed HTTP response can carry a non-``stop`` terminal reason
+        # (notably ``length``).  The actual policy-quality boundary is the
+        # canonical rationale parser below, not this transport metadata.  Keep
+        # only aggregate reason counts so a runtime anomaly is auditable
+        # without retaining generated text.
+        self.finish_reason_counts: Counter[str] = Counter()
+        self.finish_reason_lock = Lock()
         self._validate_runtime()
 
     def _validate_runtime(self) -> None:
@@ -630,10 +638,21 @@ class StructuredVLLMRollout:
                 _need(isinstance(choices, list) and len(choices) == num_choices, "vLLM rollout envelope differs")
                 outputs: list[str] = []
                 for choice in choices:
-                    _need(isinstance(choice, dict) and choice.get("finish_reason") == "stop", "vLLM rollout did not stop")
+                    _need(isinstance(choice, dict), "vLLM rollout choice differs")
+                    finish_reason = choice.get("finish_reason")
+                    _need(isinstance(finish_reason, str) or finish_reason is None, "vLLM rollout finish reason differs")
                     message = choice.get("message")
                     content = message.get("content") if isinstance(message, dict) else None
                     _need(isinstance(content, str), "vLLM rollout content is missing")
+                    # Do not retry or discard a returned policy completion
+                    # solely due to its terminal tag.  If the text is
+                    # complete, the canonical parser/reward path accepts and
+                    # scores it; if it is truncated or malformed, that same
+                    # parser applies the existing policy-invalid reward.  A
+                    # strict ``finish_reason == stop`` check instead aborts
+                    # the whole training run before either outcome is known.
+                    with self.finish_reason_lock:
+                        self.finish_reason_counts["<none>" if finish_reason is None else finish_reason] += 1
                     outputs.append(content)
                 return outputs
             except (HTTPError, URLError, TimeoutError, json.JSONDecodeError, RLAIFGRPOError) as exc:
@@ -748,6 +767,8 @@ class StructuredVLLMRollout:
             "sync_calls_rank_zero": self.sync_calls,
             "rollout_requests_rank_zero": self.request_count,
             "rollout_completions_rank_zero": self.completion_count,
+            "rollout_finish_reason_counts": dict(sorted(self.finish_reason_counts.items())),
+            "rollout_non_stop_completions": int(sum(count for reason, count in self.finish_reason_counts.items() if reason != "stop")),
             "structured_output_mode": str(self.settings.policy.get("rollout_structured_output_mode", "json_schema")),
             "structured_json_schema_field_max_length_enforced": bool(self.settings.policy.get("rollout_json_schema_enforces_field_limit", True)),
             "raw_prompts_or_completions_persisted": False,
