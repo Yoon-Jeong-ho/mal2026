@@ -59,3 +59,17 @@ recorded only in aggregate metadata.
 Results, wall times, final frozen-judge deltas, and any deviation will be added
 after the declared runner completes.  Generated rationales, essays, adapters,
 server logs, and runtime artifacts remain ignored.
+
+## v8 actual-update gate (passed)
+
+At 2026-07-22T14:00:27Z the GPU0-first gate completed on the declared final
+topology before Midm full training.  Both one-update arms passed all gates:
+
+| arm | policy completions | parse-valid | Qwen requests / scored | unscorable | discarded groups |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `all5` | 4 | 4 | 20 / 20 | 0 | 0 |
+| `random1` | 4 | 4 | 4 / 4 | 0 | 0 |
+
+No retry, terminal judge failure, policy parse failure, source-score access, or
+raw text persistence occurred.  The runner then started the declared Midm full
+two-arm continuation automatically.
