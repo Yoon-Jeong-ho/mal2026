@@ -131,3 +131,8 @@ the repaired source.  Its initial Midm pair is reused only because both
 previously completed under the stricter `stop` condition; the fresh A.X arm
 starts from its SFT adapter rather than resuming the partial adapter.  All
 subsequent records expose non-`stop` completion counts in aggregate metadata.
+
+- Relaunch time: 2026-07-22T23:44:02Z.
+- Command: `MAL2026_RLAIF_CONFIG=configs/rlaif_grpo_prompt_ensemble.v8.json MAL2026_RLAIF_RUNTIME_ID=20260722-023 PYTHONPATH=src .venv-standard/bin/python scripts/run_rlaif_grpo_prompt_ensemble_v1.py remaining`.
+- Source Git SHA at relaunch: `f8f9dd621681eb72cf6f02bd6029d45823fa128e`.
+- Unchanged v8 config SHA-256: `9528b01263d3e4bd2f5cbdf7f272beedd2fdbff697592a36462f1ec9d51fe375`.
