@@ -177,3 +177,39 @@ under ignored roots:
 
 - `outputs/rlaif-grpo-prompt-ensemble-v7/rlaif-grpo-prompt-ensemble-v7-midm2_base-bundle-{all5,random1}-full-019/training_complete.json`
 - `data/processed/restricted/openai_rationale_batches/openai-rationale-terra-full-20260719-001/rlaif_grpo_v7/rlaif-grpo-prompt-ensemble-v7-midm2_base-bundle-{all5,random1}-validation-001/aggregate_judge_report.json`
+
+## Fixed full A.X-4.0-Light bundle result (`20260722-019`)
+
+The first non-Midm full-matrix comparison also completed without a protocol
+change.  Both arms start from the same A.X-4.0-Light bundle SFT adapter and
+use 1,920 opaque, score-blind train-only groups, 480 updates, and four policy
+completions per group.  All 7,680 policy completions parsed for each arm.  The
+`all5` arm made 38,400 Qwen calls (mapped reward mean/sd 0.459991/0.280672);
+the deterministic `random1` arm made 7,680 calls (0.431619/0.362615).  Their
+zero-reward-standard-deviation fractions were 0.0 and 0.011458,
+respectively.  Reference adapter hashes were unchanged, source/candidate
+writing scores were not read or prompted, and raw prompts/completions were not
+persisted outside ignored roots.
+
+Frozen-v6 again evaluated 400 held-out essays with five independently posed
+prompt forms and ten replications (20,000 schema-valid scored observations per
+arm).  Both arms had zero abstentions and zero transport/schema failures.  The
+paired comparison to the frozen A.X SFT baseline is:
+
+| arm | macro mean | content | organization | expression | paired macro delta (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `all5` | 4.186950 | 4.157050 | 4.141350 | 4.262450 | +0.420767 [0.348783, 0.496533] |
+| `random1` | 4.192283 | 4.105850 | 4.197500 | 4.273500 | +0.426100 [0.355700, 0.499650] |
+
+All requested-axis intervals are positive.  `all5` has content +0.471550
+[0.386950, 0.558650], organization +0.271550 [0.188250, 0.354800], and
+expression +0.519200 [0.412850, 0.630500].  `random1` has +0.420350
+[0.336950, 0.506950], +0.327700 [0.245300, 0.408750], and +0.530250
+[0.427400, 0.638700], respectively.  This is a second independently trained
+model in which both reward estimators improve all three axes; it is not used to
+select an arm while the predeclared matrix remains in progress.
+
+Aggregate-only evidence is retained under ignored roots:
+
+- `outputs/rlaif-grpo-prompt-ensemble-v7/rlaif-grpo-prompt-ensemble-v7-ax4_light-bundle-{all5,random1}-full-019/training_complete.json`
+- `data/processed/restricted/openai_rationale_batches/openai-rationale-terra-full-20260719-001/rlaif_grpo_v7/rlaif-grpo-prompt-ensemble-v7-ax4_light-bundle-{all5,random1}-validation-001/aggregate_judge_report.json`
