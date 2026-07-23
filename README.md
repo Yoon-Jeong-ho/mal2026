@@ -41,13 +41,14 @@ or reducing data before the predeclared matrix completes.  In completed A.X
 single-axis continuations, both arms improve the requested content target
 (+0.327450 / +0.355600), but organization transfer is negative; organization
 training improves its requested target (+0.250650 / +0.110250) and all three
-diagnostic axes.  These are task-targeted results, not global estimator
-selection evidence.
+diagnostic axes; and expression training improves its requested target
+(+0.295400 / +0.279800).  These are task-targeted results, not global
+estimator-selection evidence.
 
 The active v8 matrix preserves the initial v7 and A.X rollout failures under
 ignored runtime roots, then uses a fresh lineage with aggregate-recorded repair
-rules.  It is currently continuing the remaining A.X expression, Phi-4-mini,
-and Midm axis pairs.  The custom vLLM rollout is required because the installed
+rules.  It is currently continuing Phi-4-mini's four tasks and Midm's three
+single-axis tasks.  The custom vLLM rollout is required because the installed
 TRL/vLLM versions do not support their built-in integration; it is common to
 both arms, but lacks an external sampled-logprob TIS/MIS correction.  See the
 linked experiment record for exact commands, gates, aggregate metrics,

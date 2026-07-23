@@ -220,6 +220,35 @@ between-arm comparison; one seed is insufficient to declare an ensemble
 winner.  Prompt-form organization ranges (0.235000 and 0.287250) also exceed
 the observed arm point difference (0.140400), reinforcing that caution.
 
+## A.X expression-only continuation and frozen evaluation (completed)
+
+The expression-only `all5` arm reached 480 updates with 7,680/7,680 canonical
+policy completions and 38,400/38,400 successful Qwen calls; it had no terminal
+judge failure, discarded group, retry, or non-`stop` policy completion.  The
+`random1` arm also reached 480 updates.  It had one policy-format invalid
+completion among 7,680 (the sole rollout terminal metadata was `length`), so
+7,679 canonical completions were sent to and scored by Qwen.  This is an
+existing policy-format outcome, not a judge error; it was not retried or
+substituted.  It had zero Qwen failures, discarded groups, and retries.  Both
+training arms passed all gates.
+
+Frozen-v6 evaluation for both arms has 20,000/20,000 schema-valid scores,
+zero abstentions, zero evaluator failures, and all gates passing.  The
+requested primary target is `expression`.
+
+| decoder / arm | macro | content | organization | expression | paired expression Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.922283 | 3.867950 | 3.930350 | 3.968550 | — |
+| GRPO `all5` | 4.075700 | 3.986150 | 3.977000 | 4.263950 | +0.295400 [+0.204050, +0.386650] |
+| GRPO `random1` | 4.058483 | 3.968450 | 3.958650 | 4.248350 | +0.279800 [+0.189000, +0.369900] |
+
+The primary expression target improves under both arms.  `all5` also has
+positive paired intervals on both transfer axes; `random1` has a positive
+content interval but an organization interval that crosses zero.  As in the
+other tasks, no ensemble winner is claimed: the all-five/random-one expression
+point difference is only 0.015600, far below either prompt-form expression
+range (0.386500 and 0.360500).
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
