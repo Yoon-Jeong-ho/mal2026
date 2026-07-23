@@ -163,3 +163,37 @@ All requested axes improve with positive paired bootstrap intervals for both
 arms.  As with Midm, the small point difference between arms is not a direct
 between-arm statistical comparison and remains target-proxy evidence rather
 than a human-quality claim.
+
+## Framework-conformance audit during the declared run
+
+The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
+PyTorch 2.11.0, Accelerate 1.14.0, and PEFT 0.19.1.  TRL's own import-time
+compatibility warning does not list vLLM 0.25.1 among the versions supported
+by its integrated vLLM path.  The v8 runner therefore deliberately uses the
+publicly provided (but experimental) `GRPOTrainer.rollout_func` boundary
+rather than falsely declaring the built-in `use_vllm=True` integration
+compatible.
+
+The custom path was compared with the current TRL, OpenRLHF, verl, and vLLM
+interfaces.  Its intended properties are present: four samples per source are
+coalesced into one `n=4` vLLM request; reward groups retain those four members;
+the policy LoRA is snapshotted and loaded in place immediately before every
+generation batch; and the rollout server (GPUs 0--1), trainer (GPU 2), and
+reward judge (GPU 3) remain separate.  For example, the completed A.X
+organization/`all5` arm records 1,920 vLLM requests, 7,680 completions, and
+120 adapter syncs, which is exactly one synchronization per four-update
+generation batch (480 updates total).  The all-five arm also records 7,680
+calls for each prompt form; completed `random1` arms have near-uniform
+one-form counts, as required by the deterministic selector.
+
+There is one explicit limitation rather than an unrecorded claim of exact
+framework equivalence.  The HTTP custom rollout consumes vLLM completion text
+and re-tokenizes it for TRL; it does not carry vLLM's sampled per-token
+log-probabilities into a TIS/MIS rollout-correction calculation.  Recent TRL
+and verl implementations expose such corrections because inference/training
+numerics can differ.  This limitation is common to both declared arms, so it
+does not selectively favor `all5` or `random1`, but it limits an *absolute*
+claim about the GRPO update.  The v8 matrix is not altered mid-run.  A future,
+separately versioned verification arm may capture rollout log-probability
+diagnostics or use a supported integrated stack; it must not be mixed with the
+declared v8 comparison.
