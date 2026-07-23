@@ -136,3 +136,30 @@ subsequent records expose non-`stop` completion counts in aggregate metadata.
 - Command: `MAL2026_RLAIF_CONFIG=configs/rlaif_grpo_prompt_ensemble.v8.json MAL2026_RLAIF_RUNTIME_ID=20260722-023 PYTHONPATH=src .venv-standard/bin/python scripts/run_rlaif_grpo_prompt_ensemble_v1.py remaining`.
 - Source Git SHA at relaunch: `f8f9dd621681eb72cf6f02bd6029d45823fa128e`.
 - Unchanged v8 config SHA-256: `9528b01263d3e4bd2f5cbdf7f272beedd2fdbff697592a36462f1ec9d51fe375`.
+
+## A.X bundle full continuation and frozen evaluation (completed)
+
+The fresh A.X-4.0-Light bundle pair completed all 480 updates and passed the
+training gates.  `all5` had 7,680 canonical completions and 38,400/38,400
+successful judge calls.  `random1` had 7,678 canonical completions, two
+canonical-policy invalid completions, and 7,678/7,678 successful judge calls.
+The repaired non-`stop` path was exercised exactly twice in `random1`
+(`length: 2`, `stop: 7,678`): both responses then failed the existing canonical
+policy parser and received only its existing invalid-policy treatment.  Neither
+was retried, substituted, or passed to Qwen.  There were zero judge failures,
+unscorable outcomes, discarded groups, and transport retries in both arms.
+
+Frozen-v6 evaluation again produced 20,000/20,000 schema-valid observations
+per arm (400 essays × 5 forms × 10 repeats), with zero abstentions, evaluator
+failures, or gate violations:
+
+| decoder / arm | macro | content | organization | expression | paired macro Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.766183 | 3.685500 | 3.869800 | 3.743250 | — |
+| GRPO `all5` | 4.184067 | 4.121450 | 4.141700 | 4.289050 | +0.417883 [+0.349500, +0.489667] |
+| GRPO `random1` | 4.187033 | 4.142400 | 4.146650 | 4.272050 | +0.420850 [+0.349567, +0.492683] |
+
+All requested axes improve with positive paired bootstrap intervals for both
+arms.  As with Midm, the small point difference between arms is not a direct
+between-arm statistical comparison and remains target-proxy evidence rather
+than a human-quality claim.
