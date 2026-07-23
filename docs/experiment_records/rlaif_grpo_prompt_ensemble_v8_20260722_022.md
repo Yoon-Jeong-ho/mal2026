@@ -312,6 +312,35 @@ smaller than the frozen form-specific content ranges (0.566000 and 0.630250).
 One seed and no direct paired between-arm interval therefore do not support a
 reward-estimator winner.
 
+## Phi-4-mini organization-only continuation and frozen evaluation (completed)
+
+Both organization-only continuations reached 480 updates and passed the v8
+training gates.  `all5` produced 7,673 canonical policy completions and seven
+policy-format invalid completions, with 38,365/38,365 successful Qwen calls.
+`random1` produced 7,674 canonical completions and six policy-format invalid
+completions, with 7,674/7,674 successful Qwen calls.  Neither arm had a Qwen
+judge failure, unscorable observation, discarded reward group, or retry.  The
+terminal policy metadata contains three `length` outcomes in each arm; canonical
+parsing, not terminal metadata, determined the policy-format results.  The
+random-one prompt-form counts were 1,596; 1,558; 1,480; 1,487; and 1,553.
+
+All three frozen-v6 evaluations have 20,000/20,000 schema-valid observations,
+zero abstentions, zero evaluator failures, and all frozen-evaluation gates
+passing.  The requested primary target is `organization`.
+
+| decoder / arm | macro | content | organization | expression | paired organization Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.129900 | 2.979400 | 3.423850 | 2.986450 | — |
+| GRPO `all5` | 3.201050 | 3.091050 | 3.429700 | 3.082400 | +0.005850 [−0.067550, +0.079300] |
+| GRPO `random1` | 3.217983 | 3.097700 | 3.464150 | 3.092100 | +0.040300 [−0.031300, +0.113400] |
+
+The primary organization intervals cross zero in both arms; this task therefore
+does **not** establish a requested-target gain for Phi-4-mini.  Content and
+expression transfer are positive in both arms.  The direct all-five/random-one
+primary point difference (0.034450) is much smaller than their frozen
+form-specific organization ranges (0.324250 and 0.361750), so it is not
+evidence for an estimator winner.
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
