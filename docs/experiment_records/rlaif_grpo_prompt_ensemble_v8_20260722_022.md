@@ -279,6 +279,39 @@ missing; its 0.099583 macro point difference is smaller than either frozen
 prompt-form macro range (0.426834 and 0.414916), so no estimator winner is
 declared.
 
+## Phi-4-mini content-only continuation and frozen evaluation (completed)
+
+Both content-only continuations reached all 480 updates and passed the v8
+training gates.  `all5` produced 7,668 canonical policy completions and 12
+policy-format invalid completions.  It requested 38,340 Qwen observations;
+three terminal `envelope_length` judge responses were unscorable, so three
+whole four-candidate groups received the declared equal zero reward and
+38,337 observations were successfully scored.  Its unscorable fraction
+(0.00007825) and discarded-group fraction (0.0015625) are below the declared
+v8 ceilings.  `random1` produced 7,670 canonical completions and ten
+policy-format invalid completions, with 7,670/7,670 successful Qwen calls,
+zero unscorable observations, discarded groups, or retries.  The deterministic
+random-one prompt-form counts were 1,551; 1,501; 1,496; 1,586; and 1,536.
+
+Each SFT and RL evaluation again has 20,000/20,000 schema-valid frozen-v6
+observations, zero abstentions, zero evaluator failures, and all frozen
+evaluation gates passing.  The requested primary target is `content`; the
+other axes remain transfer diagnostics.
+
+| decoder / arm | macro | content | organization | expression | paired content Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.129900 | 2.979400 | 3.423850 | 2.986450 | — |
+| GRPO `all5` | 3.310517 | 3.509000 | 3.282000 | 3.140550 | +0.529600 [+0.447500, +0.612450] |
+| GRPO `random1` | 3.277983 | 3.457200 | 3.270900 | 3.105850 | +0.477800 [+0.397900, +0.558150] |
+
+Both arms improve the requested content target and expression transfer, while
+organization transfer is negative: `all5` −0.141850 [−0.188000, −0.098600]
+and `random1` −0.152950 [−0.196650, −0.111000].  `all5` has the higher
+content point estimate, but the observed arm difference (0.051800) is far
+smaller than the frozen form-specific content ranges (0.566000 and 0.630250).
+One seed and no direct paired between-arm interval therefore do not support a
+reward-estimator winner.
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
