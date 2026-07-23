@@ -9,9 +9,9 @@ The maintained standard Trainer/TRL/vLLM matrix is documented in
 `docs/standard_experiment_matrix.md`.  A separately declared, score-blind
 RLAIF/GRPO continuation uses maintained TRL `GRPOTrainer`, a local vLLM policy
 rollout server, and a local Qwen judge; its reproducibility record is
-`docs/experiment_records/rlaif_grpo_prompt_ensemble_v7_20260722_017.md`.
+`docs/experiment_records/rlaif_grpo_prompt_ensemble_v8_20260722_022.md`.
 
-## RLAIF/GRPO prompt-ensemble snapshot (aggregate-only, 2026-07-22)
+## RLAIF/GRPO prompt-ensemble snapshot (aggregate-only, in progress)
 
 The study compares two fixed reward estimators for Korean rationale decoders:
 `all5` averages five independently posed Qwen feedback-quality prompts, while
@@ -28,8 +28,8 @@ deltas for both estimators:
 
 | SFT decoder | SFT macro | `all5` delta (95% bootstrap CI) | `random1` delta (95% bootstrap CI) |
 | --- | ---: | ---: | ---: |
-| Midm-2.0-Base | 3.867967 | +0.281633 [0.216633, 0.347800] | +0.232700 [0.166100, 0.301117] |
-| A.X-4.0-Light | 3.766183 | +0.420767 [0.348783, 0.496533] | +0.426100 [0.355700, 0.499650] |
+| Midm-2.0-Base | 3.867967 | +0.306317 [+0.237733, +0.376617] | +0.321133 [+0.252633, +0.392667] |
+| A.X-4.0-Light | 3.766183 | +0.417883 [+0.349500, +0.489667] | +0.420850 [+0.349567, +0.492683] |
 
 All three requested axes have positive paired intervals in these completed
 comparisons **under the fixed Qwen-v6 judge proxy**.  They are not independent
@@ -37,13 +37,21 @@ human-quality, RMSE/Spearman, or estimator-selection results: reward and
 evaluation use the same judge/rubric family, prompt-form calibration variation
 is material, and there is one training seed.  The evidence supports retaining
 the fixed full 1,920-group eligible RL population, not selecting an estimator
-or reducing data before the predeclared matrix completes.  The A.X
-content/`all5` `-019` arm stopped at step 444 on a scoreless response envelope;
-it is preserved without adapter/evaluation output.  A `-020` pre-update
-recovery was also preserved, and a fresh `-021` continuation handles only
-explicit vLLM internal-error retries while treating length finishes as terminal.
-See the linked experiment record for exact commands, gates, aggregate metrics,
-and current continuation state.
+or reducing data before the predeclared matrix completes.  In completed A.X
+single-axis continuations, both arms improve the requested content target
+(+0.327450 / +0.355600), but organization transfer is negative; organization
+training improves its requested target (+0.250650 / +0.110250) and all three
+diagnostic axes.  These are task-targeted results, not global estimator
+selection evidence.
+
+The active v8 matrix preserves the initial v7 and A.X rollout failures under
+ignored runtime roots, then uses a fresh lineage with aggregate-recorded repair
+rules.  It is currently continuing the remaining A.X expression, Phi-4-mini,
+and Midm axis pairs.  The custom vLLM rollout is required because the installed
+TRL/vLLM versions do not support their built-in integration; it is common to
+both arms, but lacks an external sampled-logprob TIS/MIS correction.  See the
+linked experiment record for exact commands, gates, aggregate metrics,
+framework caveat, and current continuation state.
 
 ## Local static/unit checks
 
