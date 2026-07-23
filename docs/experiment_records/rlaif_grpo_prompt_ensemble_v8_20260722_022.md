@@ -249,6 +249,36 @@ other tasks, no ensemble winner is claimed: the all-five/random-one expression
 point difference is only 0.015600, far below either prompt-form expression
 range (0.386500 and 0.360500).
 
+## Phi-4-mini bundle continuation and frozen evaluation (completed)
+
+Both Phi-4-mini bundle continuations reached 480 updates and passed all
+training gates.  `all5` had 7,664 canonical policy completions and 16
+policy-format invalid completions, yielding 38,320/38,320 successful Qwen
+calls.  `random1` had 7,666 canonical completions and 14 policy-format invalid
+completions, yielding 7,666/7,666 successful Qwen calls.  Neither arm had a
+Qwen judge failure, unscorable observation, discarded group, or retry.  The
+terminal policy metadata records ten `length` outcomes for `all5` and nine for
+`random1`; canonical parsing, not that metadata, determined existing
+policy-format treatment.
+
+Both frozen-v6 evaluations have 20,000/20,000 schema-valid observations, zero
+abstentions, zero evaluator failures, and all gates passing.  Bundle trains
+all three requested axes, so the primary delta is macro score.
+
+| decoder / arm | macro | content | organization | expression | paired macro Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.049750 | 2.999900 | 3.313200 | 2.836150 | — |
+| GRPO `all5` | 3.817900 | 3.864200 | 3.731900 | 3.857600 | +0.768150 [+0.685917, +0.851350] |
+| GRPO `random1` | 3.718317 | 3.757100 | 3.597950 | 3.799900 | +0.668567 [+0.583950, +0.756067] |
+
+All three axes improve with positive paired intervals in both arms.  Phi's
+large gain is relative to its lower SFT baseline, not evidence that it is
+absolutely better than the other decoders.  `all5` has the higher point delta,
+but direct between-arm uncertainty and replicated training seeds remain
+missing; its 0.099583 macro point difference is smaller than either frozen
+prompt-form macro range (0.426834 and 0.414916), so no estimator winner is
+declared.
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,

@@ -30,6 +30,7 @@ deltas for both estimators:
 | --- | ---: | ---: | ---: |
 | Midm-2.0-Base | 3.867967 | +0.306317 [+0.237733, +0.376617] | +0.321133 [+0.252633, +0.392667] |
 | A.X-4.0-Light | 3.766183 | +0.417883 [+0.349500, +0.489667] | +0.420850 [+0.349567, +0.492683] |
+| Phi-4-mini | 3.049750 | +0.768150 [+0.685917, +0.851350] | +0.668567 [+0.583950, +0.756067] |
 
 All three requested axes have positive paired intervals in these completed
 comparisons **under the fixed Qwen-v6 judge proxy**.  They are not independent
@@ -47,12 +48,12 @@ estimator-selection evidence.
 
 The active v8 matrix preserves the initial v7 and A.X rollout failures under
 ignored runtime roots, then uses a fresh lineage with aggregate-recorded repair
-rules.  It is currently continuing Phi-4-mini's four tasks and Midm's three
-single-axis tasks.  The custom vLLM rollout is required because the installed
-TRL/vLLM versions do not support their built-in integration; it is common to
-both arms, but lacks an external sampled-logprob TIS/MIS correction.  See the
-linked experiment record for exact commands, gates, aggregate metrics,
-framework caveat, and current continuation state.
+rules.  It is currently continuing Phi-4-mini's three single-axis tasks and
+Midm's three single-axis tasks.  The custom vLLM rollout is required because
+the installed TRL/vLLM versions do not support their built-in integration; it
+is common to both arms, but lacks an external sampled-logprob TIS/MIS
+correction.  See the linked experiment record for exact commands, gates,
+aggregate metrics, framework caveat, and current continuation state.
 
 ## Local static/unit checks
 
