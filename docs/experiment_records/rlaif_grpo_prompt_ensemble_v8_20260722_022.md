@@ -164,6 +164,36 @@ arms.  As with Midm, the small point difference between arms is not a direct
 between-arm statistical comparison and remains target-proxy evidence rather
 than a human-quality claim.
 
+## A.X content-only continuation and frozen evaluation (completed)
+
+The A.X content-only pair reached all 480 updates and passed the v8 training
+gates.  `all5` produced 7,680 parse-valid completions and requested 38,400
+Qwen observations.  One terminal judge response was unscorable; exactly one
+four-candidate generation group was assigned the declared equal zero reward,
+leaving 38,399 successful Qwen calls.  Its unscorable rate and discarded-group
+rate are both below the v8 ceilings.  `random1` produced 7,680 parse-valid
+completions and 7,680/7,680 successful Qwen calls, with zero unscorable
+observations, discarded groups, retries, or transport/schema failures.
+
+Each SFT and RL arm again has 20,000/20,000 schema-valid frozen-v6 scores,
+zero abstentions, zero evaluator failures, and all frozen-evaluation gates
+passed.  The requested primary target for this task is `content`; the other
+two axes are reported as transfer diagnostics rather than optimized targets.
+
+| decoder / arm | macro | content | organization | expression | paired content Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.922283 | 3.867950 | 3.930350 | 3.968550 | — |
+| GRPO `all5` | 3.995050 | 4.195400 | 3.815550 | 3.974200 | +0.327450 [+0.261950, +0.394800] |
+| GRPO `random1` | 4.012033 | 4.223550 | 3.831800 | 3.980750 | +0.355600 [+0.290450, +0.425000] |
+
+Both arms improve the declared content target.  Neither yields evidence that
+the organization rationale transferred positively: its paired deltas are
+`all5` −0.114800 [−0.153350, −0.076750] and `random1` −0.098550
+[−0.136850, −0.059400].  Expression is statistically inconclusive in both
+arms.  Thus a content-only continuation must not be interpreted as an
+all-three-axis quality improvement; the separately trained bundle arms are
+the appropriate primary comparison for that claim.
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
