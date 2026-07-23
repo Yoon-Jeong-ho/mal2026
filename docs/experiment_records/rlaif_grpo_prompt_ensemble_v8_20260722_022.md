@@ -194,6 +194,32 @@ arms.  Thus a content-only continuation must not be interpreted as an
 all-three-axis quality improvement; the separately trained bundle arms are
 the appropriate primary comparison for that claim.
 
+## A.X organization-only continuation and frozen evaluation (completed)
+
+Both organization-only arms reached 480 updates with 7,680/7,680 canonical
+policy completions, no parse failures, terminal non-`stop` completions,
+unscorable judge observations, discarded groups, or transport retries.  The
+`all5` arm scored all 38,400 requested Qwen observations (7,680 per form),
+while `random1` scored all 7,680 and selected the five forms near uniformly
+(1,540; 1,532; 1,535; 1,525; 1,548).  Both training gates passed.
+
+Frozen-v6 evaluation also passed all gates for each arm, with 20,000/20,000
+schema-valid score observations, zero abstentions, and zero evaluator
+failures.  The requested primary target is `organization`.
+
+| decoder / arm | macro | content | organization | expression | paired organization Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.922283 | 3.867950 | 3.930350 | 3.968550 | — |
+| GRPO `all5` | 4.040150 | 3.927800 | 4.181000 | 4.011650 | +0.250650 [+0.176400, +0.321600] |
+| GRPO `random1` | 3.994417 | 3.922950 | 4.040600 | 4.019700 | +0.110250 [+0.040850, +0.178150] |
+
+Unlike content-only training, both organization-only arms have positive paired
+intervals on all three diagnostic axes.  The `all5` point estimate is larger,
+but the current confidence intervals are each versus SFT rather than a direct
+between-arm comparison; one seed is insufficient to declare an ensemble
+winner.  Prompt-form organization ranges (0.235000 and 0.287250) also exceed
+the observed arm point difference (0.140400), reinforcing that caution.
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
