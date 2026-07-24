@@ -341,6 +341,33 @@ primary point difference (0.034450) is much smaller than their frozen
 form-specific organization ranges (0.324250 and 0.361750), so it is not
 evidence for an estimator winner.
 
+## Phi-4-mini expression-only continuation and frozen evaluation (completed)
+
+Both expression-only continuations reached 480 updates and passed the v8
+training gates.  Each produced 7,678 canonical policy completions, two
+policy-format invalid completions, and two terminal `length` metadata outcomes;
+canonical parsing, not terminal metadata, determined the existing invalid
+policy treatment.  `all5` completed 38,390/38,390 successful Qwen calls and
+`random1` completed 7,678/7,678.  Neither arm had a Qwen judge failure,
+unscorable observation, discarded reward group, or retry.  The deterministic
+random-one prompt-form counts were 1,566; 1,514; 1,472; 1,600; and 1,526.
+
+Every frozen-v6 evaluation has 20,000/20,000 schema-valid observations, zero
+abstentions, zero evaluator failures, and all frozen-evaluation gates passing.
+The requested primary target is `expression`.
+
+| decoder / arm | macro | content | organization | expression | paired expression Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.129900 | 2.979400 | 3.423850 | 2.986450 | — |
+| GRPO `all5` | 3.663267 | 3.409600 | 3.633400 | 3.946800 | +0.960350 [+0.855850, +1.065300] |
+| GRPO `random1` | 3.589333 | 3.340300 | 3.595000 | 3.832700 | +0.846250 [+0.745600, +0.950050] |
+
+All three axes have positive paired intervals in both arms.  `all5` has the
+higher expression point estimate, but its 0.114100 direct point difference is
+smaller than the frozen form-specific expression ranges (0.603750 and
+0.667750); without a direct paired comparison and replicated seeds, it is not
+evidence for an estimator winner.
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
