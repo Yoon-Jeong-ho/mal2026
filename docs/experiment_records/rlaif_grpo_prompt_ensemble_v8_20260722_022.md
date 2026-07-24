@@ -398,6 +398,31 @@ negative: `all5` −0.145950 [−0.184750, −0.107100] and `random1` −0.15055
 point difference (0.035850) is much smaller than the frozen form-specific
 content ranges (0.337750 and 0.343750), so no estimator winner is claimed.
 
+## Midm-2.0-Base organization-only continuation and frozen evaluation (completed)
+
+Both organization-only continuations reached 480 updates and passed every v8
+training gate.  Each produced all 7,680 canonical policy completions, all
+terminal rollout metadata was `stop`, and neither arm had a Qwen judge failure,
+unscorable observation, discarded reward group, or retry.  `all5` completed
+all 38,400 requested Qwen calls; `random1` completed all 7,680.  The
+random-one prompt-form counts were 1,512; 1,528; 1,548; 1,587; and 1,505.
+
+Every frozen-v6 evaluation has 20,000/20,000 schema-valid observations, zero
+abstentions, zero evaluator failures, and all frozen-evaluation gates passing.
+The requested primary target is `organization`.
+
+| decoder / arm | macro | content | organization | expression | paired organization Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.921833 | 3.882450 | 3.936900 | 3.946150 | — |
+| GRPO `all5` | 3.989050 | 3.906800 | 4.080350 | 3.980000 | +0.143450 [+0.080900, +0.205950] |
+| GRPO `random1` | 3.977883 | 3.901450 | 4.044050 | 3.988150 | +0.107150 [+0.044500, +0.169450] |
+
+Both arms improve the requested organization target.  Content transfer is
+inconclusive in both arms; expression is inconclusive for `all5` and positive
+for `random1`.  The all-five/random-one organization point difference
+(0.036300) is much smaller than the frozen form-specific ranges (0.316000 and
+0.294500), so no estimator winner is claimed.
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
