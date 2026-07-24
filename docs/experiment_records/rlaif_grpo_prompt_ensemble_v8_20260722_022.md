@@ -456,3 +456,56 @@ claim about the GRPO update.  The v8 matrix is not altered mid-run.  A future,
 separately versioned verification arm may capture rollout log-probability
 diagnostics or use a supported integrated stack; it must not be mixed with the
 declared v8 comparison.
+
+## Midm-2.0-Base expression-only continuation and frozen evaluation (completed)
+
+The final two declared v8 arms both reached 480 updates and passed every
+training gate.  Each produced 7,680/7,680 canonical policy completions and
+all rollout completions carried `stop` terminal metadata.  `all5` completed
+38,400/38,400 Qwen calls and `random1` completed 7,680/7,680; neither arm had
+a Qwen judge failure, unscorable observation, discarded reward group, or
+retry.  The deterministic random-one prompt-form counts were 1,522; 1,569;
+1,562; 1,539; and 1,488.
+
+Both frozen-v6 evaluations have 20,000/20,000 schema-valid observations, zero
+abstentions, zero evaluator failures, and all gates passing.  The requested
+primary target is `expression`.
+
+| decoder / arm | macro | content | organization | expression | paired expression Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.921833 | 3.882450 | 3.936900 | 3.946150 | — |
+| GRPO `all5` | 4.161017 | 4.069100 | 4.024150 | 4.389800 | +0.443650 [+0.358000, +0.527800] |
+| GRPO `random1` | 4.208267 | 4.094600 | 4.055650 | 4.474550 | +0.528400 [+0.439100, +0.619100] |
+
+Both arms improve the requested expression target.  The non-target axes in an
+axis-only evaluation use a fixed SFT triplet as the generation-side hybrid, so
+their re-judged macro values are descriptive transfer diagnostics and are not
+valid for ranking a complete three-axis decoder against a bundle model.
+
+## v8 matrix closure and complete-rationale top-three selection
+
+The `20260722-023` runner completed all 24 full arms (three decoder bases ×
+bundle/content/organization/expression × `all5`/`random1`).  Its final summary
+has a completed status, every arm has all four frozen-evaluation gates true,
+and every arm has 20,000/20,000 schema-valid frozen-v6 observations with zero
+abstentions and zero evaluator transport/schema failures.
+
+The follow-on score-regression study is user-authorized to generate a complete
+three-axis rationale from exactly three adapters, without a decoder ensemble or
+an `average` score target.  Axis-only adapters are excluded from this
+selection: their validation generation is hybridized with SFT rationales on
+the two non-target axes and therefore cannot be compared as an independently
+complete rationale system.  Sorting the three-axis `bundle` systems by frozen
+macro score selects:
+
+| rank | adapter | frozen macro |
+| ---: | --- | ---: |
+| 1 | Midm-2.0-Base bundle / `random1` | 4.189100 |
+| 2 | A.X-4.0-Light bundle / `random1` | 4.187033 |
+| 3 | A.X-4.0-Light bundle / `all5` | 4.184067 |
+
+Here `all5` names its training reward construction, not an ensemble decoder;
+each selected adapter will independently generate one rationale set.  The
+subsequent encoder protocol will use the previously best validated score
+backbone, Qwen2.5-7B, and predict only `content`, `organization`, and
+`expression`; it will neither train nor report an `average` target.

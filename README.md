@@ -11,7 +11,7 @@ RLAIF/GRPO continuation uses maintained TRL `GRPOTrainer`, a local vLLM policy
 rollout server, and a local Qwen judge; its reproducibility record is
 `docs/experiment_records/rlaif_grpo_prompt_ensemble_v8_20260722_022.md`.
 
-## RLAIF/GRPO prompt-ensemble snapshot (aggregate-only, in progress)
+## RLAIF/GRPO prompt-ensemble snapshot (aggregate-only, completed)
 
 The study compares two fixed reward estimators for Korean rationale decoders:
 `all5` averages five independently posed Qwen feedback-quality prompts, while
@@ -56,9 +56,13 @@ estimator-selection evidence.
 
 The active v8 matrix preserves the initial v7 and A.X rollout failures under
 ignored runtime roots, then uses a fresh lineage with aggregate-recorded repair
-rules.  It is currently continuing Midm's remaining expression task.  The custom
-vLLM rollout is required because the installed TRL/vLLM versions do not support
-their built-in integration; it
+rules.  It completed all 24 arms and every completed frozen evaluation has
+20,000/20,000 valid score observations with zero abstentions and zero evaluator
+transport/schema failures.  For the follow-on three-rationale encoder study,
+only the three highest complete bundle adapters are selected—Midm `random1`,
+A.X `random1`, and A.X `all5`; their outputs will not be averaged or ensembled.
+The custom vLLM rollout is required because the installed TRL/vLLM versions do
+not support their built-in integration; it
 is common to both arms, but lacks an external sampled-logprob TIS/MIS
 correction.  See the linked experiment record for exact commands, gates,
 aggregate metrics, framework caveat, and current continuation state.
