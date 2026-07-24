@@ -61,6 +61,9 @@ rules.  It completed all 24 arms and every completed frozen evaluation has
 transport/schema failures.  For the follow-on three-rationale encoder study,
 only the three highest complete bundle adapters are selected—Midm `random1`,
 A.X `random1`, and A.X `all5`; their outputs will not be averaged or ensembled.
+The separate top-three encoder protocol uses Qwen2.5-7B once per independent
+rationale source and trains/evaluates only `content`, `organization`, and
+`expression`; see `docs/experiment_records/rlaif_top3_encoder_v1_20260725_001.md`.
 The custom vLLM rollout is required because the installed TRL/vLLM versions do
 not support their built-in integration; it
 is common to both arms, but lacks an external sampled-logprob TIS/MIS
