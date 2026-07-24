@@ -662,8 +662,11 @@ def run_score_regression(config: RLAIFTop3RegressionConfig) -> dict[str, Any]:
         do_train=True,
         do_eval=False,
         eval_strategy="no",
-        save_strategy="epoch",
-        save_total_limit=1,
+        # The explicit final save below is the only state used by the frozen
+        # validation stage.  Avoiding redundant full 7B float32 checkpoints
+        # preserves the exact optimizer/data protocol while preventing twelve
+        # NFS-sized copies per encoder run.
+        save_strategy="no",
         logging_steps=config.logging_steps,
         logging_strategy="steps",
         learning_rate=config.learning_rate,

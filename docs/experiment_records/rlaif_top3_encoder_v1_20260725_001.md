@@ -45,8 +45,10 @@ under ignored `data/processed/restricted/rlaif_top3_encoder_v1/`.
    validation rationale objects.  Every output must parse, have all three
    axes, and have zero transport/schema failures.
 3. For each source, DDP=4 trains Qwen2.5 for the fixed 12-epoch decoder
-   rationale schedule.  It must have finite metrics and a checksummed model
-   state.
+   rationale schedule.  It must have finite metrics and a checksummed final
+   model state.  Intermediate full-model checkpoints are disabled because no
+   declared stage consumes them; this removes redundant NFS writes without
+   changing data, optimizer, update count, or final-state validation.
 4. Each encoder is evaluated once on 400 matching validation rationales, with
    exactly one prediction per writing.  The report stores only per-axis RMSE /
    Spearman and the three-axis macro diagnostics; no raw prediction is saved.
@@ -60,3 +62,11 @@ only a completed artifact whose complete provenance is revalidated.
 Implementation and GPU-free contract checks are complete.  Runtime progress,
 gate evidence, and final aggregate metrics will be appended here after the
 declared GPU0 preflight and full durable runner stages finish.
+
+## GPU0 preflight result
+
+The declared actual preflight completed on GPU0.  Its one score-blind Midm
+`random1` rationale request was schema-valid (1/1) with zero transport/schema
+failures.  The one-step Qwen2.5 three-axis encoder update completed with a
+finite train loss (0.618423) and a checksummed final state.  This gate did not
+evaluate validation performance and does not participate in model selection.
