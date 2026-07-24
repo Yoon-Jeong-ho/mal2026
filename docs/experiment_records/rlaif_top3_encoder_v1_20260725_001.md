@@ -70,3 +70,37 @@ The declared actual preflight completed on GPU0.  Its one score-blind Midm
 failures.  The one-step Qwen2.5 three-axis encoder update completed with a
 finite train loss (0.618423) and a checksummed final state.  This gate did not
 evaluate validation performance and does not participate in model selection.
+
+## Full top-three generation, encoder fitting, and validation result
+
+The durable full runner completed at `2026-07-24T22:38:25Z` with no failed
+stage.  For every selected adapter, its separate train rationale generation
+completed 2,000/2,000 schema-valid records and its separate validation
+generation completed 400/400.  All six generation reports passed their three
+hard gates: complete records, every rationale parsed with all three axes, and
+zero transport/schema failures.  Generation remained score-blind: it neither
+read nor prompted the source writing scores.
+
+The three resulting Qwen2.5-7B LoRA encoders each completed the fixed 12-epoch
+schedule (384 DDP=4 updates, finite training metric, checksummed final state).
+The canonical writing scores are used at this *encoder supervised-target*
+stage, but the target list is exactly `content`, `organization`, and
+`expression`; neither an `average` field nor a fourth prediction head is read,
+trained, or emitted.  Each model was evaluated once on the matching 400
+validation rationales (400 unique writings, one prediction per writing, zero
+rationale-source combination).
+
+| decoder rationale source | content RMSE / Spearman | organization RMSE / Spearman | expression RMSE / Spearman | three-axis diagnostic RMSE / Spearman |
+| --- | ---: | ---: | ---: | ---: |
+| rank 1 — Midm-2.0-Base bundle / `random1` | 0.592465 / 0.546808 | 0.774760 / 0.588955 | 0.632834 / 0.334114 | 0.666686 / 0.489959 |
+| rank 2 — A.X-4.0-Light bundle / `random1` | **0.590273** / 0.543862 | 0.769708 / 0.580551 | **0.629532** / **0.368061** | **0.663171** / **0.497492** |
+| rank 3 — A.X-4.0-Light bundle / `all5` | 0.591685 / 0.541987 | **0.769705** / 0.584176 | 0.634594 / 0.342908 | 0.665328 / 0.489690 |
+
+The predeclared selection rule is lower three-axis diagnostic RMSE, then
+higher three-axis diagnostic Spearman only for a tie.  It selects the rank-2
+A.X-4.0-Light `random1` rationale-source encoder (`0.663171` diagnostic
+RMSE).  The diagnostic is a post-hoc arithmetic summary of the three reported
+axes, **not** an `average` writing-score target, prediction, or an ensemble.
+This selects a best encoder under the fixed validation protocol; it does not
+establish a generalization claim beyond the single canonical validation split
+or remove the upstream LLM-judge/proxy-label limitation.
