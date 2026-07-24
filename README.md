@@ -48,14 +48,16 @@ single-axis continuations, both arms improve the requested content target
 (+0.327450 / +0.355600), but organization transfer is negative; organization
 training improves its requested target (+0.250650 / +0.110250) and all three
 diagnostic axes; and expression training improves its requested target
-(+0.295400 / +0.279800).  These are task-targeted results, not global
+(+0.295400 / +0.279800).  Midm content-only training also improves its
+requested target (+0.317400 / +0.281550), but reduces organization transfer.
+These are task-targeted results, not global
 estimator-selection evidence.
 
 The active v8 matrix preserves the initial v7 and A.X rollout failures under
 ignored runtime roots, then uses a fresh lineage with aggregate-recorded repair
-rules.  It is currently continuing Midm's three single-axis tasks.  The custom
-vLLM rollout is required because
-the installed TRL/vLLM versions do not support their built-in integration; it
+rules.  It is currently continuing Midm's two remaining single-axis tasks.  The custom
+vLLM rollout is required because the installed TRL/vLLM versions do not support
+their built-in integration; it
 is common to both arms, but lacks an external sampled-logprob TIS/MIS
 correction.  See the linked experiment record for exact commands, gates,
 aggregate metrics, framework caveat, and current continuation state.

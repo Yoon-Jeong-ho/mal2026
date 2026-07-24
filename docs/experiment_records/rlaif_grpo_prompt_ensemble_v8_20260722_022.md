@@ -368,6 +368,36 @@ smaller than the frozen form-specific expression ranges (0.603750 and
 0.667750); without a direct paired comparison and replicated seeds, it is not
 evidence for an estimator winner.
 
+## Midm-2.0-Base content-only continuation and frozen evaluation (completed)
+
+Both content-only continuations reached 480 updates and passed the v8 training
+gates.  Each produced 7,678 canonical policy completions and two
+policy-format invalid completions.  `all5` requested 38,390 Qwen observations;
+two terminal `envelope_length` responses were unscorable, so two whole
+four-candidate groups received equal zero reward and 38,388 observations were
+successfully scored.  Its unscorable and discarded-group fractions are below
+the v8 ceilings.  `random1` completed 7,678/7,678 successful Qwen calls with
+no unscorable observation, discarded group, or retry.  All 7,680 rollout
+completions in both arms had `stop` terminal metadata.  The random-one
+prompt-form counts were 1,470; 1,511; 1,566; 1,575; and 1,556.
+
+All frozen-v6 evaluations have 20,000/20,000 schema-valid observations, zero
+abstentions, zero evaluator failures, and all frozen-evaluation gates passing.
+The requested primary target is `content`; the other axes are transfer
+diagnostics.
+
+| decoder / arm | macro | content | organization | expression | paired content Δ vs SFT (95% bootstrap CI) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| SFT baseline | 3.921833 | 3.882450 | 3.936900 | 3.946150 | — |
+| GRPO `all5` | 3.974667 | 4.199850 | 3.790950 | 3.933200 | +0.317400 [+0.254750, +0.380050] |
+| GRPO `random1` | 3.959200 | 4.164000 | 3.786350 | 3.927250 | +0.281550 [+0.221900, +0.341900] |
+
+Both arms improve the requested content target.  Organization transfer is
+negative: `all5` −0.145950 [−0.184750, −0.107100] and `random1` −0.150550
+[−0.189900, −0.111550].  Expression intervals cross zero.  The direct content
+point difference (0.035850) is much smaller than the frozen form-specific
+content ranges (0.337750 and 0.343750), so no estimator winner is claimed.
+
 ## Framework-conformance audit during the declared run
 
 The active environment is TRL 0.29.1, vLLM 0.25.1, Transformers 5.14.1,
