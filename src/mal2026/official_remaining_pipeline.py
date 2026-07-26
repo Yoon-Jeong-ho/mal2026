@@ -19,11 +19,12 @@ from .official_rationale_handoff import ALLOWED_HISTORICAL_CONTINUATIONS, AXES
 ROOT = Path(__file__).resolve().parents[2]
 RL_RUN_ID = "official-rationale-rl-experiment-v1-20260727-001"
 RL_ROOT = ROOT / "outputs/official-rationale-rl-v1/orchestration" / RL_RUN_ID
-AIHUB_RATIONALE_MODEL = (
+AIHUB_RATIONALE_RUN = (
     ROOT
     / "outputs/official-aihub-rationale-full-sft-v1"
     / "official-aihub-rationale-full-sft-v1-ax4-axis_triplet-full-002"
 )
+AIHUB_RATIONALE_MODEL = AIHUB_RATIONALE_RUN / "final_model"
 AIHUB_RATIONALE_LORA_ROOT = ROOT / "outputs/official-aihub-then-api-rationale-lora-v1"
 EMBEDDING_PRETRAIN_ROOT = (
     ROOT
@@ -100,7 +101,7 @@ def build_candidate_bindings(template: Mapping[str, Any]) -> dict[str, Any]:
         },
         "aihub_sft_axis_triplet": {
             "model_path": str(AIHUB_RATIONALE_MODEL),
-            "model_binding_path": str(AIHUB_RATIONALE_MODEL / "training_complete.json"),
+            "model_binding_path": str(AIHUB_RATIONALE_RUN / "training_complete.json"),
             "adapters": {
                 axis: str(
                     AIHUB_RATIONALE_LORA_ROOT
