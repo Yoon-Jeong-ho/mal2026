@@ -68,6 +68,19 @@ RMSE: 0.590273 / 0.769708 / 0.629532; the three-axis diagnostic RMSE is
 0.663171).  The diagnostic is not an `average` score target or prediction; see
 `docs/experiment_records/rlaif_top3_encoder_v1_20260725_001.md` for the full
 per-axis result and protocol caveat.
+
+The requested follow-up now uses the actual embedding-tuned
+`Qwen/Qwen3-Embedding-8B` snapshot with the same A.X `random1` rationales.  A
+public-base initialization did not learn a usable scorer under the fixed
+schedule (three-axis diagnostic RMSE `2.062436`), whereas the model previously
+trained on 48,016 eligible AI-Hub feedback rows reached content / organization
+/ expression RMSE of `0.531378 / 0.710936 / 0.531244` (`0.591186` three-axis
+diagnostic RMSE). That is 10.85% lower than the directly comparable Qwen2.5
+diagnostic RMSE, but it remains above the requested `0.421300` level.  The old
+fourth `average` head was discarded before continuation; neither arm trains or
+evaluates an average target.  See
+`docs/experiment_records/rlaif_qwen3_embedding_comparison_v1_20260726_001.md`.
+
 The custom vLLM rollout is required because the installed TRL/vLLM versions do
 not support their built-in integration; it
 is common to both arms, but lacks an external sampled-logprob TIS/MIS
