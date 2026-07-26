@@ -165,6 +165,13 @@ these longer-input arms it changes per-device batch/accumulation from 4/4 to
 seed, and selection rule.  The allocator uses expandable segments to reduce
 fragmentation; this is a runtime-only integration recovery.
 
+Before the full rationale stage of runtime `20260726-009` started, its fixed
+batch schedule inherited the same longer R0 input and the already observed
+batch-4 OOM boundary.  That stage therefore uses per-device batch 2 and
+accumulation 8 rather than 4/4.  Global batch 64, examples, update count,
+optimizer, seed, epochs, and selection rule are unchanged.  This recovery was
+recorded before any full-rationale optimizer update.
+
 Full-arm runtime `20260726-008` passed the GPU0 full-regressor construction
 gate, then stopped on the first FSDP2 update before producing any result.  The
 FSDP BF16 policy cast the regression head to BF16 while the common pooling path

@@ -444,7 +444,7 @@ class FullRationaleConfig:
         _need(self.score_fields == AXES and (self.seed, self.max_length, self.learning_rate, self.weight_decay, self.warmup_ratio) == (2026072601, 2048, 1e-4, 0.01, 0.05), "rationale optimization contract differs")
         _need((self.lora_r, self.lora_alpha, self.lora_dropout) == (16, 32, 0.05), "rationale LoRA contract differs")
         if self.phase == "full":
-            _need((self.num_train_epochs, self.max_steps, self.essay_limit, self.per_device_batch_size, self.gradient_accumulation_steps) == (4.0, -1, 2000, 4, 4), "rationale full schedule differs")
+            _need((self.num_train_epochs, self.max_steps, self.essay_limit, self.per_device_batch_size, self.gradient_accumulation_steps) == (4.0, -1, 2000, 2, 8), "rationale full schedule differs")
         else:
             _need((self.num_train_epochs, self.max_steps, self.essay_limit, self.per_device_batch_size, self.gradient_accumulation_steps) == (1.0, 1, 4, 4, 1), "rationale preflight schedule differs")
 
@@ -459,8 +459,8 @@ def rationale_config(phase: str) -> dict[str, Any]:
         "full_model_state_path": str(FULL_FINAL_STATE.resolve()), "score_fields": list(AXES),
         "seed": 2026072601, "max_length": 2048, "learning_rate": 1e-4, "weight_decay": 0.01, "warmup_ratio": 0.05,
         "num_train_epochs": 4.0 if full else 1.0, "max_steps": -1 if full else 1,
-        "essay_limit": 2000 if full else 4, "per_device_batch_size": 4,
-        "gradient_accumulation_steps": 4 if full else 1, "lora_r": 16, "lora_alpha": 32, "lora_dropout": 0.05,
+        "essay_limit": 2000 if full else 4, "per_device_batch_size": 2 if full else 4,
+        "gradient_accumulation_steps": 8 if full else 1, "lora_r": 16, "lora_alpha": 32, "lora_dropout": 0.05,
     }
 
 
