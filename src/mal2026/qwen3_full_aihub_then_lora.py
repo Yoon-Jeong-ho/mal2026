@@ -659,7 +659,10 @@ def run_rationale_evaluation(config: FullRationaleConfig, output: Path, essay_li
     failed = False
     if trainer.is_world_process_zero():
         try:
-            output.mkdir(parents=True)
+            # TrainingArguments creates output_dir during Trainer construction.
+            # Freshness was asserted before construction, so an existing empty
+            # directory here is expected rather than an overwrite.
+            output.mkdir(parents=True, exist_ok=True)
             _atomic_json(output / "epoch_metrics.json", payload)
         except Exception:
             failed = True

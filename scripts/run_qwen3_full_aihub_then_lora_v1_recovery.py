@@ -34,8 +34,9 @@ from mal2026.qwen3_full_aihub_then_lora import (  # noqa: E402
 
 SOURCE_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-009"
 FAILED_RECOVERY_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-010"
-RUN_ID = "qwen3-full-aihub-then-rationale-lora-v1-recovery-20260726-011"
-RUN_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-011"
+FAILED_PERSISTENCE_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-011"
+RUN_ID = "qwen3-full-aihub-then-rationale-lora-v1-recovery-20260726-012"
+RUN_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-012"
 LOG_ROOT = RUN_ROOT / "logs"
 LEDGER = RUN_ROOT / "ledger.jsonl"
 MANIFEST = RUN_ROOT / "manifest.json"
@@ -140,7 +141,7 @@ def config_path(phase: str) -> Path:
 
 
 def recovery_eval_dir(phase: str) -> Path:
-    return EVAL_ROOT / f"qwen3-full-aihub-rationale-lora-eval-v1-{phase}-011"
+    return EVAL_ROOT / f"qwen3-full-aihub-rationale-lora-eval-v1-{phase}-012"
 
 
 def validate_training(phase: str) -> dict[str, Any]:
@@ -176,12 +177,16 @@ def prepare() -> dict[str, Any]:
     need(not RUN_ROOT.exists() and not FINAL.exists(), "recovery output freshness differs")
     source_manifest = read_json(SOURCE_ROOT / "manifest.json")
     recovery_manifest = read_json(FAILED_RECOVERY_ROOT / "manifest.json")
+    persistence_manifest = read_json(FAILED_PERSISTENCE_ROOT / "manifest.json")
     failed_log = SOURCE_ROOT / "logs" / "rationale-eval-gpu0-preflight.log"
     recovery_log = FAILED_RECOVERY_ROOT / "logs" / "rationale-eval-gpu0-preflight.log"
+    persistence_log = FAILED_PERSISTENCE_ROOT / "logs" / "rationale-eval-gpu0-preflight.log"
     need(source_manifest.get("status") == "failed", "source runtime did not fail")
     need("rationale output freshness differs" in failed_log.read_text(encoding="utf-8"), "source failure differs")
     need(recovery_manifest.get("status") == "failed", "first recovery did not fail")
     need("Spearman is undefined for constant ranks" in recovery_log.read_text(encoding="utf-8"), "first recovery failure differs")
+    need(persistence_manifest.get("status") == "failed", "second recovery did not fail")
+    need("evaluation persistence failed" in persistence_log.read_text(encoding="utf-8"), "second recovery failure differs")
     refit = read_json(FULL_REFIT_METADATA)
     need(refit.get("status") == "completed" and refit.get("model_state_sha256") == file_sha(FULL_FINAL_STATE), "completed refit provenance differs")
     RUN_ROOT.mkdir(parents=True)
@@ -196,7 +201,7 @@ def prepare() -> dict[str, Any]:
         "failure": None,
         "git_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "source_runtime": "20260726-009",
-        "source_failures": ["evaluation CLI applied training-only output freshness assertion", "four-row finite-output smoke had undefined Spearman from constant prediction ranks"],
+        "source_failures": ["evaluation CLI applied training-only output freshness assertion", "four-row finite-output smoke had undefined Spearman from constant prediction ranks", "Trainer created the fresh evaluation directory before aggregate persistence"],
         "reused_stages": ["full-aihub-selection", "full-aihub-refit", "rationale-lora-gpu0-preflight"],
         "resource_scope": {"preflight_evaluation": [0], "full_rationale_and_evaluation": [0, 1, 2, 3], "authorization": "default MAL2026 GPU scope"},
         "score_fields": list(AXES),
@@ -253,7 +258,7 @@ def main() -> None:
             "model_id": MODEL_ID,
             "model_revision": MODEL_REVISION,
             "source_runtime": "20260726-009",
-            "recovery": "evaluation config allows existing training output; the four-row smoke uses RMSE-only when rank correlation is undefined; full evaluation is unchanged",
+            "recovery": "evaluation config allows existing training output; the four-row smoke uses RMSE-only when rank correlation is undefined; aggregate persistence accepts Trainer's newly created empty output directory; full evaluation is unchanged",
             "refit": {"global_step": refit["trainer_global_step"], "model_state_sha256": refit["model_state_sha256"]},
             "full_parameter_arm_epoch_results": evaluation["epoch_results"],
             "comparison_ranked": ranked,

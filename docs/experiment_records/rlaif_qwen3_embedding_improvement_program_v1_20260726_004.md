@@ -198,3 +198,11 @@ undefined Spearman recorded as null.  The 400-row full evaluation still
 requires finite Spearman on every axis and is otherwise unchanged.  The empty
 evaluation directory created by the failed Trainer initialization is preserved;
 runtime 011 writes its evaluations to fresh, uniquely suffixed directories.
+
+Runtime `20260726-011` completed finite predictions and RMSE calculation, then
+stopped because `TrainingArguments` had already created the initially fresh
+evaluation directory before the aggregate writer attempted a non-idempotent
+`mkdir`.  Runtime `20260726-012` preserves that empty directory and failure log,
+uses a new evaluation suffix, and permits only that expected empty-directory
+transition before the atomic aggregate write.  Metric and training contracts
+remain unchanged.
