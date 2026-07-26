@@ -139,7 +139,13 @@ def wait_for_rl() -> None:
         value = read_json(manifest, "RL manifest")
         status = value.get("status")
         if status == "completed":
-            return
+            # The RL runner atomically marks its manifest immediately before
+            # writing the aggregate.  Wait for both artifacts so the outer
+            # stage cannot observe that short publication interval.
+            if (RL_ROOT / "aggregate_experiment.json").is_file():
+                return
+            time.sleep(2)
+            continue
         if status == "failed":
             raise RuntimeError("RL did not complete successfully: failed")
         if status != "running":
