@@ -153,3 +153,14 @@ Recovery runtime `20260726-006` changes only the one-update gate's checkpoint
 label from the rounded fractional Trainer epoch to checkpoint 1.  Full-run
 data, optimization, epoch boundaries, metrics, and selection rules above are
 unchanged.
+
+Runtime `20260726-006` then completed the fixed epoch ensembles, essay-only,
+and essay-instruction arms.  The rationale-instruction arm hit a real CUDA OOM
+on its fifth update: the longer input left only 112 MiB free on GPU0 while
+per-device batch 4 was active.  The negative run is preserved.  Recovery
+runtime `20260726-007` reuses the completed arm reports without retraining and
+runs only rationale-instruction, trait-specific, and multi-rationale.  For
+these longer-input arms it changes per-device batch/accumulation from 4/4 to
+2/8, preserving global batch 64, optimizer, update count, examples, epochs,
+seed, and selection rule.  The allocator uses expandable segments to reduce
+fragmentation; this is a runtime-only integration recovery.

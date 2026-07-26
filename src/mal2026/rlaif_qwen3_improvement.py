@@ -38,7 +38,7 @@ from .rlaif_top3_encoder import (
 ROOT = Path(__file__).resolve().parents[2]
 TRAIN_ROOT = ROOT / "outputs" / "rlaif-qwen3-embedding-improvement-v1"
 EVAL_ROOT = ROOT / "outputs" / "rlaif-qwen3-embedding-improvement-evals-v1"
-PROGRAM_ID = "20260726-006"
+PROGRAM_ID = "20260726-007"
 ARMS = ("essay_only", "essay_instruction", "rationale_instruction", "trait_specific", "multi_rationale")
 PHASES = ("gpu0_preflight", "full")
 PRIMARY_SOURCE = "rank2_ax4_random1"
@@ -78,11 +78,11 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
 
 
 def training_dir(arm: str, phase: str) -> Path:
-    return TRAIN_ROOT / f"rlaif-qwen3-improvement-v1-{arm}-{phase}-006"
+    return TRAIN_ROOT / f"rlaif-qwen3-improvement-v1-{arm}-{phase}-007"
 
 
 def evaluation_dir(arm: str, phase: str) -> Path:
-    return EVAL_ROOT / f"rlaif-qwen3-improvement-eval-v1-{arm}-{phase}-006"
+    return EVAL_ROOT / f"rlaif-qwen3-improvement-eval-v1-{arm}-{phase}-007"
 
 
 def checkpoint_dir(output: Path, epoch: int) -> Path:
@@ -147,14 +147,15 @@ class ImprovementTrainConfig:
         _need(Path(self.warmstart_metadata_path).resolve() == WARMSTART_METADATA.resolve(), "warm-start path differs")
         warmstart_provenance()
         output = Path(self.output_dir)
-        expected = f"rlaif-qwen3-improvement-v1-{self.arm}-{self.phase}-006"
+        expected = f"rlaif-qwen3-improvement-v1-{self.arm}-{self.phase}-007"
         _need(output.is_absolute() and output.parent == TRAIN_ROOT.resolve(), "training output root differs")
         _need(output.name == self.run_id == expected, "training identity differs")
         _need((not output.exists()) if require_fresh_output else output.is_dir(), "training output freshness differs")
         _need((self.seed, self.max_length, self.learning_rate, self.weight_decay, self.warmup_ratio) == (2026072601, 2048, 1e-4, 0.01, 0.05), "optimization contract differs")
         _need((self.lora_r, self.lora_alpha, self.lora_dropout, self.training_dtype) == (16, 32, 0.05, "bfloat16"), "LoRA/numeric contract differs")
         if self.phase == "full":
-            _need((self.num_train_epochs, self.max_steps, self.essay_limit, self.per_device_train_batch_size, self.gradient_accumulation_steps) == (4.0, -1, 2000, 4, 4), "full schedule differs")
+            batch_contract = (2, 8) if self.arm in {"rationale_instruction", "trait_specific", "multi_rationale"} else (4, 4)
+            _need((self.num_train_epochs, self.max_steps, self.essay_limit, self.per_device_train_batch_size, self.gradient_accumulation_steps) == (4.0, -1, 2000, *batch_contract), "full schedule differs")
         else:
             _need((self.num_train_epochs, self.max_steps, self.essay_limit, self.per_device_train_batch_size, self.gradient_accumulation_steps) == (1.0, 1, 4, 4, 1), "preflight schedule differs")
 
@@ -162,7 +163,8 @@ class ImprovementTrainConfig:
 def training_config(arm: str, phase: str) -> dict[str, Any]:
     _need(arm in ARMS and phase in PHASES, "unknown training arm/phase")
     full = phase == "full"
-    run_id = f"rlaif-qwen3-improvement-v1-{arm}-{phase}-006"
+    run_id = f"rlaif-qwen3-improvement-v1-{arm}-{phase}-007"
+    long_input = arm in {"rationale_instruction", "trait_specific", "multi_rationale"}
     return {
         "schema_version": "mal2026-rlaif-qwen3-improvement-train-v1",
         "run_id": run_id,
@@ -182,8 +184,8 @@ def training_config(arm: str, phase: str) -> dict[str, Any]:
         "num_train_epochs": 4.0 if full else 1.0,
         "max_steps": -1 if full else 1,
         "essay_limit": 2000 if full else 4,
-        "per_device_train_batch_size": 4,
-        "gradient_accumulation_steps": 4 if full else 1,
+        "per_device_train_batch_size": 2 if full and long_input else 4,
+        "gradient_accumulation_steps": 8 if full and long_input else (4 if full else 1),
         "logging_steps": 5 if full else 1,
         "lora_r": 16,
         "lora_alpha": 32,
@@ -445,7 +447,7 @@ class ImprovementEvalConfig:
         metadata = training_dir(self.arm, self.phase) / "training_complete.json"
         _need(Path(self.training_metadata_path).resolve() == metadata.resolve(), "evaluation lineage differs")
         output = Path(self.output_dir)
-        expected = f"rlaif-qwen3-improvement-eval-v1-{self.arm}-{self.phase}-006"
+        expected = f"rlaif-qwen3-improvement-eval-v1-{self.arm}-{self.phase}-007"
         _need(output.is_absolute() and output.parent == EVAL_ROOT.resolve() and not output.exists(), "evaluation output freshness differs")
         _need(output.name == self.run_id == expected, "evaluation identity differs")
         _need((self.essay_limit, self.per_device_eval_batch_size) == ((400, 8) if self.phase == "full" else (4, 4)), "evaluation schedule differs")
@@ -454,7 +456,7 @@ class ImprovementEvalConfig:
 def evaluation_config(arm: str, phase: str) -> dict[str, Any]:
     _need(arm in ARMS and phase in PHASES, "unknown evaluation arm/phase")
     full = phase == "full"
-    run_id = f"rlaif-qwen3-improvement-eval-v1-{arm}-{phase}-006"
+    run_id = f"rlaif-qwen3-improvement-eval-v1-{arm}-{phase}-007"
     return {
         "schema_version": "mal2026-rlaif-qwen3-improvement-eval-v1", "run_id": run_id,
         "arm": arm, "phase": phase,

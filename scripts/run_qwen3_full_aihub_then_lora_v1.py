@@ -26,8 +26,8 @@ from mal2026.qwen3_full_aihub_then_lora import (  # noqa: E402
 )
 
 
-RUNTIME_ID = "20260726-005"
-RUN_ID = "qwen3-full-aihub-then-rationale-lora-v1-20260726-005"
+RUNTIME_ID = "20260726-008"
+RUN_ID = "qwen3-full-aihub-then-rationale-lora-v1-20260726-008"
 RUN_ROOT = FULL_ROOT / RUNTIME_ID
 CONFIG_ROOT = RUN_ROOT / "configs"
 LOG_ROOT = RUN_ROOT / "logs"
@@ -35,8 +35,8 @@ LEDGER = RUN_ROOT / "ledger.jsonl"
 MANIFEST = RUN_ROOT / "manifest.json"
 CONSTRUCTION = FULL_ROOT / "qwen3-full-aihub-v1-gpu0-construction-005"
 FINAL = ROOT / "outputs" / "aggregate-reports" / f"{RUN_ID}.final-summary.json"
-PREVIOUS_FINAL = ROOT / "outputs" / "aggregate-reports" / "rlaif-qwen3-embedding-improvement-v1-20260726-006.final-summary.json"
-PREVIOUS_MANIFEST = ROOT / "outputs" / "rlaif-qwen3-embedding-improvement-v1" / "20260726-006" / "manifest.json"
+PREVIOUS_FINAL = ROOT / "outputs" / "aggregate-reports" / "rlaif-qwen3-embedding-improvement-v1-20260726-007.final-summary.json"
+PREVIOUS_MANIFEST = ROOT / "outputs" / "rlaif-qwen3-embedding-improvement-v1" / "20260726-007" / "manifest.json"
 EPOCH_SWEEP_FINAL = ROOT / "outputs" / "aggregate-reports" / "rlaif-qwen3-embedding-epoch-sweep-v1-20260726-003.final-summary.json"
 PYTHON = ROOT / ".venv-standard" / "bin" / "python"
 
