@@ -4,12 +4,17 @@ import tempfile
 import unittest
 
 from mal2026.official_rationale_handoff import (
+    ALLOWED_HISTORICAL_CONTINUATIONS,
+    HISTORICAL_CLASSIFICATION,
+    HISTORICAL_CONTRACT_SHIFT,
+    HISTORICAL_RANKING_CAVEAT,
     HandoffConfig,
     candidate_identity_sha256,
     combine_rationales,
     convert_bootstrap_scores,
     file_sha256,
     select_candidate,
+    validate_training_completion,
 )
 
 
@@ -19,6 +24,11 @@ class OfficialRationaleHandoffTests(unittest.TestCase):
         self.assertEqual({candidate["method"] for candidate in config.candidates}, {"official_sft", "aihub_sft", "dpo", "grpo"})
         self.assertEqual(sum(candidate["method"] == "dpo" for candidate in config.candidates), 3)
         self.assertEqual(sum(candidate["method"] == "grpo" for candidate in config.candidates), 3)
+        self.assertEqual(
+            {candidate["key"] for candidate in config.candidates if candidate["method"] in {"dpo", "grpo"}},
+            {key for _, key in ALLOWED_HISTORICAL_CONTINUATIONS},
+        )
+        self.assertTrue(all(candidate["final_winner_eligible"] for candidate in config.candidates))
         self.assertEqual({candidate["structure"] for candidate in config.candidates}, {"bundle", "axis_triplet"})
         self.assertEqual(len({candidate_identity_sha256(candidate) for candidate in config.candidates}), len(config.candidates))
         with self.assertRaisesRegex(Exception, "bootstrap selection SHA differs"):
@@ -32,6 +42,34 @@ class OfficialRationaleHandoffTests(unittest.TestCase):
             {"key": "d", "macro_mean": 4.9, "worst_cell": 4.1, "strict_parse_rate": 1.0},
         ]
         self.assertEqual(select_candidate(rows)["key"], "d")
+
+    def test_ineligible_candidate_cannot_win(self) -> None:
+        rows = [
+            {"key": "descriptive", "macro_mean": 5.0, "worst_cell": 5.0, "strict_parse_rate": 1.0, "final_winner_eligible": False},
+            {"key": "eligible", "macro_mean": 4.0, "worst_cell": 4.0, "strict_parse_rate": 1.0, "final_winner_eligible": True},
+        ]
+        self.assertEqual(select_candidate(rows)["key"], "eligible")
+
+    def test_named_historical_continuation_is_allowed_and_sha_bound(self) -> None:
+        method, key = "dpo", "dpo_historical_midm_random1_bundle"
+        source = ALLOWED_HISTORICAL_CONTINUATIONS[(method, key)]
+        candidate = {
+            "key": key, "method": method,
+            "origin_classification": "public_spec_score_conditioned_historical_method_continuation",
+            "historical_method": source["legacy_arm"], "historical_source_sha256": source["source_completion_sha256"], "final_winner_eligible": True,
+            "ranking_caveat": HISTORICAL_RANKING_CAVEAT,
+        }
+        completion = {
+            "schema_version": "mal2026-official-rationale-dpo-complete-v1", "status": "completed",
+            "run_id": "official-rationale-dpo-historical-full-001", "task": "bundle", "split": "train",
+            "legacy_arm": source["legacy_arm"], "classification": HISTORICAL_CLASSIFICATION,
+            "contract_shift": HISTORICAL_CONTRACT_SHIFT, "legacy_completion_sha256": source["source_completion_sha256"],
+            "human_or_reference_score_read_or_prompted": False,
+        }
+        validate_training_completion(candidate, "bundle", completion)
+        completion["legacy_completion_sha256"] = "0" * 64
+        with self.assertRaisesRegex(Exception, "source SHA differs"):
+            validate_training_completion(candidate, "bundle", completion)
 
     def test_bootstrap_score_conversion_reads_only_emitted_integers(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -19,6 +19,44 @@ AXES = ("content", "organization", "expression")
 METHODS = ("official_sft", "aihub_sft", "dpo", "grpo")
 STRUCTURES = ("bundle", "axis_triplet")
 JUDGE_PROMPT_KIND = "single_frozen_public-spec-aligned_proxy_not_verbatim_organizer_prompt"
+COMPLETION_SCHEMAS = {
+    "official_sft": "mal2026-official-rationale-sft-complete-v1",
+    "aihub_sft": "mal2026-official-aihub-then-api-rationale-lora-complete-v1",
+    "dpo": "mal2026-official-rationale-dpo-complete-v1",
+    "grpo": "mal2026-official-rationale-grpo-complete-v1",
+}
+HISTORICAL_CLASSIFICATION = "legacy_method_replication_ablation_not_direct_official_arm"
+HISTORICAL_CONTRACT_SHIFT = "score_blind_legacy_warmstart_to_score_conditioned_official_prompt_descriptive_only"
+HISTORICAL_RANKING_CAVEAT = (
+    "eligible public-spec score-conditioned continuation; historical source remains a descriptive "
+    "legacy-method replication, and the repeatedly exposed validation ranking is not held-out evidence"
+)
+_HISTORICAL_SOURCES = {
+    "midm_random1": (
+        "midm_bundle_random1_v8_replication",
+        ROOT / "outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-midm2_base-bundle-random1-full-022/training_complete.json",
+        "1bf9034a950ec3a16f8e6a85820253543e7389c51fb69d258f17c38060f0eb0c",
+    ),
+    "ax4_random1": (
+        "ax4_bundle_random1_v8_replication",
+        ROOT / "outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-ax4_light-bundle-random1-full-023/training_complete.json",
+        "a05d8438f2548e60ca19c47424633194c29af8d747bc1b628b8d49eca146ca2b",
+    ),
+    "ax4_all5": (
+        "ax4_bundle_all5_v8_replication",
+        ROOT / "outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-ax4_light-bundle-all5-full-023/training_complete.json",
+        "1b61d99c07d41e0572410a33496b0d30a1b930071fcbd25f7a70bc50f09266b8",
+    ),
+}
+ALLOWED_HISTORICAL_CONTINUATIONS = {
+    (method, f"{method}_historical_{short}_bundle"): {
+        "legacy_arm": legacy_arm, "classification": HISTORICAL_CLASSIFICATION,
+        "contract_shift": HISTORICAL_CONTRACT_SHIFT, "source_completion_path": str(path.resolve()),
+        "source_completion_sha256": digest,
+    }
+    for method in ("dpo", "grpo")
+    for short, (legacy_arm, path, digest) in _HISTORICAL_SOURCES.items()
+}
 
 
 class RationaleHandoffError(ValueError):
@@ -57,6 +95,11 @@ def candidate_identity(candidate: Mapping[str, Any]) -> dict[str, Any]:
         "key": candidate["key"], "method": candidate["method"], "structure": candidate["structure"],
         "model_id": candidate["model_id"], "model_revision": candidate["model_revision"],
         "model_config_sha256": candidate["model_config_sha256"], "model_binding_sha256": candidate["model_binding_sha256"],
+        "origin_classification": candidate["origin_classification"],
+        "historical_method": candidate["historical_method"],
+        "historical_source_sha256": candidate["historical_source_sha256"],
+        "final_winner_eligible": candidate["final_winner_eligible"],
+        "ranking_caveat": candidate["ranking_caveat"],
         "adapters": {task: {
             "adapter_config_sha256": value["adapter_config_sha256"],
             "adapter_model_sha256": value["adapter_model_sha256"],
@@ -69,10 +112,35 @@ def candidate_identity_sha256(candidate: Mapping[str, Any]) -> str:
     return canonical_sha(candidate_identity(candidate))
 
 
+def validate_training_completion(candidate: Mapping[str, Any], task: str, value: Mapping[str, Any]) -> None:
+    """Reject smoke, legacy, wrong-method, or score-leaking adapter artifacts."""
+    key, method = candidate["key"], candidate["method"]
+    need(value.get("schema_version") == COMPLETION_SCHEMAS[method], f"training completion schema differs: {key}/{task}")
+    need(value.get("status") == "completed" and value.get("task") == task, f"training completion differs: {key}/{task}")
+    run_id = str(value.get("run_id", "")).lower()
+    need("smoke" not in run_id and "preflight" not in run_id and value.get("phase", "full") == "full", f"non-full candidate is ineligible: {key}/{task}")
+    historical = ALLOWED_HISTORICAL_CONTINUATIONS.get((method, key))
+    if method in {"dpo", "grpo"}:
+        need(value.get("split") == "train", f"RL candidate split differs: {key}/{task}")
+        if historical is None:
+            need(value.get("legacy_arm") is None, f"undeclared legacy RL candidate is ineligible: {key}/{task}")
+        else:
+            need(candidate.get("origin_classification") == "public_spec_score_conditioned_historical_method_continuation" and candidate.get("historical_method") == historical["legacy_arm"] and candidate.get("historical_source_sha256") == historical["source_completion_sha256"], f"historical candidate declaration differs: {key}/{task}")
+            need(candidate.get("final_winner_eligible") is True and candidate.get("ranking_caveat") == HISTORICAL_RANKING_CAVEAT, f"historical candidate selection policy differs: {key}/{task}")
+            need(value.get("legacy_arm") == historical["legacy_arm"] and value.get("classification") == historical["classification"] and value.get("contract_shift") == historical["contract_shift"], f"historical continuation identity differs: {key}/{task}")
+            need(value.get("legacy_completion_sha256") == historical["source_completion_sha256"], f"historical continuation source SHA differs: {key}/{task}")
+            source = Path(historical["source_completion_path"])
+            need(source.is_file() and file_sha256(source) == historical["source_completion_sha256"], f"historical source artifact differs: {key}/{task}")
+    if method == "grpo":
+        need(value.get("handoff_eligible") is True and value.get("producer_status") == "completed", f"GRPO candidate is not handoff eligible: {key}/{task}")
+    need(value.get("human_or_reference_score_read_or_prompted") is False or value.get("candidate_provenance", {}).get("human_or_reference_score_read_or_prompted") is False, f"training score provenance differs: {key}/{task}")
+
+
 def select_candidate(rows: Sequence[Mapping[str, Any]]) -> Mapping[str, Any]:
     """Frozen Q4 ranking: macro, worst cell, parse rate, then key."""
-    need(bool(rows), "candidate evaluations are empty")
-    return min(rows, key=lambda row: (
+    eligible = [row for row in rows if row.get("final_winner_eligible", True) is True]
+    need(bool(eligible), "eligible candidate evaluations are empty")
+    return min(eligible, key=lambda row: (
         -float(row["macro_mean"]), -float(row["worst_cell"]),
         -float(row["strict_parse_rate"]), str(row["key"]),
     ))
@@ -113,11 +181,16 @@ class HandoffConfig:
         need(isinstance(candidates, list) and candidates, "candidate declarations are empty")
         keys: set[str] = set(); methods: set[str] = set()
         for candidate in candidates:
-            expected = {"key", "method", "structure", "model_id", "model_revision", "model_path", "model_config_sha256", "model_binding_path", "model_binding_sha256", "adapters", "evaluation_path", "evaluation_sha256"}
+            expected = {"key", "method", "structure", "origin_classification", "historical_method", "historical_source_sha256", "final_winner_eligible", "ranking_caveat", "model_id", "model_revision", "model_path", "model_config_sha256", "model_binding_path", "model_binding_sha256", "adapters", "evaluation_path", "evaluation_sha256"}
             need(isinstance(candidate, dict) and set(candidate) == expected, "candidate declaration fields differ")
             need(isinstance(candidate["key"], str) and candidate["key"] not in keys, "candidate key differs")
             keys.add(candidate["key"]); methods.add(candidate["method"])
             need(candidate["method"] in METHODS and candidate["structure"] in STRUCTURES, "candidate method/structure differs")
+            historical = ALLOWED_HISTORICAL_CONTINUATIONS.get((candidate["method"], candidate["key"]))
+            if historical is None:
+                need(candidate["origin_classification"] in {"native_public_spec", "aihub_public_spec"} and candidate["historical_method"] is None and candidate["historical_source_sha256"] is None and candidate["final_winner_eligible"] is True and candidate["ranking_caveat"] is None, "native candidate classification differs")
+            else:
+                need(candidate["origin_classification"] == "public_spec_score_conditioned_historical_method_continuation" and candidate["historical_method"] == historical["legacy_arm"] and candidate["historical_source_sha256"] == historical["source_completion_sha256"] and candidate["final_winner_eligible"] is True and candidate["ranking_caveat"] == HISTORICAL_RANKING_CAVEAT, "historical candidate classification differs")
             tasks = {"bundle"} if candidate["structure"] == "bundle" else set(AXES)
             need(isinstance(candidate["adapters"], dict) and set(candidate["adapters"]) == tasks, "candidate adapters do not match its structure")
             for adapter in candidate["adapters"].values():
@@ -171,20 +244,30 @@ class HandoffConfig:
                 need(model_file.is_file() and file_sha256(model_file) == adapter["adapter_model_sha256"], f"candidate adapter state differs: {candidate['key']}/{task}")
                 need(file_sha256(completion) == adapter["training_completion_sha256"], f"candidate training completion differs: {candidate['key']}/{task}")
                 completion_value = read_json(completion, f"candidate training completion {candidate['key']}/{task}")
-                need(completion_value.get("status") == "completed", f"candidate training is incomplete: {candidate['key']}/{task}")
+                validate_training_completion(candidate, task, completion_value)
             evaluation_path = Path(candidate["evaluation_path"])
             need(evaluation_path.is_file() and file_sha256(evaluation_path) == candidate["evaluation_sha256"], f"candidate evaluation incomplete: {candidate['key']}")
             evaluation = read_json(evaluation_path, f"candidate evaluation {candidate['key']}")
             identity_sha = candidate_identity_sha256(candidate)
             need(evaluation.get("schema_version") == "mal2026-official-rationale-candidate-evaluation-v1" and evaluation.get("status") == "completed", "candidate evaluation status differs")
             need(evaluation.get("candidate_key") == candidate["key"] and evaluation.get("candidate_identity_sha256") == identity_sha, "candidate evaluation identity differs")
+            need(evaluation.get("origin_classification") == candidate["origin_classification"] and evaluation.get("historical_method") == candidate["historical_method"] and evaluation.get("historical_source_sha256") == candidate["historical_source_sha256"] and evaluation.get("final_winner_eligible") == candidate["final_winner_eligible"] and evaluation.get("ranking_caveat") == candidate["ranking_caveat"], "candidate evaluation classification differs")
             need(evaluation.get("judge_contract_sha256") == judge["contract_sha256"] and evaluation.get("judge_model_sha256") == judge["model_sha256"] and evaluation.get("judge_prompt_kind") == judge["prompt_kind"], "candidate fixed judge differs")
             need(evaluation.get("validation_records") == 400 and evaluation.get("repeats_per_record") == judge["repeats_per_validation_record"], "candidate repeated validation protocol differs")
+            need(evaluation.get("decode_contract") == {"temperature": 0.0, "top_p": 1.0, "seed": 42, "repeats_are_independent": False}, "candidate deterministic repeat contract differs")
+            need(evaluation.get("bootstrap_validation_score_sha256") == selected_scores["validation_sha256"], "candidate bootstrap validation score binding differs")
+            need(evaluation.get("generation_candidate_identity_sha256") == identity_sha, "candidate generation identity differs")
+            generation_reports = evaluation.get("generation_reports")
+            expected_tasks = {"bundle"} if candidate["structure"] == "bundle" else set(AXES)
+            need(isinstance(generation_reports, dict) and set(generation_reports) == expected_tasks and all(isinstance(value, dict) and set(value) == {"aggregate_report_sha256", "server_attestation_sha256"} for value in generation_reports.values()), "candidate generation report bindings differ")
+            need(evaluation.get("score_mismatches") == 0 and evaluation.get("human_or_reference_score_read_or_prompted") is False, "candidate score/provenance contract differs")
+            diagnostics = evaluation.get("repeat_diagnostics")
+            need(isinstance(diagnostics, dict) and diagnostics.get("zero_variance_is_not_independence_evidence") is True, "candidate repeat interpretation differs")
             metrics = evaluation.get("metrics")
             need(isinstance(metrics, dict) and set(metrics) == {"macro_mean", "worst_cell", "strict_parse_rate"}, "candidate evaluation metrics differ")
             need(all(isinstance(metrics[key], (int, float)) and math.isfinite(float(metrics[key])) for key in metrics), "candidate evaluation metric is nonnumeric")
             need(1 <= float(metrics["macro_mean"]) <= 5 and 1 <= float(metrics["worst_cell"]) <= 5 and 0 <= float(metrics["strict_parse_rate"]) <= 1, "candidate evaluation metric range differs")
-            evaluated.append({"key": candidate["key"], "method": candidate["method"], "structure": candidate["structure"], **metrics, "candidate_identity_sha256": identity_sha, "evaluation_sha256": candidate["evaluation_sha256"]})
+            evaluated.append({"key": candidate["key"], "method": candidate["method"], "structure": candidate["structure"], "origin_classification": candidate["origin_classification"], "historical_method": candidate["historical_method"], "historical_source_sha256": candidate["historical_source_sha256"], "final_winner_eligible": candidate["final_winner_eligible"], "ranking_caveat": candidate["ranking_caveat"], **metrics, "candidate_identity_sha256": identity_sha, "evaluation_sha256": candidate["evaluation_sha256"]})
         winner = select_candidate(evaluated)
         return {"bootstrap": bootstrap, "evaluated": evaluated, "winner": winner, "candidate": next(value for value in self.candidates if value["key"] == winner["key"])}
 

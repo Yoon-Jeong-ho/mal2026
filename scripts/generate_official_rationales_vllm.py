@@ -113,7 +113,9 @@ def main() -> None:
     need(output.is_relative_to((ROOT / "data/processed/restricted").resolve()) and not output.exists(), "generation output must be a fresh restricted path")
     attestation = json.loads(args.server_attestation.read_text(encoding="utf-8"))
     need(attestation.get("schema_version") == "mal2026-official-rationale-vllm-server-attestation-v1", "generation attestation schema differs")
-    need(attestation.get("endpoint") == args.endpoint and attestation.get("adapter_alias") == args.model and attestation.get("task") == args.task, "generation server identity differs")
+    legacy_identity = attestation.get("adapter_alias") == args.model and attestation.get("task") == args.task
+    grouped_identity = isinstance(attestation.get("adapter_aliases"), dict) and attestation["adapter_aliases"].get(args.model) == args.task
+    need(attestation.get("endpoint") == args.endpoint and (legacy_identity or grouped_identity), "generation server identity differs")
     scores = load_scores(args.score_file, args.expected)
     output.mkdir(mode=0o700, parents=True)
     manifest = {

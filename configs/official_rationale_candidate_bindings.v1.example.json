@@ -1,0 +1,14 @@
+{
+  "schema_version": "mal2026-official-rationale-candidate-bindings-v1",
+  "candidates": {
+    "official_sft_bundle": {
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98/config.json",
+      "adapters": {
+        "bundle": "/dataset/aa007878/mal2026/outputs/official-rationale-sft-v1/official-rationale-sft-v1-ax4-bundle-full-001/training_complete.json"
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/official-rationale-candidate-evaluations-v1/official-rationale-handoff-v1-20260727-001/official_sft_bundle/evaluation.json"
+    }
+  },
+  "note": "Example is intentionally incomplete. A real local binding file must declare all nine candidate keys and only completed full-run artifacts."
+}
