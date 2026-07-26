@@ -1,0 +1,257 @@
+# Official-prompt-aligned score and rationale program v1
+
+Status: **public-spec-aligned API/SFT/structure comparison complete; AI-Hub full-parameter continuation running** (2026-07-27)
+
+## Prompt-provenance terminology
+
+The supplied PDFs publish the participant input/output contract, scoring
+criteria, judge model/quantization, and judge evaluation dimensions.  They do
+not publish an organizer-authored verbatim participant system prompt or the
+hidden judge prompt.  This record therefore uses these precise terms:
+
+- **public-spec-aligned participant prompt**: the fixed repository prompt that
+  implements the published axes, integer score range, and final JSON shape;
+- **rationale-only adaptation**: the same published criteria with the actual
+  predicted integer score supplied as immutable context and all score output,
+  re-scoring, and improvement advice prohibited;
+- **fixed single proxy-judge prompt**: the only judge prompt used in this
+  program, aligned to the published 12 dimensions but not claimed to be the
+  unavailable organizer wording.
+
+The exact Q4_K_M model and pinned llama.cpp runtime are official-runtime
+matches; that fact does not turn reconstructed prompt wording into a verbatim
+official prompt.
+
+## Authorization and question
+
+The current user authorized continued training and evaluation aligned to the
+two supplied task PDFs, including separately trained score and rationale
+models, joint-output comparison, and new OpenAI rationale generation if it is
+needed.  Docker packaging is explicitly deferred.  This program asks which
+deployable pipeline best balances official integer score accuracy/ranking and
+the exact Q4_K_M LLM-judge rationale criteria.
+
+The 400-row validation split has already been exposed repeatedly.  Every
+validation result in this program is descriptive development evidence, not an
+unbiased held-out generalization estimate.  No validation label may be used to
+fit a threshold, choose an API target, train/reward a model, or revise this
+protocol after a result is observed.
+
+## Canonical contract and inputs
+
+- Task PDF SHA256:
+  `125896cdeb0862816b41df4e02e3972c85b1e36ee999b3fd3644e2f8f5bf5080`.
+- Docker-rule PDF SHA256:
+  `40d35b56af956f76adc52acff19ccf8c30425ebdd5208a3fb7e298c2ad3be15e`.
+- Canonical writing source checksums remain those in
+  `src/mal2026/api_rationale_data.py`: train
+  `b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737`
+  (2,000 rows) and validation
+  `0805445029328848164cf15f34b90b88fb5f7896d7b73f24f1717b733a9a00a4`
+  (400 rows).
+- Participant output is one JSON object containing `content`,
+  `organization`, and `expression`; every axis contains an integer score in
+  `[1,5]` and a nonblank Korean rationale.  Official inference is
+  temperature `0`, seed `42`.
+- The exact published judge model is `Qwen3.6-35B-A3B` Q4_K_M GGUF.  Our
+  frozen single proxy prompt gives it the
+  candidate's **actual emitted integer score**, rationale, prompt, and essay;
+  it never receives a human/reference score and does not re-score the essay.
+  It emits 12 integer cells: three axes by `domain_match`,
+  `score_rationale_consistency`, `specificity`, and `groundedness`, each with
+  evidence.
+- Exact local GGUF SHA256:
+  `b46fedd33e0bfb0cae308aa3c158d0a4b2c4a1d2185a1ed6f093cdaf39064772`;
+  pinned llama.cpp revision `571d0d540df04f25298d0e159e520d9fc62ed121`.
+
+The earlier FP8 frozen-v6 score-blind judge and GRPO-v8 reward remain preserved
+as proxy experiments.  Their means, abstention rates, and "top-three" order
+are not official metrics and cannot select a final system.
+
+## Fixed score projection and metrics
+
+All continuous regression candidates use one immutable deployment projection:
+
+1. clip to `[1,5]`;
+2. round exact halves upward (`ROUND_HALF_UP`);
+3. emit a JSON integer.
+
+No validation-fitted thresholds are allowed.  For each candidate report
+continuous diagnostics and official integer per-axis RMSE and tie-aware
+Spearman, then the unweighted three-axis means.  The official ranking combines
+submission ranks with weights RMSE 45%, Spearman 45%, and LLM judge 10%; a
+standalone local run cannot reconstruct ranks against other submissions.
+Therefore local selection reports the RMSE/Spearman/judge Pareto frontier
+rather than inventing a scalar leaderboard score.
+
+## Fixed pipeline matrix
+
+### A0: no-training audit
+
+Recompute predictions rather than derive them from aggregate reports:
+
+- `S-draft`: current R0 epoch-1--4 uniform prediction ensemble and state soup;
+- `S-essay`: essay-only and fixed-instruction Qwen3-Embedding epochs 1--4;
+- `S-rationale`: rationale-instruction epochs 1--4.
+
+Persist row predictions only beneath the ignored restricted root.  Public
+artifacts contain aggregate metrics and checksums only.
+
+### A1: score-first separated pipeline
+
+`prompt + essay -> S-essay -> three integer scores -> R-score -> final JSON`.
+The score encoder is authoritative.  `R-score` cannot change or re-predict a
+score; the final composer copies the encoder integers.  This is the primary
+non-cyclic deployment candidate.
+
+### A2: draft-score-rewrite separated pipeline
+
+`prompt + essay -> score-blind draft -> S-draft -> integer scores -> R-rewrite
+-> final JSON`.  This preserves the strongest continuous-score screening arm
+while adding a final score-consistency rewrite.  It is compared with A1 rather
+than silently treated as equivalent because it is slower and cyclic designs
+are prohibited.
+
+### A3: joint comparison
+
+One decoder maps `prompt + essay` directly to the exact official three-axis
+score+rationale JSON at temperature 0 and seed 42.  It is a comparison arm,
+not assumed superior to the separated systems.
+
+## Teacher and training rules
+
+The user explicitly authorized a new public-spec-aligned API corpus with three
+candidates for every one of the 2,000 training essays.  The resulting 6,000
+restricted rows were validated with complete `{1,2,3}` candidate coverage,
+zero API failures, strict three-axis integer score/rationale parsing, and
+checksum
+`a1791c418c79c0b76399ddb993e862f34209c2da95b0c13f7cda87f403a24e4c`.
+No validation essay was sent to the API.
+
+Each stored API `score` is the API candidate's own direct prediction, not a
+human/reference score.  It is used only to condition the rationale that came
+from the same candidate, preserving score-rationale consistency without label
+leakage.  All three candidates are used for every rationale SFT arm.  The
+bundled arm emits all three rationale fields at once; the content,
+organization, and expression arms each emit only their assigned rationale.
+Every target is rationale-only strict JSON: score output, re-scoring, and
+improvement advice are excluded.
+
+At validation/inference, the separated pipeline supplies only the deployed
+score encoder's actual emitted integer score.  The final composer copies those
+integers unchanged.  The API candidate scores are not substitutes for human
+score labels in the later score-model matrix.
+
+The post-download aggregate audit found 2,000 candidates for each candidate
+index, no duplicated full three-axis rationale vector within an essay, and the
+following diversity of three emitted score vectors per essay: 906 essays had
+one unique vector, 917 had two, and 177 had three.  Thus all candidates are
+retained as distinct rationale supervision even when their integer score
+vectors agree.  Mean rationale character lengths for candidates 1/2/3 were,
+respectively: content 202.1/277.9/240.7, organization 176.2/236.1/207.6, and
+expression 182.5/251.4/214.1.
+
+The corrected A.X tokenizer audit found no truncation at the frozen SFT length
+of 3,072 tokens: maximum complete rendered lengths were 1,422 for bundled,
+1,127 for content, 1,102 for organization, and 1,127 for expression.  The
+first audit artifact incorrectly measured the two keys of a `BatchEncoding`
+instead of `input_ids`; it remains preserved and is explicitly marked invalid.
+The corrected aggregate is
+`outputs/official-prompt-alignment-v1/sft-data-audit/official-rationale-sft-token-audit-002.json`.
+
+For the subsequent full-parameter pretraining arm, the closest already
+downloaded corpus is AI-Hub 71819 argumentative writing: 16,010 upstream
+Training rows with per-axis analytic human feedback.  Its deterministic
+projection excludes holistic and task/improvement feedback, maps only the
+axis-matched analytic fields, and half-up projects the three component scores
+to integers.  Aggregate lineage is frozen in
+`data/manifests/aihub_argumentative_official_rationale_v1.json`; no new
+download is required.  The A.X tokenizer audit covers all 16,010 bundled and
+48,030 axis-triplet rendered examples.  Neither structure exceeds 2,048
+tokens (maxima 1,618 and 1,437 respectively), so the full-parameter stage uses
+the smaller verified 2,048-token cap rather than an unnecessarily large
+context allocation.
+
+The first structure comparison uses the predeclared final checkpoint after two
+epochs; epoch checkpoints are preserved and the 400 validation labels do not
+choose an epoch.  Rationale SFT uses completion-only loss.  Any later joint
+SFT must emit the exact participant JSON.  Average score is never a target.
+
+## Initial rationale-structure result
+
+All four A.X rationale SFT arms completed on all 6,000 API candidates: one
+bundled three-axis model and the content, organization, and expression
+single-axis models.  Every validation generation arm produced 400/400 strict
+outputs.  The same authoritative integer score file was copied unchanged into
+both participant files; both composers reported zero score mismatch and
+400/400 strict final participant JSON.
+
+Under the single frozen proxy prompt and exact Q4 runtime, the bundled model
+scored `4.986250` macro with a `4.9525` worst cell, while the three independent
+axis models scored `4.9891667` macro with a `4.9550` worst cell.  The frozen
+macro-then-worst-cell rule therefore selects `axis_triplet` for the AI-Hub
+arm.  This is only a mechanical selection, not strong evidence of a real
+quality difference: 4,746/4,800 bundled cells and 4,750/4,800 axis-triplet
+cells received score 5; 341/400 paired essay macros tied, with 30 favoring
+axis-triplet and 29 favoring bundled.  The judge is substantially saturated on
+these candidates.  Aggregate evidence is stored in
+`outputs/official-prompt-alignment-v1/structure-comparison/official-rationale-structure-comparison-v1-20260727-001/`.
+
+The selected AI-Hub path trains A.X full parameters for one epoch on the
+48,030 axis-projected argumentative feedback examples, then trains three
+separate LoRA continuations on the same 6,000 API candidates used by the
+no-AI-Hub arms.  GPU0 and four-GPU FSDP2 one-update gates passed.  Two
+pre-training integration negatives are preserved: torchrun world-size was
+checked before Accelerate initialized the process group, and Transformers 5
+rejected simultaneous generic and FSDP activation checkpointing.  Repairs
+only changed launcher-state detection and selected the maintained FSDP2
+activation-checkpointing path; data, model, prompts, targets, optimization,
+and selection were unchanged.
+
+## Official judge and reward gates
+
+Primary judge decoding is exactly one call per candidate at temperature `0`
+and seed `42`.  The aggregate reports all 12 cell means, axis/dimension means,
+macro mean, worst cell, 1--2 score rate, and strict parse rate.  Every request
+contains the actual final predicted integer score and never a human score.
+
+Before any fixed-proxy-judge RL stage, a train-only contrastive audit must show
+the expected directional response to: swapped-axis rationales
+(`domain_match`), score perturbation by two points
+(`score_rationale_consistency`), and unsupported rationale replacement
+(`groundedness`).  RL is skipped and preserved as a negative gate if this
+audit fails.  The old v6 reward is never reused as official reward.
+
+## Execution task card
+
+- Run ID: `official-prompt-alignment-v1-20260727-001`.
+- Deliverable: aggregate comparison of A0/A1/A2/A3 under official integer
+  metrics and exact-Q4 judge; Docker excluded.
+- Completion predicate: strict final JSON success 100%, finite official score
+  metrics, exact 12-cell Q4 report, and aggregate lineage/checksums for every
+  completed arm; negative arms remain recorded.
+- Privacy: prompts, essays, identifiers, rationales, row predictions, API
+  responses, and model states remain in ignored roots.
+- Resource scope: repository-default GPUs 0, 1, 2, and 3, explicitly requested
+  by the user in this thread; GPU0 first for the smallest real smoke.
+- Test ladder: CPU contract checks -> one real GPU0 score batch and one
+  train-only Q4 schema call -> declared GPU0--3 full stage.
+- Integration recovery: launcher, schema transport, serialization, memory,
+  and batch-size repairs that preserve data, model, targets, optimization, and
+  selection are autonomous under the repository policy.
+- Stop/escalate: existing GPU process conflict, destructive overwrite,
+  unapproved data transfer/cost beyond the declared API cap, split/checksum
+  mismatch, three exhausted integration repairs, or a new scientific variable.
+- Ledger: append-only
+  `outputs/official-prompt-alignment-v1/20260727-001/ledger.jsonl`.
+
+## Hard failures
+
+- any non-integer/out-of-range final score;
+- strict JSON parse rate below 100% after bounded transport retry;
+- a final composer score differing from the frozen encoder score;
+- nonfinite loss/parameters/metrics or constant predictions on all axes;
+- validation rows used for training, reward, prompt revision, or threshold
+  fitting;
+- human/reference scores included in an official judge request;
+- exact Q4/model/runtime provenance mismatch.

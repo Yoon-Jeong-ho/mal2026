@@ -1,0 +1,130 @@
+{
+  "dataset_id": "aihub_argumentative_official_rationale_v1",
+  "privacy": "aggregate_only_no_rows_prompts_essays_feedback_ids_or_rationales",
+  "rationale_contract": {
+    "content_feedback_fields": [
+      "content_1",
+      "content_2",
+      "content_3"
+    ],
+    "excluded_feedback_fields": [
+      "holistic",
+      "task_1"
+    ],
+    "expression_feedback_fields": [
+      "expression_1",
+      "expression_2"
+    ],
+    "join": "deduplicate identical nonblank strings in field order, then join with one space",
+    "organization_feedback_fields": [
+      "organization_1",
+      "organization_2"
+    ],
+    "target_shape": "rationale-only official axis JSON; no structured score field, no improvement field"
+  },
+  "schema_version": 1,
+  "score_contract": {
+    "average_excluded": true,
+    "axes": [
+      "content",
+      "organization",
+      "expression"
+    ],
+    "deployment_projection": "clip [1,5], then ROUND_HALF_UP to integer",
+    "source": "mean analytic rater component score"
+  },
+  "selection": {
+    "identifier_namespace_prefix": "argumentative:",
+    "splits": {
+      "refit_train": {
+        "integer_score_histograms": {
+          "content": {
+            "1": 148,
+            "2": 1615,
+            "3": 7294,
+            "4": 6107,
+            "5": 846
+          },
+          "expression": {
+            "1": 16,
+            "2": 775,
+            "3": 3660,
+            "4": 9788,
+            "5": 1771
+          },
+          "organization": {
+            "1": 36,
+            "2": 1122,
+            "3": 6648,
+            "4": 7419,
+            "5": 785
+          }
+        },
+        "record_count": 16010
+      },
+      "selection_dev": {
+        "integer_score_histograms": {
+          "content": {
+            "1": 41,
+            "2": 323,
+            "3": 1424,
+            "4": 1207,
+            "5": 202
+          },
+          "expression": {
+            "1": 3,
+            "2": 110,
+            "3": 744,
+            "4": 2015,
+            "5": 325
+          },
+          "organization": {
+            "1": 10,
+            "2": 235,
+            "3": 1290,
+            "4": 1483,
+            "5": 179
+          }
+        },
+        "record_count": 3197
+      },
+      "selection_train": {
+        "integer_score_histograms": {
+          "content": {
+            "1": 107,
+            "2": 1292,
+            "3": 5870,
+            "4": 4900,
+            "5": 644
+          },
+          "expression": {
+            "1": 13,
+            "2": 665,
+            "3": 2916,
+            "4": 7773,
+            "5": 1446
+          },
+          "organization": {
+            "1": 26,
+            "2": 887,
+            "3": 5358,
+            "4": 5936,
+            "5": 606
+          }
+        },
+        "record_count": 12813
+      }
+    }
+  },
+  "source": {
+    "excluded": [
+      "descriptive corpus",
+      "AI-Hub upstream Validation",
+      "MAL2026 eval/validation.jsonl"
+    ],
+    "included_corpus": "argumentative",
+    "included_upstream_split": "AI-Hub Training only",
+    "prepared_manifest": "data/manifests/aihub_human_feedback_v1.json",
+    "prepared_manifest_sha256": "12222a8df5b41c9d05a3362e97302600e2ccf8b5928baf360baa6a2a04355f53"
+  }
+}

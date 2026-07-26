@@ -1,0 +1,138 @@
+{
+  "schema_version": "mal2026-official-rationale-grpo-v1",
+  "run_id_prefix": "official-rationale-grpo-v1-",
+  "algorithm": "grpo",
+  "gate": {
+    "path": "outputs/official-prompt-alignment-v1/judge-contrastive/official-judge-contrastive-train32-001/aggregate_contrastive_gate.json",
+    "safety_path": "outputs/official-prompt-alignment-v1/judge-prompt-injection/official-judge-prompt-injection-train32-001/aggregate_rl_safety_gate.json",
+    "required_schema_version": "mal2026-official-proxy-judge-contrastive-gate-v1",
+    "required_status": "passed",
+    "required_rl_allowed": true,
+    "required_safety_schema_version": "mal2026-official-proxy-judge-rl-safety-gate-v1",
+    "required_safety_status": "passed",
+    "required_combined_rl_allowed": true,
+    "bind_sha256_in_every_artifact": true
+  },
+  "judge": {
+    "model_alias": "qwen36-35b-a3b-q4_k_m",
+    "model_sha256": "b46fedd33e0bfb0cae308aa3c158d0a4b2c4a1d2185a1ed6f093cdaf39064772",
+    "llama_revision": "571d0d540df04f25298d0e159e520d9fc62ed121",
+    "llama_tag": "b10068",
+    "prompt_kind": "single_frozen_public-spec-aligned_proxy_not_verbatim_organizer_prompt",
+    "prompt_sha256": "1a93a3a4c18d34318d6926871fa0a527bbaf422fe78dac8c4efb66345b222e34",
+    "score_projection": "bundle_12_cell_sum_axis_4_cell_sum",
+    "temperature": 0.0,
+    "seed": 42
+  },
+  "policy": {
+    "trainer": "trl.GRPOTrainer",
+    "rollout_backend": "external_vllm_http_rollout_func",
+    "use_vllm": false,
+    "num_generations": 4,
+    "sampling_temperature": 0.7,
+    "sampling_top_p": 0.95,
+    "max_completion_tokens": 900,
+    "loss_type": "dr_grpo",
+    "scale_rewards": "none",
+    "beta": 0.02,
+    "learning_rate": 1e-06,
+    "num_train_epochs": 1.0,
+    "max_steps": 480,
+    "full_train_limit": 1920,
+    "pilot_max_steps": 80,
+    "pilot_train_limit": 320,
+    "per_device_train_batch_size": 8,
+    "generation_batch_size": 64,
+    "gradient_accumulation_steps": 1,
+    "seed": 2026072708
+  },
+  "reward": {
+    "invalid_completion_reward": -1.0,
+    "field_character_limit": 384,
+    "parse_valid_rate_min": 0.98,
+    "preference_minimum_total_difference": 1,
+    "preference_margin_basis": "smallest_observable_non_tie_in_integer_cell_sum_bundle12_axis4",
+    "tie_policy": "exclude",
+    "max_zero_variance_group_fraction": 0.8,
+    "variance_gate_basis": "frozen_before_run_from_previously_executed_v8_operational_gate_not_a_quality_claim"
+  },
+  "warm_starts": {
+    "bundle": "/dataset/aa007878/mal2026/outputs/official-rationale-sft-v1/official-rationale-sft-v1-ax4-bundle-full-001/adapter",
+    "content": "/dataset/aa007878/mal2026/outputs/official-rationale-sft-v1/official-rationale-sft-v1-ax4-content-full-001/adapter",
+    "organization": "/dataset/aa007878/mal2026/outputs/official-rationale-sft-v1/official-rationale-sft-v1-ax4-organization-full-001/adapter",
+    "expression": "/dataset/aa007878/mal2026/outputs/official-rationale-sft-v1/official-rationale-sft-v1-ax4-expression-full-001/adapter"
+  },
+  "runtime": {
+    "gpu_scope": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "vllm_version": "0.25.1",
+    "trl_version": "0.29.1",
+    "external_vllm_http": true,
+    "integrated_vllm": false,
+    "rollout_gpus": [
+      0,
+      1
+    ],
+    "policy_gpu": [
+      2
+    ],
+    "reward_gpu": [
+      3
+    ],
+    "rollout_tensor_parallel_size": 2,
+    "rollout_max_model_len": 4096,
+    "rollout_max_num_seqs": 192,
+    "rollout_max_num_batched_tokens": 65536,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": false
+  },
+  "legacy_ablations": [
+    {
+      "name": "midm_bundle_random1_v8_replication",
+      "classification": "legacy_method_replication_ablation_not_direct_official_arm",
+      "contract_shift": "score_blind_legacy_warmstart_to_score_conditioned_official_prompt_descriptive_only",
+      "model_id": "K-intelligence/Midm-2.0-Base-Instruct",
+      "model_revision": "35479c5fc9a18a5db7cc6dbadcf1db68db7beab0",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/K-intelligence--Midm-2.0-Base-Instruct-35479c5fc9a18a5db7cc6dbadcf1db68db7beab0",
+      "adapter_path": "/dataset/aa007878/mal2026/outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-midm2_base-bundle-random1-full-022/adapter",
+      "completion_path": "/dataset/aa007878/mal2026/outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-midm2_base-bundle-random1-full-022/training_complete.json",
+      "completion_sha256": "1bf9034a950ec3a16f8e6a85820253543e7389c51fb69d258f17c38060f0eb0c",
+      "adapter_model_sha256": "7bdf323089b4b40ffd37290c3387b0c907386df69d31c56c6b230ef2e0d4136f"
+    },
+    {
+      "name": "ax4_bundle_random1_v8_replication",
+      "classification": "legacy_method_replication_ablation_not_direct_official_arm",
+      "contract_shift": "score_blind_legacy_warmstart_to_score_conditioned_official_prompt_descriptive_only",
+      "model_id": "skt/A.X-4.0-Light",
+      "model_revision": "ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "adapter_path": "/dataset/aa007878/mal2026/outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-ax4_light-bundle-random1-full-023/adapter",
+      "completion_path": "/dataset/aa007878/mal2026/outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-ax4_light-bundle-random1-full-023/training_complete.json",
+      "completion_sha256": "a05d8438f2548e60ca19c47424633194c29af8d747bc1b628b8d49eca146ca2b",
+      "adapter_model_sha256": "39c68bb5c98da25eaa466434ba1c6d4a47bedcec580c991f00335627382a3a73"
+    },
+    {
+      "name": "ax4_bundle_all5_v8_replication",
+      "classification": "legacy_method_replication_ablation_not_direct_official_arm",
+      "contract_shift": "score_blind_legacy_warmstart_to_score_conditioned_official_prompt_descriptive_only",
+      "model_id": "skt/A.X-4.0-Light",
+      "model_revision": "ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "adapter_path": "/dataset/aa007878/mal2026/outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-ax4_light-bundle-all5-full-023/adapter",
+      "completion_path": "/dataset/aa007878/mal2026/outputs/rlaif-grpo-prompt-ensemble-v8/rlaif-grpo-prompt-ensemble-v8-ax4_light-bundle-all5-full-023/training_complete.json",
+      "completion_sha256": "1b61d99c07d41e0572410a33496b0d30a1b930071fcbd25f7a70bc50f09266b8",
+      "adapter_model_sha256": "1e32543708d51031de5cd413f185fd109ee73e2b0afa8d709f75c821c826b720"
+    }
+  ],
+  "privacy": {
+    "split": "train_only",
+    "validation_used_for_preferences_or_reward": false,
+    "human_or_reference_score_read_or_prompted": false,
+    "row_artifacts": "restricted_only",
+    "aggregate_artifacts": "outputs_only"
+  }
+}

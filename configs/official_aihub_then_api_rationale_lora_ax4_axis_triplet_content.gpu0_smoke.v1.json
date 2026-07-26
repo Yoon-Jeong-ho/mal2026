@@ -1,0 +1,21 @@
+{
+  "schema_version": "mal2026-official-aihub-then-api-rationale-lora-v1",
+  "run_id": "official-aihub-then-api-rationale-lora-v1-ax4-axis_triplet-content-gpu0_smoke-001",
+  "structure": "axis_triplet",
+  "task": "content",
+  "phase": "gpu0_smoke",
+  "physical_gpu": 0,
+  "output_dir": "/dataset/aa007878/mal2026/outputs/official-aihub-then-api-rationale-lora-v1/official-aihub-then-api-rationale-lora-v1-ax4-axis_triplet-content-gpu0_smoke-001",
+  "seed": 2026072701,
+  "max_length": 3072,
+  "learning_rate": 0.00002,
+  "num_train_epochs": 2.0,
+  "max_steps": 1,
+  "train_limit": 1,
+  "per_device_train_batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "logging_steps": 1,
+  "lora_r": 32,
+  "lora_alpha": 64,
+  "lora_dropout": 0.05
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": "mal2026-official-aihub-rationale-full-sft-v1",
+  "run_id": "official-aihub-rationale-full-sft-v1-ax4-axis_triplet-gpu0_smoke-002",
+  "structure": "axis_triplet",
+  "phase": "gpu0_smoke",
+  "output_dir": "/dataset/aa007878/mal2026/outputs/official-aihub-rationale-full-sft-v1/official-aihub-rationale-full-sft-v1-ax4-axis_triplet-gpu0_smoke-002",
+  "seed": 2026072702,
+  "max_length": 2048,
+  "learning_rate": 0.000005,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.03,
+  "num_train_epochs": 1.0,
+  "max_steps": 1,
+  "train_limit": 1,
+  "per_device_train_batch_size": 1,
+  "gradient_accumulation_steps": 1,
+  "logging_steps": 1,
+  "compute_dtype": "bfloat16_direct"
+}

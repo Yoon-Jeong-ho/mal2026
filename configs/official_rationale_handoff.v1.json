@@ -1,0 +1,280 @@
+{
+  "schema_version": "mal2026-official-rationale-handoff-config-v1",
+  "run_id": "official-rationale-handoff-v1-20260727-001",
+  "bootstrap_selection_path": "/dataset/aa007878/mal2026/outputs/official-score-matrix-v1/bootstrap_selection.json",
+  "bootstrap_selection_sha256": "REQUIRED_BOOTSTRAP_SELECTION_SHA256",
+  "judge": {
+    "contract_path": "/dataset/aa007878/mal2026/src/mal2026/official_writing_contract.py",
+    "contract_sha256": "7b04149227a44852ca78bd65f5ec70245b284503256374debf2735f17ca69e50",
+    "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/Qwen--Qwen3.6-35B-A3B-GGUF-5c2410d71524f4f72b023ce8daf7a80528226d5f/Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf",
+    "model_sha256": "b46fedd33e0bfb0cae308aa3c158d0a4b2c4a1d2185a1ed6f093cdaf39064772",
+    "directional_gate_path": "/dataset/aa007878/mal2026/outputs/official-prompt-alignment-v1/judge-contrastive/official-judge-contrastive-train32-001/aggregate_contrastive_gate.json",
+    "directional_gate_sha256": "REQUIRED_PASSED_DIRECTIONAL_GATE_SHA256",
+    "injection_gate_path": "/dataset/aa007878/mal2026/outputs/official-prompt-alignment-v1/judge-prompt-injection/official-judge-prompt-injection-train32-001/aggregate_rl_safety_gate.json",
+    "injection_gate_sha256": "REQUIRED_PASSED_COMBINED_INJECTION_GATE_SHA256",
+    "prompt_kind": "single_frozen_public-spec-aligned_proxy_not_verbatim_organizer_prompt",
+    "repeats_per_validation_record": 10
+  },
+  "candidates": [
+    {
+      "key": "official_sft_bundle",
+      "method": "official_sft",
+      "structure": "bundle",
+      "model_id": "skt/A.X-4.0-Light",
+      "model_revision": "ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_config_sha256": "cde7cdcfe774ac9faa05d4316d32ef5c7945a000d2d571b0ba457a3c973b1502",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98/config.json",
+      "model_binding_sha256": "cde7cdcfe774ac9faa05d4316d32ef5c7945a000d2d571b0ba457a3c973b1502",
+      "adapters": {
+        "bundle": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_BUNDLE/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_BUNDLE/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_BUNDLE_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    },
+    {
+      "key": "official_sft_axis_triplet",
+      "method": "official_sft",
+      "structure": "axis_triplet",
+      "model_id": "skt/A.X-4.0-Light",
+      "model_revision": "ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_config_sha256": "cde7cdcfe774ac9faa05d4316d32ef5c7945a000d2d571b0ba457a3c973b1502",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98/config.json",
+      "model_binding_sha256": "cde7cdcfe774ac9faa05d4316d32ef5c7945a000d2d571b0ba457a3c973b1502",
+      "adapters": {
+        "content": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_CONTENT/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_CONTENT/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        },
+        "organization": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_ORGANIZATION/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_ORGANIZATION/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        },
+        "expression": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_EXPRESSION/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_EXPRESSION/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_OFFICIAL_SFT_AXIS_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    },
+    {
+      "key": "aihub_sft_axis_triplet",
+      "method": "aihub_sft",
+      "structure": "axis_triplet",
+      "model_id": "skt/A.X-4.0-Light",
+      "model_revision": "ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_FULL_AX4_MODEL",
+      "model_config_sha256": "REQUIRED_SHA256",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_FULL_AX4_MODEL/training_complete.json",
+      "model_binding_sha256": "REQUIRED_SHA256",
+      "adapters": {
+        "content": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_CONTENT/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_CONTENT/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        },
+        "organization": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_ORGANIZATION/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_ORGANIZATION/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        },
+        "expression": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_EXPRESSION/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_EXPRESSION/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_AIHUB_AXIS_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    },
+    {
+      "key": "official_dpo_top1_bundle",
+      "method": "dpo",
+      "structure": "bundle",
+      "model_id": "REQUIRED_DPO_TOP1_MODEL_ID",
+      "model_revision": "REQUIRED_DPO_TOP1_MODEL_REVISION",
+      "model_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP1_BASE_MODEL",
+      "model_config_sha256": "REQUIRED_SHA256",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP1_MODEL_BINDING.json",
+      "model_binding_sha256": "REQUIRED_SHA256",
+      "adapters": {
+        "bundle": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP1_BUNDLE/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP1_BUNDLE/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP1_BUNDLE_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    },
+    {
+      "key": "official_dpo_top2_bundle",
+      "method": "dpo",
+      "structure": "bundle",
+      "model_id": "REQUIRED_DPO_TOP2_MODEL_ID",
+      "model_revision": "REQUIRED_DPO_TOP2_MODEL_REVISION",
+      "model_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP2_BASE_MODEL",
+      "model_config_sha256": "REQUIRED_SHA256",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP2_MODEL_BINDING.json",
+      "model_binding_sha256": "REQUIRED_SHA256",
+      "adapters": {
+        "bundle": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP2_BUNDLE/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP2_BUNDLE/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP2_BUNDLE_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    },
+    {
+      "key": "official_dpo_top3_bundle",
+      "method": "dpo",
+      "structure": "bundle",
+      "model_id": "REQUIRED_DPO_TOP3_MODEL_ID",
+      "model_revision": "REQUIRED_DPO_TOP3_MODEL_REVISION",
+      "model_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP3_BASE_MODEL",
+      "model_config_sha256": "REQUIRED_SHA256",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP3_MODEL_BINDING.json",
+      "model_binding_sha256": "REQUIRED_SHA256",
+      "adapters": {
+        "bundle": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP3_BUNDLE/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP3_BUNDLE/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_DPO_TOP3_BUNDLE_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    },
+    {
+      "key": "official_grpo_top1_bundle",
+      "method": "grpo",
+      "structure": "bundle",
+      "model_id": "REQUIRED_GRPO_TOP1_MODEL_ID",
+      "model_revision": "REQUIRED_GRPO_TOP1_MODEL_REVISION",
+      "model_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP1_BASE_MODEL",
+      "model_config_sha256": "REQUIRED_SHA256",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP1_MODEL_BINDING.json",
+      "model_binding_sha256": "REQUIRED_SHA256",
+      "adapters": {
+        "bundle": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP1_BUNDLE/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP1_BUNDLE/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP1_BUNDLE_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    },
+    {
+      "key": "official_grpo_top2_bundle",
+      "method": "grpo",
+      "structure": "bundle",
+      "model_id": "REQUIRED_GRPO_TOP2_MODEL_ID",
+      "model_revision": "REQUIRED_GRPO_TOP2_MODEL_REVISION",
+      "model_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP2_BASE_MODEL",
+      "model_config_sha256": "REQUIRED_SHA256",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP2_MODEL_BINDING.json",
+      "model_binding_sha256": "REQUIRED_SHA256",
+      "adapters": {
+        "bundle": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP2_BUNDLE/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP2_BUNDLE/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP2_BUNDLE_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    },
+    {
+      "key": "official_grpo_top3_bundle",
+      "method": "grpo",
+      "structure": "bundle",
+      "model_id": "REQUIRED_GRPO_TOP3_MODEL_ID",
+      "model_revision": "REQUIRED_GRPO_TOP3_MODEL_REVISION",
+      "model_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP3_BASE_MODEL",
+      "model_config_sha256": "REQUIRED_SHA256",
+      "model_binding_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP3_MODEL_BINDING.json",
+      "model_binding_sha256": "REQUIRED_SHA256",
+      "adapters": {
+        "bundle": {
+          "path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP3_BUNDLE/adapter",
+          "adapter_config_sha256": "REQUIRED_SHA256",
+          "adapter_model_sha256": "REQUIRED_SHA256",
+          "training_completion_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP3_BUNDLE/training_complete.json",
+          "training_completion_sha256": "REQUIRED_SHA256"
+        }
+      },
+      "evaluation_path": "/dataset/aa007878/mal2026/outputs/REQUIRED_GRPO_TOP3_BUNDLE_EVALUATION.json",
+      "evaluation_sha256": "REQUIRED_SHA256"
+    }
+  ],
+  "selection_output_path": "/dataset/aa007878/mal2026/outputs/official-rationale-handoff-v1/final_selection.json",
+  "restricted_output_root": "/dataset/aa007878/mal2026/data/processed/restricted/official_prompt_alignment_v1/final_rationale_handoff/official-rationale-handoff-v1-20260727-001",
+  "runtime_output_root": "/dataset/aa007878/mal2026/outputs/official-rationale-handoff-v1/official-rationale-handoff-v1-20260727-001",
+  "vllm": {
+    "executable": "/dataset/aa007878/mal2026/.venv-standard/bin/vllm",
+    "version": "0.25.1",
+    "host": "127.0.0.1",
+    "port": 8240,
+    "gpu_scope": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "smoke_gpu_scope": [
+      0
+    ],
+    "tensor_parallel_size_full": 4,
+    "max_model_len": 4096,
+    "max_num_seqs": 128,
+    "max_num_batched_tokens": 16384,
+    "gpu_memory_utilization": 0.9,
+    "max_lora_rank": 64,
+    "enforce_eager": false
+  },
+  "generation": {
+    "temperature": 0.0,
+    "top_p": 1.0,
+    "seed": 42,
+    "train_records": 2000,
+    "validation_records": 400,
+    "smoke_records": 1,
+    "max_inflight": 128
+  }
+}
