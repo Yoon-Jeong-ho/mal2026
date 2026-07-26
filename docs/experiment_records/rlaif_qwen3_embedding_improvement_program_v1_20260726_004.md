@@ -164,3 +164,12 @@ these longer-input arms it changes per-device batch/accumulation from 4/4 to
 2/8, preserving global batch 64, optimizer, update count, examples, epochs,
 seed, and selection rule.  The allocator uses expandable segments to reduce
 fragmentation; this is a runtime-only integration recovery.
+
+Full-arm runtime `20260726-008` passed the GPU0 full-regressor construction
+gate, then stopped on the first FSDP2 update before producing any result.  The
+FSDP BF16 policy cast the regression head to BF16 while the common pooling path
+provided FP32 head input.  Runtime `20260726-009` preserves the failure and
+changes only the head boundary: normalized input is cast to the actual
+head-parameter dtype for GEMM and logits are immediately restored to FP32 for
+MSE/metrics.  Data, parameters trained, optimizer, batch, update schedule, and
+selection protocol are unchanged.

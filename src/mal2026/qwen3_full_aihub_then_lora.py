@@ -25,12 +25,12 @@ ROOT = Path(__file__).resolve().parents[2]
 FULL_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1"
 RATIONALE_ROOT = ROOT / "outputs" / "qwen3-full-aihub-rationale-lora-v1"
 EVAL_ROOT = ROOT / "outputs" / "qwen3-full-aihub-rationale-lora-evals-v1"
-PROGRAM_ID = "20260726-005"
+PROGRAM_ID = "20260726-009"
 FULL_PHASES = ("fsdp_gate", "selection", "refit")
 RATIONALE_PHASES = ("gpu0_preflight", "full")
-FULL_FINAL_STATE = FULL_ROOT / "qwen3-full-aihub-v1-refit-005" / "final_model" / "model.safetensors"
-FULL_REFIT_METADATA = FULL_ROOT / "qwen3-full-aihub-v1-refit-005" / "full_aihub_training_complete.json"
-FULL_SELECTION_METADATA = FULL_ROOT / "qwen3-full-aihub-v1-selection-005" / "full_aihub_training_complete.json"
+FULL_FINAL_STATE = FULL_ROOT / "qwen3-full-aihub-v1-refit-009" / "final_model" / "model.safetensors"
+FULL_REFIT_METADATA = FULL_ROOT / "qwen3-full-aihub-v1-refit-009" / "full_aihub_training_complete.json"
+FULL_SELECTION_METADATA = FULL_ROOT / "qwen3-full-aihub-v1-selection-009" / "full_aihub_training_complete.json"
 FULL_LR = 2e-5
 FULL_EPOCH_CAP = 20.0
 FULL_SELECTION_MAX_STEPS = 2200
@@ -67,15 +67,15 @@ def _file_sha(path: Path) -> str:
 
 
 def full_dir(phase: str) -> Path:
-    return FULL_ROOT / f"qwen3-full-aihub-v1-{phase}-005"
+    return FULL_ROOT / f"qwen3-full-aihub-v1-{phase}-009"
 
 
 def rationale_dir(phase: str) -> Path:
-    return RATIONALE_ROOT / f"qwen3-full-aihub-rationale-lora-v1-{phase}-005"
+    return RATIONALE_ROOT / f"qwen3-full-aihub-rationale-lora-v1-{phase}-009"
 
 
 def rationale_eval_dir(phase: str) -> Path:
-    return EVAL_ROOT / f"qwen3-full-aihub-rationale-lora-eval-v1-{phase}-005"
+    return EVAL_ROOT / f"qwen3-full-aihub-rationale-lora-eval-v1-{phase}-009"
 
 
 def rationale_checkpoint_dir(output: Path, epoch: int) -> Path:
@@ -130,7 +130,7 @@ class FullTrainConfig:
         _need((self.model_id, self.model_revision, Path(self.model_path).resolve()) == (MODEL_ID, MODEL_REVISION, MODEL_PATH.resolve()), "full model snapshot differs")
         _need(Path(self.prepared_manifest).resolve() == DEFAULT_MANIFEST.resolve() and self.score_fields == SCORE_FIELDS, "full data/score contract differs")
         output = Path(self.output_dir)
-        expected = f"qwen3-full-aihub-v1-{self.phase}-005"
+        expected = f"qwen3-full-aihub-v1-{self.phase}-009"
         _need(output.is_absolute() and output.parent == FULL_ROOT.resolve() and output.name == self.run_id == expected, "full output identity differs")
         _need((not output.exists()) if require_fresh_output else output.is_dir(), "full output freshness differs")
         _need((self.seed, self.max_length, self.learning_rate, self.weight_decay, self.warmup_ratio) == (2026072602, 2048, FULL_LR, 0.01, 0.05), "full optimization contract differs")
@@ -148,7 +148,7 @@ class FullTrainConfig:
 
 def full_config(phase: str) -> dict[str, Any]:
     _need(phase in FULL_PHASES, "unknown full phase")
-    run_id = f"qwen3-full-aihub-v1-{phase}-005"
+    run_id = f"qwen3-full-aihub-v1-{phase}-009"
     gate = phase == "fsdp_gate"
     selection = phase == "selection"
     return {
@@ -204,7 +204,10 @@ def build_full_regressor(model_path: str, revision: str, fields: Sequence[str] =
         def forward(self, input_ids: Any, attention_mask: Any, labels: Any | None = None, **_: Any) -> Mapping[str, Any]:
             hidden_state = self.backbone(input_ids=input_ids, attention_mask=attention_mask, return_dict=True).last_hidden_state
             embedding = _last_nonpad(hidden_state, attention_mask)
-            logits = self.regression_head(functional.normalize(embedding, p=2, dim=-1).float())
+            # FSDP2's BF16 mixed policy also casts the non-wrapped head. Match
+            # its parameter dtype for GEMM, then expose FP32 logits/loss.
+            head_input = functional.normalize(embedding, p=2, dim=-1).to(self.regression_head.weight.dtype)
+            logits = self.regression_head(head_input).float()
             result: dict[str, Any] = {"logits": logits}
             if labels is not None:
                 _need(tuple(labels.shape[-1:]) == (len(chosen),), "full label dimension differs")
@@ -393,7 +396,7 @@ def run_gpu0_construction_gate(output: Path) -> dict[str, Any]:
         output_value = model(**{key: value.to("cuda") for key, value in batch.items()})
     logits = output_value["logits"]
     _need(tuple(logits.shape) == (1, 4) and bool(torch.isfinite(logits).all().item()) and math.isfinite(float(output_value["loss"].item())), "construction forward gate failed")
-    payload = {"status": "completed", "run_id": "qwen3-full-aihub-v1-gpu0-construction-005", "gpu_scope": [0], "model_id": MODEL_ID, "model_revision": MODEL_REVISION, "score_fields": list(SCORE_FIELDS), "forward_shape": [1, 4], "finite_loss": True, "privacy": "aggregate_only"}
+    payload = {"status": "completed", "run_id": "qwen3-full-aihub-v1-gpu0-construction-009", "gpu_scope": [0], "model_id": MODEL_ID, "model_revision": MODEL_REVISION, "score_fields": list(SCORE_FIELDS), "forward_shape": [1, 4], "finite_loss": True, "privacy": "aggregate_only"}
     _atomic_json(output / "construction_gate.json", payload)
     return payload
 
@@ -434,7 +437,7 @@ class FullRationaleConfig:
     def validate(self, *, require_fresh_output: bool = True) -> None:
         _need(self.schema_version == "mal2026-qwen3-full-aihub-rationale-lora-v1" and self.phase in RATIONALE_PHASES, "rationale identity differs")
         output = Path(self.output_dir)
-        expected = f"qwen3-full-aihub-rationale-lora-v1-{self.phase}-005"
+        expected = f"qwen3-full-aihub-rationale-lora-v1-{self.phase}-009"
         _need(output.is_absolute() and output.parent == RATIONALE_ROOT.resolve() and output.name == self.run_id == expected, "rationale output identity differs")
         _need((not output.exists()) if require_fresh_output else output.is_dir(), "rationale output freshness differs")
         _need(Path(self.full_refit_metadata_path).resolve() == FULL_REFIT_METADATA.resolve() and Path(self.full_model_state_path).resolve() == FULL_FINAL_STATE.resolve(), "rationale full-refit lineage differs")
@@ -449,7 +452,7 @@ class FullRationaleConfig:
 def rationale_config(phase: str) -> dict[str, Any]:
     _need(phase in RATIONALE_PHASES, "unknown rationale phase")
     full = phase == "full"
-    run_id = f"qwen3-full-aihub-rationale-lora-v1-{phase}-005"
+    run_id = f"qwen3-full-aihub-rationale-lora-v1-{phase}-009"
     return {
         "schema_version": "mal2026-qwen3-full-aihub-rationale-lora-v1", "run_id": run_id, "phase": phase,
         "output_dir": str(rationale_dir(phase).resolve()), "full_refit_metadata_path": str(FULL_REFIT_METADATA.resolve()),
@@ -628,7 +631,7 @@ def run_rationale_evaluation(config: FullRationaleConfig, output: Path, essay_li
         metrics = three_axis_metrics(truth, [[float(value) for value in vector] for vector in values])
         rows.append({"epoch": checkpoint["epoch"], "global_step": checkpoint["global_step"], "metrics": metrics, "trainable_state_sha256": checkpoint["trainable_state_sha256"]})
     best = min(rows, key=lambda row: (float(row["metrics"]["three_axis_macro_rmse"]), -float(row["metrics"]["three_axis_macro_spearman"]), int(row["epoch"])))
-    payload = {"status": "completed", "run_id": f"qwen3-full-aihub-rationale-lora-eval-v1-{config.phase}-005", "training_run_id": training["run_id"], "phase": config.phase, "initialization": "full_parameter_aihub_48016_then_lora", "score_fields": list(AXES), "average_target_used": False, "epoch_results": rows, "best_epoch_by_validation_macro_rmse_then_spearman": best, "validation": {"unique_essays": essay_limit, "input_records": essay_limit, "predictions_per_essay_per_checkpoint": 1}, "selection_caveat": "validation was previously exposed; descriptive development evidence only", "privacy": "aggregate_only_no_rows_prompts_essays_rationales_ids_or_predictions_persisted"}
+    payload = {"status": "completed", "run_id": f"qwen3-full-aihub-rationale-lora-eval-v1-{config.phase}-009", "training_run_id": training["run_id"], "phase": config.phase, "initialization": "full_parameter_aihub_48016_then_lora", "score_fields": list(AXES), "average_target_used": False, "epoch_results": rows, "best_epoch_by_validation_macro_rmse_then_spearman": best, "validation": {"unique_essays": essay_limit, "input_records": essay_limit, "predictions_per_essay_per_checkpoint": 1}, "selection_caveat": "validation was previously exposed; descriptive development evidence only", "privacy": "aggregate_only_no_rows_prompts_essays_rationales_ids_or_predictions_persisted"}
     trainer.accelerator.wait_for_everyone()
     failed = False
     if trainer.is_world_process_zero():
