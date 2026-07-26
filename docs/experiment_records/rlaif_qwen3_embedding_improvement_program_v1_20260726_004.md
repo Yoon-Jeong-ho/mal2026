@@ -189,3 +189,12 @@ configuration with the training-only fresh-output assertion.  Runtime
 read-only existing-output mode (the evaluation function already enforced this
 mode), reuses the completed refit and preflight update, and continues with the
 unchanged full rationale protocol.
+
+Runtime `20260726-010` reached the actual four-row prediction smoke, where the
+one-update checkpoint produced constant ranks and the shared metric helper
+correctly rejected undefined Spearman.  Runtime `20260726-011` preserves this
+second negative log and treats that smoke as a finite-output/RMSE gate with
+undefined Spearman recorded as null.  The 400-row full evaluation still
+requires finite Spearman on every axis and is otherwise unchanged.  The empty
+evaluation directory created by the failed Trainer initialization is preserved;
+runtime 011 writes its evaluations to fresh, uniquely suffixed directories.

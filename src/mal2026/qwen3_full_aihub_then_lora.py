@@ -524,6 +524,24 @@ def rationale_expected_steps(phase: str) -> dict[int, int]:
     return {1: 1} if phase == "gpu0_preflight" else {epoch: epoch * 32 for epoch in range(1, RATIONALE_EPOCHS + 1)}
 
 
+def _preflight_rmse_metrics(truth: Sequence[Sequence[float]], predictions: Sequence[Sequence[float]]) -> dict[str, Any]:
+    """Finite-output gate when a four-row smoke has constant prediction ranks."""
+    _need(len(truth) == len(predictions) and len(truth) > 0, "preflight metric vectors must align")
+    result: dict[str, Any] = {}
+    rmses = []
+    for index, axis in enumerate(AXES):
+        observed = [float(row[index]) for row in truth]
+        predicted = [float(row[index]) for row in predictions]
+        _need(all(math.isfinite(value) for value in observed + predicted), "non-finite preflight prediction")
+        rmse = math.sqrt(sum((a - b) ** 2 for a, b in zip(observed, predicted, strict=True)) / len(observed))
+        result[axis] = {"rmse": rmse, "spearman": None, "spearman_defined": False}
+        rmses.append(rmse)
+    result["three_axis_macro_rmse"] = sum(rmses) / len(rmses)
+    result["three_axis_macro_spearman"] = None
+    result["spearman_defined"] = False
+    return result
+
+
 def run_rationale_training(config: FullRationaleConfig) -> dict[str, Any]:
     config.validate()
     refit = _validate_refit(config)
@@ -628,10 +646,15 @@ def run_rationale_evaluation(config: FullRationaleConfig, output: Path, essay_li
         _need(not incompatible.unexpected_keys and not (expected_names & set(incompatible.missing_keys)), "full rationale checkpoint load differs")
         raw = trainer.predict(dataset).predictions
         values = raw.tolist() if isinstance(raw, np.ndarray) else raw
-        metrics = three_axis_metrics(truth, [[float(value) for value in vector] for vector in values])
+        predictions = [[float(value) for value in vector] for vector in values]
+        try:
+            metrics = three_axis_metrics(truth, predictions)
+        except ValueError as exc:
+            _need(config.phase == "gpu0_preflight" and str(exc) == "Spearman is undefined for constant ranks", "full evaluation metric failed")
+            metrics = _preflight_rmse_metrics(truth, predictions)
         rows.append({"epoch": checkpoint["epoch"], "global_step": checkpoint["global_step"], "metrics": metrics, "trainable_state_sha256": checkpoint["trainable_state_sha256"]})
-    best = min(rows, key=lambda row: (float(row["metrics"]["three_axis_macro_rmse"]), -float(row["metrics"]["three_axis_macro_spearman"]), int(row["epoch"])))
-    payload = {"status": "completed", "run_id": f"qwen3-full-aihub-rationale-lora-eval-v1-{config.phase}-009", "training_run_id": training["run_id"], "phase": config.phase, "initialization": "full_parameter_aihub_48016_then_lora", "score_fields": list(AXES), "average_target_used": False, "epoch_results": rows, "best_epoch_by_validation_macro_rmse_then_spearman": best, "validation": {"unique_essays": essay_limit, "input_records": essay_limit, "predictions_per_essay_per_checkpoint": 1}, "selection_caveat": "validation was previously exposed; descriptive development evidence only", "privacy": "aggregate_only_no_rows_prompts_essays_rationales_ids_or_predictions_persisted"}
+    best = rows[0] if config.phase == "gpu0_preflight" else min(rows, key=lambda row: (float(row["metrics"]["three_axis_macro_rmse"]), -float(row["metrics"]["three_axis_macro_spearman"]), int(row["epoch"])))
+    payload = {"status": "completed", "run_id": output.name, "training_run_id": training["run_id"], "phase": config.phase, "initialization": "full_parameter_aihub_48016_then_lora", "score_fields": list(AXES), "average_target_used": False, "epoch_results": rows, "best_epoch_by_validation_macro_rmse_then_spearman": best, "validation": {"unique_essays": essay_limit, "input_records": essay_limit, "predictions_per_essay_per_checkpoint": 1}, "selection_caveat": "validation was previously exposed; descriptive development evidence only", "privacy": "aggregate_only_no_rows_prompts_essays_rationales_ids_or_predictions_persisted"}
     trainer.accelerator.wait_for_everyone()
     failed = False
     if trainer.is_world_process_zero():

@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from mal2026.qwen3_full_aihub_then_lora import (  # noqa: E402
     AXES,
+    EVAL_ROOT,
     FULL_FINAL_STATE,
     FULL_REFIT_METADATA,
     MODEL_ID,
@@ -27,14 +28,14 @@ from mal2026.qwen3_full_aihub_then_lora import (  # noqa: E402
     FullRationaleConfig,
     rationale_checkpoint_dir,
     rationale_dir,
-    rationale_eval_dir,
     rationale_expected_steps,
 )
 
 
 SOURCE_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-009"
-RUN_ID = "qwen3-full-aihub-then-rationale-lora-v1-recovery-20260726-010"
-RUN_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-010"
+FAILED_RECOVERY_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-010"
+RUN_ID = "qwen3-full-aihub-then-rationale-lora-v1-recovery-20260726-011"
+RUN_ROOT = ROOT / "outputs" / "qwen3-full-aihub-v1" / "20260726-011"
 LOG_ROOT = RUN_ROOT / "logs"
 LEDGER = RUN_ROOT / "ledger.jsonl"
 MANIFEST = RUN_ROOT / "manifest.json"
@@ -138,6 +139,10 @@ def config_path(phase: str) -> Path:
     return SOURCE_ROOT / "configs" / f"rationale-{phase}.json"
 
 
+def recovery_eval_dir(phase: str) -> Path:
+    return EVAL_ROOT / f"qwen3-full-aihub-rationale-lora-eval-v1-{phase}-011"
+
+
 def validate_training(phase: str) -> dict[str, Any]:
     config = FullRationaleConfig.from_json(config_path(phase), require_fresh_output=False)
     path = Path(config.output_dir) / "training_complete.json"
@@ -154,7 +159,7 @@ def validate_training(phase: str) -> dict[str, Any]:
 
 
 def validate_evaluation(phase: str) -> dict[str, Any]:
-    path = rationale_eval_dir(phase) / "epoch_metrics.json"
+    path = recovery_eval_dir(phase) / "epoch_metrics.json"
     value = read_json(path)
     expected = rationale_expected_steps(phase)
     need(value.get("status") == "completed" and value.get("phase") == phase, "rationale evaluation identity differs")
@@ -170,9 +175,13 @@ def prepare() -> dict[str, Any]:
     need(PYTHON.is_file() and MODEL_PATH.is_dir(), "recovery environment differs")
     need(not RUN_ROOT.exists() and not FINAL.exists(), "recovery output freshness differs")
     source_manifest = read_json(SOURCE_ROOT / "manifest.json")
+    recovery_manifest = read_json(FAILED_RECOVERY_ROOT / "manifest.json")
     failed_log = SOURCE_ROOT / "logs" / "rationale-eval-gpu0-preflight.log"
+    recovery_log = FAILED_RECOVERY_ROOT / "logs" / "rationale-eval-gpu0-preflight.log"
     need(source_manifest.get("status") == "failed", "source runtime did not fail")
     need("rationale output freshness differs" in failed_log.read_text(encoding="utf-8"), "source failure differs")
+    need(recovery_manifest.get("status") == "failed", "first recovery did not fail")
+    need("Spearman is undefined for constant ranks" in recovery_log.read_text(encoding="utf-8"), "first recovery failure differs")
     refit = read_json(FULL_REFIT_METADATA)
     need(refit.get("status") == "completed" and refit.get("model_state_sha256") == file_sha(FULL_FINAL_STATE), "completed refit provenance differs")
     RUN_ROOT.mkdir(parents=True)
@@ -187,7 +196,7 @@ def prepare() -> dict[str, Any]:
         "failure": None,
         "git_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "source_runtime": "20260726-009",
-        "source_failure": "evaluation CLI applied training-only output freshness assertion",
+        "source_failures": ["evaluation CLI applied training-only output freshness assertion", "four-row finite-output smoke had undefined Spearman from constant prediction ranks"],
         "reused_stages": ["full-aihub-selection", "full-aihub-refit", "rationale-lora-gpu0-preflight"],
         "resource_scope": {"preflight_evaluation": [0], "full_rationale_and_evaluation": [0, 1, 2, 3], "authorization": "default MAL2026 GPU scope"},
         "score_fields": list(AXES),
@@ -207,7 +216,7 @@ def main() -> None:
         wait_idle([0])
         run_stage(
             "rationale-eval-gpu0-preflight",
-            [str(PYTHON), "scripts/evaluate_qwen3_full_aihub_rationale_lora_v1.py", "--config", str(config_path("gpu0_preflight")), "--output", str(rationale_eval_dir("gpu0_preflight")), "--essay-limit", "4", "--per-device-batch-size", "4"],
+            [str(PYTHON), "scripts/evaluate_qwen3_full_aihub_rationale_lora_v1.py", "--config", str(config_path("gpu0_preflight")), "--output", str(recovery_eval_dir("gpu0_preflight")), "--essay-limit", "4", "--per-device-batch-size", "4"],
             [0],
         )
         validate_evaluation("gpu0_preflight")
@@ -222,7 +231,7 @@ def main() -> None:
         wait_idle([0, 1, 2, 3])
         run_stage(
             "rationale-eval-full",
-            [str(PYTHON), "-m", "torch.distributed.run", "--nproc_per_node=4", "scripts/evaluate_qwen3_full_aihub_rationale_lora_v1.py", "--config", str(config_path("full")), "--output", str(rationale_eval_dir("full")), "--essay-limit", "400", "--per-device-batch-size", "8"],
+            [str(PYTHON), "-m", "torch.distributed.run", "--nproc_per_node=4", "scripts/evaluate_qwen3_full_aihub_rationale_lora_v1.py", "--config", str(config_path("full")), "--output", str(recovery_eval_dir("full")), "--essay-limit", "400", "--per-device-batch-size", "8"],
             [0, 1, 2, 3],
         )
         evaluation = validate_evaluation("full")
@@ -244,7 +253,7 @@ def main() -> None:
             "model_id": MODEL_ID,
             "model_revision": MODEL_REVISION,
             "source_runtime": "20260726-009",
-            "recovery": "evaluation config is loaded with existing training output allowed; no scientific protocol change",
+            "recovery": "evaluation config allows existing training output; the four-row smoke uses RMSE-only when rank correlation is undefined; full evaluation is unchanged",
             "refit": {"global_step": refit["trainer_global_step"], "model_state_sha256": refit["model_state_sha256"]},
             "full_parameter_arm_epoch_results": evaluation["epoch_results"],
             "comparison_ranked": ranked,
