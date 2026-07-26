@@ -17,7 +17,7 @@ from .rlaif_qwen3_embedding import (
     AXES, LORA_TARGETS, MODEL_ID, MODEL_PATH, MODEL_REVISION, RATIONALE_SOURCE,
     _atomic_json, _sha,
 )
-from .rlaif_top3_encoder import _input_text, _labels, _load_generated_rationales, generation_dir, three_axis_metrics
+from .rlaif_top3_encoder import _input_text, _labels, _load_generated_rationales, _spearman, generation_dir
 from .standard_decoder_data import DEFAULT_MANIFEST, SCORE_FIELDS, load_prepared_split
 
 
@@ -524,21 +524,31 @@ def rationale_expected_steps(phase: str) -> dict[int, int]:
     return {1: 1} if phase == "gpu0_preflight" else {epoch: epoch * 32 for epoch in range(1, RATIONALE_EPOCHS + 1)}
 
 
-def _preflight_rmse_metrics(truth: Sequence[Sequence[float]], predictions: Sequence[Sequence[float]]) -> dict[str, Any]:
-    """Finite-output gate when a four-row smoke has constant prediction ranks."""
-    _need(len(truth) == len(predictions) and len(truth) > 0, "preflight metric vectors must align")
+def _nullable_three_axis_metrics(truth: Sequence[Sequence[float]], predictions: Sequence[Sequence[float]]) -> dict[str, Any]:
+    """Report RMSE while preserving mathematically undefined rank correlation."""
+    _need(len(truth) == len(predictions) and len(truth) > 0, "metric vectors must align")
     result: dict[str, Any] = {}
-    rmses = []
+    rmses: list[float] = []
+    correlations: list[float] = []
     for index, axis in enumerate(AXES):
         observed = [float(row[index]) for row in truth]
         predicted = [float(row[index]) for row in predictions]
-        _need(all(math.isfinite(value) for value in observed + predicted), "non-finite preflight prediction")
+        _need(all(math.isfinite(value) for value in observed + predicted), "non-finite evaluation prediction")
         rmse = math.sqrt(sum((a - b) ** 2 for a, b in zip(observed, predicted, strict=True)) / len(observed))
-        result[axis] = {"rmse": rmse, "spearman": None, "spearman_defined": False}
+        try:
+            correlation: float | None = _spearman(observed, predicted)
+        except ValueError as exc:
+            _need(str(exc) == "Spearman is undefined for constant ranks", "evaluation Spearman failed")
+            correlation = None
+        result[axis] = {"rmse": rmse, "spearman": correlation, "spearman_defined": correlation is not None}
         rmses.append(rmse)
+        if correlation is not None:
+            correlations.append(correlation)
     result["three_axis_macro_rmse"] = sum(rmses) / len(rmses)
-    result["three_axis_macro_spearman"] = None
-    result["spearman_defined"] = False
+    all_defined = len(correlations) == len(AXES)
+    result["three_axis_macro_spearman"] = sum(correlations) / len(correlations) if all_defined else None
+    result["spearman_defined"] = all_defined
+    result["defined_spearman_axes"] = len(correlations)
     return result
 
 
@@ -647,13 +657,12 @@ def run_rationale_evaluation(config: FullRationaleConfig, output: Path, essay_li
         raw = trainer.predict(dataset).predictions
         values = raw.tolist() if isinstance(raw, np.ndarray) else raw
         predictions = [[float(value) for value in vector] for vector in values]
-        try:
-            metrics = three_axis_metrics(truth, predictions)
-        except ValueError as exc:
-            _need(config.phase == "gpu0_preflight" and str(exc) == "Spearman is undefined for constant ranks", "full evaluation metric failed")
-            metrics = _preflight_rmse_metrics(truth, predictions)
+        metrics = _nullable_three_axis_metrics(truth, predictions)
         rows.append({"epoch": checkpoint["epoch"], "global_step": checkpoint["global_step"], "metrics": metrics, "trainable_state_sha256": checkpoint["trainable_state_sha256"]})
-    best = rows[0] if config.phase == "gpu0_preflight" else min(rows, key=lambda row: (float(row["metrics"]["three_axis_macro_rmse"]), -float(row["metrics"]["three_axis_macro_spearman"]), int(row["epoch"])))
+    def selection_key(row: Mapping[str, Any]) -> tuple[float, float, int]:
+        correlation = row["metrics"]["three_axis_macro_spearman"]
+        return (float(row["metrics"]["three_axis_macro_rmse"]), -float(correlation) if correlation is not None else math.inf, int(row["epoch"]))
+    best = min(rows, key=selection_key)
     payload = {"status": "completed", "run_id": output.name, "training_run_id": training["run_id"], "phase": config.phase, "initialization": "full_parameter_aihub_48016_then_lora", "score_fields": list(AXES), "average_target_used": False, "epoch_results": rows, "best_epoch_by_validation_macro_rmse_then_spearman": best, "validation": {"unique_essays": essay_limit, "input_records": essay_limit, "predictions_per_essay_per_checkpoint": 1}, "selection_caveat": "validation was previously exposed; descriptive development evidence only", "privacy": "aggregate_only_no_rows_prompts_essays_rationales_ids_or_predictions_persisted"}
     trainer.accelerator.wait_for_everyone()
     failed = False

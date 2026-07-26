@@ -206,3 +206,12 @@ evaluation directory before the aggregate writer attempted a non-idempotent
 uses a new evaluation suffix, and permits only that expected empty-directory
 transition before the atomic aggregate write.  Metric and training contracts
 remain unchanged.
+
+Runtime `20260726-012` completed the entire four-epoch DDP4 rationale training.
+During the 400-row sweep, a checkpoint produced constant prediction ranks, so
+Spearman was mathematically undefined and the strict shared metric helper
+stopped the evaluation.  Runtime `20260726-013` reuses all completed training,
+preserves the failed evaluation directory/log, and reruns only evaluation.
+Undefined per-axis Spearman values are recorded as null; their macro is null and
+cannot win a selection tie.  RMSE remains defined and primary, and no model,
+data, checkpoint, or prediction is changed.
