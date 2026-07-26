@@ -15,9 +15,9 @@ def main() -> None:
     parser.add_argument("--essay-limit", type=int, required=True)
     parser.add_argument("--per-device-batch-size", type=int, required=True)
     args = parser.parse_args()
-    run_rationale_evaluation(FullRationaleConfig.from_json(args.config), args.output.resolve(), args.essay_limit, args.per_device_batch_size)
+    config = FullRationaleConfig.from_json(args.config, require_fresh_output=False)
+    run_rationale_evaluation(config, args.output.resolve(), args.essay_limit, args.per_device_batch_size)
 
 
 if __name__ == "__main__":
     main()
-

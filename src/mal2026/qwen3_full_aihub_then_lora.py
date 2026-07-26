@@ -425,13 +425,13 @@ class FullRationaleConfig:
     lora_dropout: float
 
     @classmethod
-    def from_json(cls, path: Path) -> "FullRationaleConfig":
+    def from_json(cls, path: Path, *, require_fresh_output: bool = True) -> "FullRationaleConfig":
         raw = _read_json(path, "full rationale config")
         _need(isinstance(raw.get("score_fields"), list), "rationale score fields must be a list")
         raw["score_fields"] = tuple(raw["score_fields"])
         _need(set(raw) == set(cls.__dataclass_fields__), "rationale config fields differ")
         value = cls(**raw)
-        value.validate()
+        value.validate(require_fresh_output=require_fresh_output)
         return value
 
     def validate(self, *, require_fresh_output: bool = True) -> None:

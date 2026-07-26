@@ -180,3 +180,12 @@ changes only the head boundary: normalized input is cast to the actual
 head-parameter dtype for GEMM and logits are immediately restored to FP32 for
 MSE/metrics.  Data, parameters trained, optimizer, batch, update schedule, and
 selection protocol are unchanged.
+
+Runtime `20260726-009` completed FSDP selection, the selected 100-update refit,
+and the real GPU0 rationale-LoRA update.  Its preflight evaluation then stopped
+before model construction because the evaluation CLI loaded the training
+configuration with the training-only fresh-output assertion.  Runtime
+`20260726-010` preserves that negative log, loads evaluation configurations in
+read-only existing-output mode (the evaluation function already enforced this
+mode), reuses the completed refit and preflight update, and continues with the
+unchanged full rationale protocol.
