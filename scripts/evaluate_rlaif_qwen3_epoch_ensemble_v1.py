@@ -45,7 +45,7 @@ def main() -> None:
         from transformers import AutoTokenizer, Trainer, TrainingArguments
     except ImportError as exc:
         raise RuntimeError("epoch ensemble requires .venv-standard") from exc
-    need(SOURCE.is_file() and not OUTPUT.exists(), "ensemble source/output freshness differs")
+    need(SOURCE.is_file() and not REPORT.exists(), "ensemble source/output freshness differs")
     training = json.loads(SOURCE.read_text(encoding="utf-8"))
     raw = dict(training["config"])
     raw["score_fields"] = tuple(raw["score_fields"])
@@ -61,7 +61,10 @@ def main() -> None:
     dataset = _tokenized(examples, tokenizer, config.max_length, include_source=True)
     model, _ = build_model(config)
     trainable_names = {name for name, parameter in model.named_parameters() if parameter.requires_grad}
-    OUTPUT.mkdir(parents=True)
+    # All torchrun ranks construct the same Trainer output root.  The report
+    # freshness gate above prevents reuse; idempotent directory creation avoids
+    # a cross-rank mkdir race before Trainer initializes collectives.
+    OUTPUT.mkdir(parents=True, exist_ok=True)
     trainer = Trainer(model=model, args=TrainingArguments(output_dir=str(OUTPUT), do_train=False, do_eval=False, per_device_eval_batch_size=8, bf16=True, tf32=True, report_to=[], remove_unused_columns=False), data_collator=_collator(tokenizer))
     truth = [[float(value) for value in item["labels"]] for item in examples]
     predictions: list[list[list[float]]] = []
