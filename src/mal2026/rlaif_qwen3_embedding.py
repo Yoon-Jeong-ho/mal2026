@@ -106,11 +106,11 @@ def warmstart_provenance() -> dict[str, Any]:
 
 
 def training_dir(arm: str, phase: str) -> Path:
-    return TRAIN_ROOT / f"rlaif-qwen3-embedding-v1-{arm}-{phase}-001"
+    return TRAIN_ROOT / f"rlaif-qwen3-embedding-v1-{arm}-{phase}-002"
 
 
 def evaluation_dir(arm: str) -> Path:
-    return EVAL_ROOT / f"rlaif-qwen3-embedding-eval-v1-{arm}-validation-001"
+    return EVAL_ROOT / f"rlaif-qwen3-embedding-eval-v1-{arm}-validation-002"
 
 
 @dataclass(frozen=True)
@@ -167,7 +167,7 @@ class Qwen3EmbeddingTrainConfig:
         _need(MODEL_PATH.is_dir() and not MODEL_PATH.is_symlink(), "Qwen3 snapshot is unavailable")
         output = Path(self.output_dir)
         _need(output.is_absolute() and output.parent == TRAIN_ROOT.resolve(), "Qwen3 training output root differs")
-        _need(output.name == self.run_id == f"rlaif-qwen3-embedding-v1-{self.arm}-{self.phase}-001", "Qwen3 run identity differs")
+        _need(output.name == self.run_id == f"rlaif-qwen3-embedding-v1-{self.arm}-{self.phase}-002", "Qwen3 run identity differs")
         _need((not output.exists()) if require_fresh_output else output.is_dir(), "Qwen3 training output freshness differs")
         _need((self.seed, self.max_length, self.learning_rate, self.weight_decay, self.warmup_ratio) == (2026072601, 2048, 1e-4, 0.01, 0.05), "Qwen3 optimization constants differ")
         _need((self.lora_r, self.lora_alpha, self.lora_dropout, self.training_dtype) == (16, 32, 0.05, "bfloat16"), "Qwen3 LoRA/numeric contract differs")
@@ -180,7 +180,7 @@ class Qwen3EmbeddingTrainConfig:
 def training_config(arm: str, phase: str) -> dict[str, Any]:
     _need(arm in ARMS and phase in {"gpu0_preflight", "full"}, "unknown Qwen3 arm/phase")
     full = phase == "full"
-    run_id = f"rlaif-qwen3-embedding-v1-{arm}-{phase}-001"
+    run_id = f"rlaif-qwen3-embedding-v1-{arm}-{phase}-002"
     return {
         "schema_version": "mal2026-rlaif-qwen3-embedding-train-v1",
         "run_id": run_id,
@@ -284,28 +284,27 @@ def _fresh_regressor(config: Qwen3EmbeddingTrainConfig, fields: Sequence[str]) -
 
 
 def build_model(config: Qwen3EmbeddingTrainConfig) -> tuple[Any, dict[str, Any]]:
-    import torch
-    import torch.nn as nn
     from safetensors import safe_open
 
     if config.arm == "qwen3_base":
         return _fresh_regressor(config, AXES), {"initialization": "public_base", "average_head_loaded": False}
     provenance = warmstart_provenance()
-    model = _fresh_regressor(config, STANDARD_FIELDS)
+    model = _fresh_regressor(config, AXES)
     trainable_names = {name for name, parameter in model.named_parameters() if parameter.requires_grad}
     with safe_open(WARMSTART_STATE, framework="pt", device="cpu") as handle:
         available = set(handle.keys())
         _need(trainable_names <= available, "AI-Hub Qwen3 warm-start lacks a trainable tensor")
-        warm_state = {name: handle.get_tensor(name) for name in sorted(trainable_names)}
+        warm_state = {}
+        for name in sorted(trainable_names):
+            tensor = handle.get_tensor(name)
+            if name in {"regression_head.weight", "regression_head.bias"}:
+                tensor = tensor[: len(AXES)]
+            warm_state[name] = tensor
+    current = model.state_dict()
+    _need(all(tuple(tensor.shape) == tuple(current[name].shape) for name, tensor in warm_state.items()), "AI-Hub Qwen3 warm-start trainable shape differs")
     incompatible = model.load_state_dict(warm_state, strict=False)
     _need(not incompatible.unexpected_keys and not (trainable_names & set(incompatible.missing_keys)), "AI-Hub Qwen3 warm-start trainable state differs")
-    previous = model.regression_head
-    replacement = nn.Linear(previous.in_features, len(AXES), dtype=previous.weight.dtype, device=previous.weight.device)
-    with torch.no_grad():
-        replacement.weight.copy_(previous.weight[: len(AXES)])
-        replacement.bias.copy_(previous.bias[: len(AXES)])
-    model.regression_head = replacement
-    return model, {"initialization": "aihub_48016_warmstart", "average_head_loaded": True, **provenance}
+    return model, {"initialization": "aihub_48016_warmstart", "source_average_head_present": True, "average_head_loaded": False, **provenance}
 
 
 def _trainable_state(model: Any) -> dict[str, Any]:
@@ -436,12 +435,12 @@ class Qwen3EmbeddingEvalConfig:
         _need(Path(self.training_metadata_path).resolve() == metadata.resolve(), "Qwen3 evaluation training lineage differs")
         output = Path(self.output_dir)
         _need(output.is_absolute() and output.parent == EVAL_ROOT.resolve() and not output.exists(), "Qwen3 evaluation output freshness differs")
-        _need(output.name == self.run_id == f"rlaif-qwen3-embedding-eval-v1-{self.arm}-validation-001" and self.per_device_eval_batch_size == 8, "Qwen3 evaluation config differs")
+        _need(output.name == self.run_id == f"rlaif-qwen3-embedding-eval-v1-{self.arm}-validation-002" and self.per_device_eval_batch_size == 8, "Qwen3 evaluation config differs")
 
 
 def evaluation_config(arm: str) -> dict[str, Any]:
     _need(arm in ARMS, "unknown Qwen3 evaluation arm")
-    run_id = f"rlaif-qwen3-embedding-eval-v1-{arm}-validation-001"
+    run_id = f"rlaif-qwen3-embedding-eval-v1-{arm}-validation-002"
     return {
         "schema_version": "mal2026-rlaif-qwen3-embedding-eval-v1",
         "run_id": run_id,

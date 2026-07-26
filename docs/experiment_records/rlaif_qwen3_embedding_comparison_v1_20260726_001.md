@@ -58,3 +58,12 @@ imported and executed with `.venv-standard`; all seven passed, as did Python
 byte-compilation and both-arm config validation.  Actual GPU0 gate, full
 training, and validation evidence will be appended after the durable runner
 completes.
+
+The first actual runtime (`20260726-001`) is preserved as a negative
+integration result.  The public-base four-example update passed (finite loss
+`15.713469`), but the warm-start arm stopped before full execution because the
+temporary four-head construction retained a four-label forward contract after
+the average row was removed.  No result was selected and no scientific
+variable changed.  Recovery runtime `20260726-002` constructs the declared
+three-head model directly, loads the AI-Hub LoRA tensors, slices only the first
+three rows of the source head, and shape-checks every restored trainable tensor.

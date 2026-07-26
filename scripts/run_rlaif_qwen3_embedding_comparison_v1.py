@@ -39,8 +39,8 @@ from mal2026.rlaif_qwen3_embedding import (  # noqa: E402
 )
 
 
-RUNTIME_ID = "20260726-001"
-RUN_ID = "rlaif-qwen3-embedding-comparison-v1-20260726-001"
+RUNTIME_ID = "20260726-002"
+RUN_ID = "rlaif-qwen3-embedding-comparison-v1-20260726-002"
 RUN_ROOT = ROOT / "outputs" / "rlaif-qwen3-embedding-comparison-v1" / RUNTIME_ID
 CONFIG_ROOT = RUN_ROOT / "configs"
 LOG_ROOT = RUN_ROOT / "logs"
