@@ -81,6 +81,14 @@ fourth `average` head was discarded before continuation; neither arm trains or
 evaluates an average target.  See
 `docs/experiment_records/rlaif_qwen3_embedding_comparison_v1_20260726_001.md`.
 
+The follow-up 12-checkpoint epoch sweep selects epoch 3 / step 96 by the fixed
+RMSE-first rule: content / organization / expression RMSE is
+`0.512864 / 0.695580 / 0.499289`, with three-axis diagnostic RMSE `0.569245`.
+Epochs 1--4 form the useful early region; epoch 2 has the highest diagnostic
+Spearman and epoch 4 has the lowest organization RMSE.  This is a descriptive
+validation-selected checkpoint, not an untouched test estimate.  See
+`docs/experiment_records/rlaif_qwen3_embedding_epoch_sweep_v1_20260726_003.md`.
+
 The custom vLLM rollout is required because the installed TRL/vLLM versions do
 not support their built-in integration; it
 is common to both arms, but lacks an external sampled-logprob TIS/MIS
