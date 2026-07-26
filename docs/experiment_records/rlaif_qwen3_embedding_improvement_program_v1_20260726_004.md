@@ -215,3 +215,51 @@ preserves the failed evaluation directory/log, and reruns only evaluation.
 Undefined per-axis Spearman values are recorded as null; their macro is null and
 cannot win a selection tie.  RMSE remains defined and primary, and no model,
 data, checkpoint, or prediction is changed.
+
+## Final aggregate result
+
+Runtime `20260726-013` completed at `2026-07-27 01:48:38 KST`.  Its aggregate
+report is
+`outputs/aggregate-reports/qwen3-full-aihub-then-rationale-lora-v1-recovery-20260726-013.final-summary.json`
+(SHA-256
+`f841f1c64c444573ffdab7c736b76d45249c9b5e193179c42e6adc9a9839176a`).
+This output is ignored and contains aggregate metrics only.
+
+The best completed result remains the uniform R0 epoch-1--4 prediction
+ensemble:
+
+| result | content RMSE | organization RMSE | expression RMSE | macro RMSE | macro Spearman |
+|---|---:|---:|---:|---:|---:|
+| R0 prediction ensemble | 0.502760 | 0.683891 | 0.488231 | **0.558294** | **0.644196** |
+| prior AI-Hub-LoRA R0, epoch 3 | 0.512864 | 0.695580 | 0.499289 | 0.569245 | 0.625288 |
+| full AI-Hub then rationale LoRA, epoch 4 | 2.578675 | 2.685845 | 2.973646 | 2.746055 | undefined |
+
+The ensemble improves macro RMSE over the prior R0 checkpoint by `0.010951`,
+but remains `0.136994` above the `0.421300` reference.  Organization remains
+the largest ensemble error.  Among the fixed input ablations, none displaced
+the ensemble; multi-rationale expansion was worse (`0.591079` macro RMSE).
+
+The added full-parameter arm is a clear negative result.  Its four validation
+macro RMSE values decreased monotonically (`2.979795`, `2.849175`, `2.769825`,
+`2.746055`) but remained unusable.  Epochs 3 and 4 each had one constant-rank
+axis, so three-axis macro Spearman is correctly undefined.  The rationale stage
+used only `content`, `organization`, and `expression`; `average` was not a
+target.
+
+The most likely cause is an optimization/selection-contract failure, not a
+benefit or defect of rationale conditioning.  This is an inference from the
+following aggregate evidence: the newly initialized head began outside the
+score range; unbounded raw selection loss improved from `40.36` to `31.70`,
+while clipped four-axis macro MAE stayed exactly `2.437` at steps 100, 200, 300,
+and 400.  Early stopping therefore selected step 100 from a saturated clipped
+metric, and the 100-update refit handed a collapsed state to LoRA.  The LoRA
+stage reduced its own loss trend but could not repair that initialization in
+four epochs.
+
+Decision: reject the full-parameter arm and retain the R0 prediction ensemble
+as the current development winner.  Any follow-up that changes target scaling,
+head initialization/learning rate, bounded output parameterization, or the
+unclipped selection metric is a new scientific protocol and was not launched
+after observing this result.  Validation has already been used repeatedly, so
+all rankings remain descriptive development evidence rather than held-out
+generalization estimates.
