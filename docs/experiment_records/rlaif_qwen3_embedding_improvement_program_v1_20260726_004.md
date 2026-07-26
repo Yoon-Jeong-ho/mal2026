@@ -263,3 +263,33 @@ unclipped selection metric is a new scientific protocol and was not launched
 after observing this result.  Validation has already been used repeatedly, so
 all rankings remain descriptive development evidence rather than held-out
 generalization estimates.
+
+### Post-hoc collapse diagnostic
+
+An aggregate-only GPU0 diagnostic at Git SHA
+`ac306554c229ee734223ccde5aa8bce301b9eafa` used the exact command:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 PYTHONPATH=src .venv-standard/bin/python scripts/diagnose_qwen3_full_collapse_v1.py --output outputs/qwen3-full-diagnostics/qwen3-full-collapse-diagnostic-v1-002
+```
+
+The report is
+`outputs/qwen3-full-diagnostics/qwen3-full-collapse-diagnostic-v1-002/aggregate_prediction_diagnostics.json`
+(SHA-256
+`9667097fafe8c27b344cd730d5e5684cfee1ac13d692bcf5479529460e1fba7f`).
+It evaluated the same 400 validation records without persisting row-level
+inputs or predictions.
+
+This confirms the failure mechanism.  Before rationale LoRA, all three raw
+outputs were below 1 for 100% of records and were almost constant: means were
+`0.316`, `0.329`, and `0.373`, with only four BF16 output values per axis.
+After epoch 4 they rose only to means `0.734`, `0.746`, and `0.782`; all remained
+below 1, content had exactly one unique value, and the other axes had two.
+The label means were `3.229`, `3.287`, and `3.677`.
+
+The refit head bias remained effectively zero (mean `0.000193`); four rationale
+epochs changed each bias by only about `0.0064`.  Thus the random zero-centered
+head plus normalized embeddings, a shared small learning rate, and early
+selection on clipped predictions never moved the output baseline anywhere near
+the 1--5 target range.  The later LoRA stage improved raw macro RMSE from
+`3.147287` to `2.746055`, but it could not undo the already selected collapse.
