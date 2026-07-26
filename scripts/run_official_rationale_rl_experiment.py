@@ -95,9 +95,17 @@ class DurableRun:
         validate_runtime_versions()
 
     def initialize(self) -> None:
+        git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         expected = {
             "schema_version": "mal2026-official-rationale-rl-experiment-v1",
             "run_id": self.run_id,
+            "git_sha": git_sha,
+            "command": [str(Path(sys.executable).resolve()), str(Path(__file__).resolve()), *sys.argv[1:]],
+            "config_sha256": {
+                "dpo": sha256_file(DPO_CONFIG),
+                "grpo": sha256_file(GRPO_CONFIG),
+            },
+            "runtime_versions": validate_runtime_versions(),
             "scope": self.scope,
             "grpo_tasks": list(self.grpo_tasks),
             "grpo_phases": list(self.grpo_phases),
