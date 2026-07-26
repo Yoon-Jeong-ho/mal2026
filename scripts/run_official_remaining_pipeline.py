@@ -194,7 +194,7 @@ def main() -> None:
     runner.stage(
         "embedding_aihub_full_pretrain",
         lambda: {"aggregate_sha256": file_sha256(EMBEDDING_PRETRAIN_ROOT / "aggregate_results.json")},
-        lambda: command([str(PYTHON), "scripts/orchestrate_official_aihub_score_pretrain.py", "--config", str(EMBED_PRETRAIN)], RUN_ROOT / "logs/embedding-aihub-full-pretrain.log"),
+        lambda: command([str(PYTHON), "scripts/orchestrate_official_aihub_score_pretrain.py", "--config", str(EMBED_PRETRAIN)], RUN_ROOT / "logs/embedding-aihub-full-pretrain-repair1.log"),
     )
 
     embed_template = read_json(EMBED_TEMPLATE, "embedding score template")
