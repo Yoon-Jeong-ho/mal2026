@@ -526,8 +526,10 @@ def build_model(config: MatrixConfig, head: str, initialization: str) -> tuple[A
             positions = torch.arange(attention_mask.shape[1], device=attention_mask.device).expand_as(attention_mask)
             index = positions.masked_fill(~attention_mask.bool(), -1).max(dim=1).values
             _need(bool((index >= 0).all().item()), "an input has no nonpad token")
-            pooled = functional.normalize(output[torch.arange(output.shape[0], device=output.device), index], p=2, dim=-1).float()
-            logits = self.score_head(pooled)
+            pooled = functional.normalize(
+                output[torch.arange(output.shape[0], device=output.device), index], p=2, dim=-1
+            )
+            logits = self.score_head(pooled.to(self.score_head.weight.dtype)).float()
             result: dict[str, Any] = {"logits": logits}
             if labels is not None:
                 if head == "bounded_regression":

@@ -72,6 +72,7 @@ def main() -> None:
             "heads": list(HEADS), "average_read": False,
             "training_method": "full_parameter",
             "distributed_strategy": "fsdp_full_shard_auto_wrap",
+            "fsdp_version": config.fsdp_version,
             **downstream_target_contract(config),
             "canonical_validation_access": False, "plan": stages,
         }, indent=2, sort_keys=True))
@@ -93,6 +94,7 @@ def main() -> None:
         "heads": list(config.heads), **downstream_target_contract(config),
         "training_method": "full_parameter",
         "distributed_strategy": config.distributed_strategy,
+        "fsdp_version": config.fsdp_version,
         "average_read": False,
         "canonical_validation_access": False,
     }

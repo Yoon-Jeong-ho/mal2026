@@ -29,7 +29,7 @@ AIHUB_RATIONALE_LORA_ROOT = ROOT / "outputs/official-aihub-then-api-rationale-lo
 EMBEDDING_PRETRAIN_ROOT = (
     ROOT
     / "outputs/official-aihub-integer-score-full-pretrain-v1"
-    / "official-aihub-integer-score-full-pretrain-v1-20260727-002"
+    / "official-aihub-integer-score-full-pretrain-v1-20260727-003"
 )
 RATIONALE_RESTRICTED_ROOT = (
     ROOT

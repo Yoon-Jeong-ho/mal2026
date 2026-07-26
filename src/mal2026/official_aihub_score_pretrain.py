@@ -261,6 +261,10 @@ class PretrainConfig:
     training_dtype: str
     historical_reference_selected_step: int
     historical_reference_classification: str
+    # Transformers 5.14 defaults to FSDP2.  Adafactor in the pinned
+    # Transformers/PyTorch stack cannot update DTensor parameters, so the
+    # repaired lineage explicitly selects the still-supported FSDP1 backend.
+    fsdp_version: int = 2
 
     @classmethod
     def from_json(cls, path: Path, *, require_dependencies: bool = True) -> "PretrainConfig":
@@ -269,6 +273,9 @@ class PretrainConfig:
         except (OSError, json.JSONDecodeError) as exc:
             raise AIHubIntegerScoreError("pretraining config is unreadable") from exc
         _need(isinstance(raw, dict), "pretraining config must be an object")
+        # Configs from the two preserved failed lineages predate the explicit
+        # version field and therefore reproduce Transformers' FSDP2 default.
+        raw.setdefault("fsdp_version", 2)
         for field in ("score_fields", "heads"):
             _need(isinstance(raw.get(field), list), f"{field} must be a list")
             raw[field] = tuple(raw[field])
@@ -289,6 +296,7 @@ class PretrainConfig:
         _need(self.seed == 2026 and self.max_length == 2048, "historical seed/length provenance differs")
         _need(self.training_method == "full_parameter", "required AI-Hub arm must tune the full backbone")
         _need(self.distributed_strategy == "fsdp_full_shard_auto_wrap", "full training must use the declared FSDP strategy")
+        _need(self.fsdp_version in {1, 2}, "FSDP version differs")
         _need(self.optimizer == "adafactor", "memory-prudent full-parameter optimizer differs")
         _need(self.learning_rate == 1e-5 and self.weight_decay == 0.01 and self.warmup_ratio == 0.05, "optimization provenance differs")
         _need(self.max_selection_epochs == 20.0 and self.eval_steps == 100 and self.early_stopping_patience == 3, "selection schedule differs")
@@ -364,7 +372,13 @@ def build_model(config: PretrainConfig, head: str) -> Any:
         def __init__(self) -> None:
             super().__init__()
             self.backbone = backbone
-            self.score_head = nn.Linear(hidden, 3 if head == "bounded_regression" else 12)
+            # FSDP1 flattens each wrapper's managed parameters before its
+            # mixed-precision policy is applied, so the root head must already
+            # match the BF16 backbone dtype.
+            self.score_head = nn.Linear(
+                hidden, 3 if head == "bounded_regression" else 12,
+                dtype=next(backbone.parameters()).dtype,
+            )
 
         def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs: Mapping[str, Any] | None = None) -> None:
             self.backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
@@ -377,8 +391,15 @@ def build_model(config: PretrainConfig, head: str) -> Any:
             positions = torch.arange(attention_mask.shape[1], device=attention_mask.device).expand_as(attention_mask)
             final = positions.masked_fill(~attention_mask.bool(), -1).max(dim=1).values
             _need(bool((final >= 0).all().item()), "encoder input has no non-padding token")
-            pooled = functional.normalize(hidden_state[torch.arange(hidden_state.shape[0], device=hidden_state.device), final], p=2, dim=-1).float()
-            logits = self.score_head(pooled)
+            pooled = functional.normalize(
+                hidden_state[torch.arange(hidden_state.shape[0], device=hidden_state.device), final],
+                p=2,
+                dim=-1,
+            )
+            # FSDP's BF16 mixed policy also casts this non-wrapped head.  The
+            # single-GPU smoke leaves it in FP32, so explicitly follow the
+            # live parameter dtype for GEMM and expose FP32 logits/loss.
+            logits = self.score_head(pooled.to(self.score_head.weight.dtype)).float()
             result: dict[str, Any] = {"logits": logits}
             if labels is not None:
                 _need(labels.ndim == 2 and labels.shape[-1] == 3, "labels must be [batch,3]")
@@ -592,6 +613,7 @@ def run_training(config: PretrainConfig, head: str, phase: str, *, smoke: bool =
 
     distributed = int(os.environ.get("WORLD_SIZE", "1")) > 1
     fsdp_config = {
+        "version": config.fsdp_version,
         "transformer_layer_cls_to_wrap": [config.fsdp_transformer_layer_class],
         "activation_checkpointing": config.activation_checkpointing,
         "use_orig_params": True,
@@ -660,6 +682,7 @@ def run_training(config: PretrainConfig, head: str, phase: str, *, smoke: bool =
         "initialization_contract_sha256": initial_hash,
         "selection": {"events": events, "selected_event": selected_event, "selection_source": "AI-Hub selection_dev only"},
         "trainer": {
+            "fsdp_version": config.fsdp_version if distributed else None,
             "global_step": int(trainer.state.global_step),
             "scheduler_horizon_steps": int(trainer.state.max_steps),
             "exact_selected_step_stop": phase == "refit",

@@ -322,7 +322,10 @@ def build_model(config: DecoderScoreConfig, architecture: str, initialization: s
                 positions = torch.arange(attention_mask.shape[1], device=attention_mask.device).expand_as(attention_mask)
                 final = positions.masked_fill(~attention_mask.bool(), -1).max(dim=1).values
                 _need(bool((final >= 0).all().item()), "decoder input has no non-padding token")
-                logits = self.score_head(hidden_state[torch.arange(hidden_state.shape[0], device=hidden_state.device), final].float())
+                pooled = hidden_state[
+                    torch.arange(hidden_state.shape[0], device=hidden_state.device), final
+                ]
+                logits = self.score_head(pooled.to(self.score_head.weight.dtype)).float()
                 result: dict[str, Any] = {"logits": logits}
                 if labels is not None:
                     if architecture == "bounded_regression":

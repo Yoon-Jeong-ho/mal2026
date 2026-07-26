@@ -1,0 +1,42 @@
+{
+  "schema_version": "mal2026-official-decoder-aihub-integer-full-pretrain-config-v1",
+  "run_id": "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-002",
+  "model_id": "Qwen/Qwen2.5-7B-Instruct",
+  "model_revision": "a09a35458c702b33eeacc393d103063234e8bc28",
+  "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/Qwen--Qwen2.5-7B-Instruct-a09a35458c702b33eeacc393d103063234e8bc28",
+  "manifest_path": "/dataset/aa007878/mal2026/data/manifests/aihub_human_feedback_v1.json",
+  "output_root": "/dataset/aa007878/mal2026/outputs/official-decoder-aihub-integer-score-full-pretrain-v1",
+  "architectures": [
+    "generative",
+    "bounded_regression",
+    "ordinal_cumulative"
+  ],
+  "score_fields": [
+    "content",
+    "organization",
+    "expression"
+  ],
+  "integer_target_used": true,
+  "target_projection": "official_half_up",
+  "average_target_used": false,
+  "seed": 2026072702,
+  "max_length": 2048,
+  "training_method": "full_parameter",
+  "downstream_adaptation": "fresh_MAL_LoRA",
+  "distributed_strategy": "fsdp_full_shard_auto_wrap",
+  "optimizer": "adafactor",
+  "learning_rate": 1e-05,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.05,
+  "max_selection_epochs": 20.0,
+  "eval_steps": 100,
+  "early_stopping_patience": 3,
+  "per_device_train_batch_size": 1,
+  "per_device_eval_batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "activation_checkpointing": true,
+  "fsdp_transformer_layer_class": "Qwen2DecoderLayer",
+  "fsdp_state_dict_type": "FULL_STATE_DICT",
+  "training_dtype": "bfloat16",
+  "fsdp_version": 1
+}

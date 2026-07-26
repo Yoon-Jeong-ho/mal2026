@@ -3,6 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
+from scripts.run_official_remaining_pipeline import fresh_attempt_log
 from mal2026.official_remaining_pipeline import resolve_decoder_score_config
 
 
@@ -22,6 +23,16 @@ class OfficialRemainingPipelineTests(unittest.TestCase):
             path = Path(directory) / "config.json"
             path.write_text(json.dumps(value))
             self.assertEqual(json.loads(path.read_text()), value)
+
+    def test_failed_stage_logs_are_never_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            first = Path(directory) / "stage.log"
+            first.write_text("failed first attempt")
+            second = first.with_name("stage.attempt-002.log")
+            second.write_text("failed second attempt")
+            self.assertEqual(
+                fresh_attempt_log(first), first.with_name("stage.attempt-003.log")
+            )
 
 
 if __name__ == "__main__":

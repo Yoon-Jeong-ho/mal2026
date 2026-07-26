@@ -30,6 +30,14 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
         self.assertNotIn("validation.jsonl", serialized)
         self.assertNotIn("lora_r", serialized.lower())
 
+    def test_repaired_lineage_pins_fsdp1_for_adafactor(self) -> None:
+        config = DecoderAIHubConfig.from_json(
+            Path("configs/official_decoder_aihub_integer_score_pretrain.repair1.v1.json"),
+            require_dependencies=False,
+        )
+        self.assertEqual(config.optimizer, "adafactor")
+        self.assertEqual(config.fsdp_version, 1)
+
     def test_selection_identity_survives_json_round_trip(self) -> None:
         identity = self.config.identity("bounded_regression")
         self.assertEqual(json.loads(json.dumps(identity)), identity)
@@ -47,6 +55,17 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
         self.assertIn("scheduler_horizon_steps", source)
         self.assertIn("exact_selected_step_stop", source)
         self.assertIn("gradient_checkpointing_enable", source)
+
+    def test_score_heads_match_live_fsdp_mixed_precision_dtype(self) -> None:
+        for path in (
+            "src/mal2026/official_decoder_aihub_pretrain.py",
+            "src/mal2026/official_decoder_score.py",
+        ):
+            source = Path(path).read_text()
+            self.assertIn("pooled.to(self.score_head.weight.dtype)", source)
+            self.assertIn(".float()", source)
+        pretrain = Path("src/mal2026/official_decoder_aihub_pretrain.py").read_text()
+        self.assertIn("dtype=next(backbone.parameters()).dtype", pretrain)
 
     def test_gpu0_smoke_then_fsdp4_selection_refit_for_all_architectures(self) -> None:
         stages = plan(self.path, self.config)

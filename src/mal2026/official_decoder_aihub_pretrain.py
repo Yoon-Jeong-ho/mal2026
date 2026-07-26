@@ -63,6 +63,7 @@ class DecoderAIHubConfig:
     fsdp_transformer_layer_class: str
     fsdp_state_dict_type: str
     training_dtype: str
+    fsdp_version: int = 2
 
     @classmethod
     def from_json(cls, path: Path, *, require_dependencies: bool = True) -> "DecoderAIHubConfig":
@@ -71,6 +72,7 @@ class DecoderAIHubConfig:
         except (OSError, json.JSONDecodeError) as exc:
             raise DecoderAIHubPretrainError("decoder AI-Hub config is unreadable") from exc
         _need(isinstance(raw, dict), "decoder AI-Hub config must be an object")
+        raw.setdefault("fsdp_version", 2)
         for field in ("architectures", "score_fields"):
             _need(isinstance(raw.get(field), list), f"{field} must be a list")
             raw[field] = tuple(raw[field])
@@ -81,7 +83,10 @@ class DecoderAIHubConfig:
 
     def validate(self, *, require_dependencies: bool = True) -> None:
         _need(self.schema_version == "mal2026-official-decoder-aihub-integer-full-pretrain-config-v1", "pretrain schema differs")
-        _need(self.run_id == "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-001", "pretrain run identity differs")
+        _need(self.run_id in {
+            "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-001",
+            "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-002",
+        }, "pretrain run identity differs")
         _need((self.model_id, self.model_revision) == (MODEL_ID, MODEL_REVISION), "decoder model pin differs")
         _need(self.architectures == ARCHITECTURES and self.score_fields == AXES, "architecture/axis contract differs")
         _need(self.integer_target_used is True and self.target_projection == "official_half_up" and self.average_target_used is False, "integer target contract differs")
@@ -90,6 +95,7 @@ class DecoderAIHubConfig:
         _need((self.seed, self.max_length) == (2026072702, 2048), "seed/length contract differs")
         _need(self.training_method == "full_parameter" and self.downstream_adaptation == "fresh_MAL_LoRA", "full-to-LoRA lineage differs")
         _need(self.distributed_strategy == "fsdp_full_shard_auto_wrap" and self.optimizer == "adafactor", "distributed/optimizer contract differs")
+        _need(self.fsdp_version in {1, 2}, "decoder FSDP version differs")
         _need((self.learning_rate, self.weight_decay, self.warmup_ratio) == (1e-5, 0.01, 0.05), "optimization contract differs")
         _need((self.max_selection_epochs, self.eval_steps, self.early_stopping_patience) == (20.0, 100, 3), "selection contract differs")
         _need((self.per_device_train_batch_size, self.per_device_eval_batch_size, self.gradient_accumulation_steps) == (1, 2, 8), "batch contract differs")
@@ -136,7 +142,10 @@ def build_full_model(config: DecoderAIHubConfig, architecture: str) -> Any:
             def __init__(self) -> None:
                 super().__init__()
                 self.backbone = backbone
-                self.score_head = nn.Linear(hidden, 3 if architecture == "bounded_regression" else 12)
+                self.score_head = nn.Linear(
+                    hidden, 3 if architecture == "bounded_regression" else 12,
+                    dtype=next(backbone.parameters()).dtype,
+                )
 
             def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs: Mapping[str, Any] | None = None) -> None:
                 self.backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
@@ -149,7 +158,10 @@ def build_full_model(config: DecoderAIHubConfig, architecture: str) -> Any:
                 positions = torch.arange(attention_mask.shape[1], device=attention_mask.device).expand_as(attention_mask)
                 final = positions.masked_fill(~attention_mask.bool(), -1).max(dim=1).values
                 _need(bool((final >= 0).all().item()), "decoder input has no non-padding token")
-                logits = self.score_head(hidden_state[torch.arange(hidden_state.shape[0], device=hidden_state.device), final].float())
+                pooled = hidden_state[
+                    torch.arange(hidden_state.shape[0], device=hidden_state.device), final
+                ]
+                logits = self.score_head(pooled.to(self.score_head.weight.dtype)).float()
                 result: dict[str, Any] = {"logits": logits}
                 if labels is not None:
                     if architecture == "bounded_regression":
@@ -323,7 +335,7 @@ def run_training(config: DecoderAIHubConfig, architecture: str, phase: str, *, s
             return control
 
     distributed = int(os.environ.get("WORLD_SIZE", "1")) > 1
-    fsdp_config = {"transformer_layer_cls_to_wrap": [config.fsdp_transformer_layer_class], "activation_checkpointing": config.activation_checkpointing, "use_orig_params": True, "state_dict_type": config.fsdp_state_dict_type, "sync_module_states": True, "limit_all_gathers": True} if distributed else None
+    fsdp_config = {"version": config.fsdp_version, "transformer_layer_cls_to_wrap": [config.fsdp_transformer_layer_class], "activation_checkpointing": config.activation_checkpointing, "use_orig_params": True, "state_dict_type": config.fsdp_state_dict_type, "sync_module_states": True, "limit_all_gathers": True} if distributed else None
     args = TrainingArguments(
         output_dir=str(output / "trainer"), do_train=True, do_eval=phase == "selection", eval_strategy="steps" if phase == "selection" else "no", save_strategy="no",
         eval_steps=(1 if smoke else config.eval_steps) if phase == "selection" else None,
@@ -362,7 +374,7 @@ def run_training(config: DecoderAIHubConfig, architecture: str, phase: str, *, s
         "rationale_output_used": False, "canonical_validation": None, "canonical_validation_access": False, "training_method": "full_parameter", "downstream_adaptation": "fresh_MAL_LoRA",
         "data": {"dataset": "aihub_human_feedback_v1", "split": train_split, "records": len(train_rows), "sha256": train_sha, "selection_dev_sha256": dev_sha},
         "initialization_contract_sha256": initial_contract, "selection": {"events": events, "selected_event": selected_event, "source": "AI-Hub selection_dev only"},
-        "trainer": {"global_step": int(trainer.state.global_step), "scheduler_horizon_steps": int(trainer.state.max_steps), "exact_selected_step_stop": phase == "refit", "metrics": {key: float(value) for key, value in trained.metrics.items() if isinstance(value, (int, float))}},
+        "trainer": {"fsdp_version": config.fsdp_version if distributed else None, "global_step": int(trainer.state.global_step), "scheduler_horizon_steps": int(trainer.state.max_steps), "exact_selected_step_stop": phase == "refit", "metrics": {key: float(value) for key, value in trained.metrics.items() if isinstance(value, (int, float))}},
         "reproducibility": {"seed": config.seed, "model_id": config.model_id, "model_revision": config.model_revision, "training_dtype": config.training_dtype, "visible_gpu_scope": os.environ.get("CUDA_VISIBLE_DEVICES")},
         "privacy": "aggregate_only_no_rows_prompts_essays_feedback_ids_predictions_or_model_outputs_persisted",
     }

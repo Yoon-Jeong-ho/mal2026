@@ -113,11 +113,26 @@ class AIHubIntegerScorePretrainTests(unittest.TestCase):
         digest = initialization_contract_sha256(config, "bounded_regression", "a" * 64)
         self.assertEqual(len(digest), 64)
 
+    def test_score_head_matches_live_fsdp_mixed_precision_dtype(self) -> None:
+        source = Path("src/mal2026/official_aihub_score_pretrain.py").read_text()
+        build = source[source.index("def build_model"):source.index("def _initial_head_sha256")]
+        self.assertIn("pooled.to(self.score_head.weight.dtype)", build)
+        self.assertIn("self.score_head(pooled.to(self.score_head.weight.dtype)).float()", build)
+        self.assertIn("dtype=next(backbone.parameters()).dtype", build)
+
     def test_runner_uses_fsdp4_and_gpu0_smoke(self) -> None:
         source = Path("scripts/orchestrate_official_aihub_score_pretrain.py").read_text()
         self.assertIn('"stage": "fsdp4_full_parameter"', source)
         self.assertIn('"gpus": [0]', source)
         self.assertIn('"gpus": [0, 1, 2, 3]', source)
+
+    def test_repaired_lineage_pins_fsdp1_for_adafactor(self) -> None:
+        config = PretrainConfig.from_json(
+            Path("configs/official_aihub_integer_score_pretrain.repair2.v1.json"),
+            require_dependencies=False,
+        )
+        self.assertEqual(config.optimizer, "adafactor")
+        self.assertEqual(config.fsdp_version, 1)
 
     def test_export_contract_requires_full_backbone_and_matched_head(self) -> None:
         try:

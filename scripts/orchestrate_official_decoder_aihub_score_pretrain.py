@@ -48,13 +48,13 @@ def main() -> None:
     config = DecoderAIHubConfig.from_json(args.config, require_dependencies=not args.dry_run)
     stages = plan(args.config, config)
     if args.dry_run:
-        print(json.dumps({"status":"dry_run_passed","gpu_started":False,"gpu_scope":{"smoke":[0],"full":[0,1,2,3]},"training_method":"full_parameter","distributed_strategy":"fsdp_full_shard_auto_wrap","canonical_validation_access":False,"stages":stages}, indent=2, sort_keys=True))
+        print(json.dumps({"status":"dry_run_passed","gpu_started":False,"gpu_scope":{"smoke":[0],"full":[0,1,2,3]},"training_method":"full_parameter","distributed_strategy":"fsdp_full_shard_auto_wrap","fsdp_version":config.fsdp_version,"canonical_validation_access":False,"stages":stages}, indent=2, sort_keys=True))
         return
     root = Path(config.output_root) / config.run_id
     if root.exists(): raise RuntimeError(f"refusing to reuse run root: {root}")
     root.mkdir(parents=True); logs = root / "logs"; logs.mkdir()
     manifest_path = root / "manifest.json"; ledger = root / "ledger.jsonl"
-    manifest = {"schema_version":"mal2026-official-decoder-aihub-pretrain-run-v1","status":"running","started_at":datetime.now(timezone.utc).isoformat(),"git_sha":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),"gpu_scope":{"smoke":[0],"full":[0,1,2,3],"authorization":"default MAL2026 GPU scope"},"training_method":"full_parameter","canonical_validation_access":False}
+    manifest = {"schema_version":"mal2026-official-decoder-aihub-pretrain-run-v1","status":"running","started_at":datetime.now(timezone.utc).isoformat(),"git_sha":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),"gpu_scope":{"smoke":[0],"full":[0,1,2,3],"authorization":"default MAL2026 GPU scope"},"training_method":"full_parameter","fsdp_version":config.fsdp_version,"canonical_validation_access":False}
     manifest_path.write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n")
     env=os.environ.copy(); env.update({"PYTHONPATH":str(ROOT/"src"),"TOKENIZERS_PARALLELISM":"false","WANDB_DISABLED":"true"})
     for index,stage in enumerate(stages):

@@ -36,14 +36,14 @@ PYTHON = ROOT / ".venv-standard/bin/python"
 RUN_ID = "official-remaining-pipeline-v1-20260727-001"
 RUN_ROOT = ROOT / "outputs/official-remaining-pipeline-v1" / RUN_ID
 CONFIG_ROOT = ROOT / "outputs/official-runtime-configs-v1" / RUN_ID
-EMBED_PRETRAIN = ROOT / "configs/official_aihub_integer_score_pretrain.repair1.v1.json"
+EMBED_PRETRAIN = ROOT / "configs/official_aihub_integer_score_pretrain.repair2.v1.json"
 EMBED_TEMPLATE = ROOT / "configs/official_score_matrix.v1.json"
 HANDOFF_TEMPLATE = ROOT / "configs/official_rationale_handoff.v1.json"
 DECODER_TEMPLATE = ROOT / "configs/official_decoder_score_matrix.v1.json"
-DECODER_PRETRAIN = ROOT / "configs/official_decoder_aihub_integer_score_pretrain.v1.json"
+DECODER_PRETRAIN = ROOT / "configs/official_decoder_aihub_integer_score_pretrain.repair1.v1.json"
 DECODER_PRETRAIN_ROOT = (
     ROOT / "outputs/official-decoder-aihub-integer-score-full-pretrain-v1"
-    / "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-001"
+    / "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-002"
 )
 RL_SAFETY_GATE = (
     ROOT / "outputs/official-prompt-alignment-v1/judge-prompt-injection"
@@ -72,10 +72,20 @@ def write_bound_config(path: Path, value: Mapping[str, Any]) -> None:
     path.write_text(encoded, encoding="utf-8")
 
 
+def fresh_attempt_log(log: Path) -> Path:
+    """Choose a new immutable attempt log without overwriting prior failures."""
+    if not log.exists():
+        return log
+    for attempt in range(2, 1000):
+        candidate = log.with_name(f"{log.stem}.attempt-{attempt:03d}{log.suffix}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError(f"stage log attempt space is exhausted: {log}")
+
+
 def command(argv: list[str], log: Path) -> None:
     log.parent.mkdir(parents=True, exist_ok=True)
-    if log.exists():
-        raise RuntimeError(f"stage log already exists without a completed stage report: {log}")
+    log = fresh_attempt_log(log)
     with log.open("x", encoding="utf-8") as handle:
         result = subprocess.run(
             argv, cwd=ROOT,
@@ -194,7 +204,7 @@ def main() -> None:
     runner.stage(
         "embedding_aihub_full_pretrain",
         lambda: {"aggregate_sha256": file_sha256(EMBEDDING_PRETRAIN_ROOT / "aggregate_results.json")},
-        lambda: command([str(PYTHON), "scripts/orchestrate_official_aihub_score_pretrain.py", "--config", str(EMBED_PRETRAIN)], RUN_ROOT / "logs/embedding-aihub-full-pretrain-repair1.log"),
+        lambda: command([str(PYTHON), "scripts/orchestrate_official_aihub_score_pretrain.py", "--config", str(EMBED_PRETRAIN)], RUN_ROOT / "logs/embedding-aihub-full-pretrain-repair2.log"),
     )
 
     embed_template = read_json(EMBED_TEMPLATE, "embedding score template")
