@@ -90,12 +90,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--aihub-config", type=Path, default=DEFAULT_AIHUB_CONFIG)
+    parser.add_argument("--reuse-completed-aihub-pretrain", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     config = DecoderScoreConfig.from_json(args.config, require_dependencies=False)
     aihub_config = DecoderAIHubConfig.from_json(args.aihub_config, require_dependencies=not args.dry_run)
     if args.dry_run:
-        print(json.dumps({"status": "dry_run_passed", "gpu_started": False, "authorized_gpu_scope": [0, 1, 2, 3], "stages": command_plan(args.config, args.aihub_config)}, ensure_ascii=False, indent=2))
+        stages = command_plan(args.config, args.aihub_config)
+        if args.reuse_completed_aihub_pretrain:
+            stages = [stage for stage in stages if stage.get("stage") not in {"gpu0_one_update_smoke", "fsdp4_full_parameter"}]
+        print(json.dumps({"status": "dry_run_passed", "gpu_started": False, "authorized_gpu_scope": [0, 1, 2, 3], "reuse_completed_aihub_pretrain": args.reuse_completed_aihub_pretrain, "stages": stages}, ensure_ascii=False, indent=2))
         return
     manifest_path = Path(config.output_root) / "orchestration_manifest.json"
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,10 +110,19 @@ def main() -> None:
         "config_sha256": file_sha256(args.config), "completed_stages": [],
     }
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
-    for stage in aihub_plan(args.aihub_config, aihub_config):
-        _run(list(stage["command"]), ",".join(map(str, stage["gpus"])))
-        manifest["completed_stages"].append(f"aihub:{stage['architecture']}:{stage['phase']}:{stage['stage']}")
+    if args.reuse_completed_aihub_pretrain:
+        aggregate = Path(aihub_config.output_root) / aihub_config.run_id / "aggregate_results.json"
+        payload = json.loads(aggregate.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != "mal2026-official-decoder-aihub-pretrain-aggregate-v1" or payload.get("status") != "completed":
+            raise RuntimeError("reused decoder AI-Hub pretraining aggregate differs")
+        manifest["completed_stages"].append("aihub:reused_completed_full_parameter_pretrain")
+        manifest["reused_aihub_pretrain_aggregate_sha256"] = file_sha256(aggregate)
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    else:
+        for stage in aihub_plan(args.aihub_config, aihub_config):
+            _run(list(stage["command"]), ",".join(map(str, stage["gpus"])))
+            manifest["completed_stages"].append(f"aihub:{stage['architecture']}:{stage['phase']}:{stage['stage']}")
+            manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     resolved = _resolve_config(args.config, config, aihub_config)
     manifest["resolved_config_path"] = str(resolved.resolve())
     manifest["resolved_config_sha256"] = file_sha256(resolved)

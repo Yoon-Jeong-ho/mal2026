@@ -41,6 +41,14 @@ EMBED_TEMPLATE = ROOT / "configs/official_score_matrix.v1.json"
 HANDOFF_TEMPLATE = ROOT / "configs/official_rationale_handoff.v1.json"
 DECODER_TEMPLATE = ROOT / "configs/official_decoder_score_matrix.v1.json"
 DECODER_PRETRAIN = ROOT / "configs/official_decoder_aihub_integer_score_pretrain.v1.json"
+DECODER_PRETRAIN_ROOT = (
+    ROOT / "outputs/official-decoder-aihub-integer-score-full-pretrain-v1"
+    / "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-001"
+)
+RL_SAFETY_GATE = (
+    ROOT / "outputs/official-prompt-alignment-v1/judge-prompt-injection"
+    / "official-judge-prompt-injection-train32-001/aggregate_rl_safety_gate.json"
+)
 
 
 def now() -> str:
@@ -140,6 +148,10 @@ def completed_json(path: Path, schema: str | None = None) -> dict[str, Any]:
 def wait_for_rl() -> None:
     manifest = RL_ROOT / "manifest.json"
     while True:
+        if RL_SAFETY_GATE.is_file():
+            gate = read_json(RL_SAFETY_GATE, "RL safety gate")
+            if gate.get("status") == "failed_gates" or gate.get("rl_allowed") is False:
+                raise RuntimeError("fixed proxy-judge safety gate failed; RL remains fail-closed")
         if not manifest.is_file():
             time.sleep(30)
             continue
@@ -165,7 +177,8 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     plan = [
-        "wait_for_completed_dpo_grpo", "embedding_aihub_full_pretrain", "embedding_score_bootstrap_4_arms",
+        "embedding_aihub_full_pretrain", "embedding_score_bootstrap_4_arms", "decoder_aihub_full_pretrain",
+        "wait_for_completed_dpo_grpo",
         "resolve_9_rationale_candidates", "candidate_generation_and_fixed_q4_repeated_evaluation",
         "select_winner_and_generate_train_validation_rationales", "embedding_rationale_4_arms",
         "decoder_aihub_full_pretrain_and_12_arm_matrix", "final_aggregate",
@@ -175,11 +188,9 @@ def main() -> None:
         return
 
     runner = Runner()
-    runner.stage(
-        "rl_complete",
-        lambda: {"manifest_sha256": file_sha256(RL_ROOT / "manifest.json"), "aggregate_sha256": file_sha256(RL_ROOT / "aggregate_experiment.json")},
-        wait_for_rl,
-    )
+    # These score-only stages are independent of the rationale winner and RL.
+    # Run them first so a fail-closed judge gate does not leave authorized
+    # full-parameter pretraining or the essay-only bootstrap idle.
     runner.stage(
         "embedding_aihub_full_pretrain",
         lambda: {"aggregate_sha256": file_sha256(EMBEDDING_PRETRAIN_ROOT / "aggregate_results.json")},
@@ -196,6 +207,16 @@ def main() -> None:
         "embedding_score_bootstrap",
         lambda: {"bootstrap_sha256": file_sha256(score_root / "bootstrap_selection.json")},
         lambda: command([str(PYTHON), "scripts/orchestrate_official_score_matrix.py", "--config", str(bootstrap_config), "--stage", "bootstrap"], RUN_ROOT / "logs/embedding-score-bootstrap.log"),
+    )
+    runner.stage(
+        "decoder_aihub_full_pretrain",
+        lambda: {"aggregate_sha256": file_sha256(DECODER_PRETRAIN_ROOT / "aggregate_results.json")},
+        lambda: command([str(PYTHON), "scripts/orchestrate_official_decoder_aihub_score_pretrain.py", "--config", str(DECODER_PRETRAIN)], RUN_ROOT / "logs/decoder-aihub-full-pretrain.log"),
+    )
+    runner.stage(
+        "rl_complete",
+        lambda: {"manifest_sha256": file_sha256(RL_ROOT / "manifest.json"), "aggregate_sha256": file_sha256(RL_ROOT / "aggregate_experiment.json")},
+        wait_for_rl,
     )
 
     handoff_template = read_json(HANDOFF_TEMPLATE, "rationale handoff template")
@@ -247,7 +268,7 @@ def main() -> None:
         lambda: {"aggregate_sha256": file_sha256(decoder_root / "aggregate.json")},
         lambda: command([
             str(PYTHON), "scripts/orchestrate_official_decoder_score_matrix.py", "--config", str(decoder_config),
-            "--aihub-config", str(DECODER_PRETRAIN),
+            "--aihub-config", str(DECODER_PRETRAIN), "--reuse-completed-aihub-pretrain",
         ], RUN_ROOT / "logs/decoder-score-matrix.log"),
     )
 
