@@ -30,6 +30,11 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
         self.assertNotIn("validation.jsonl", serialized)
         self.assertNotIn("lora_r", serialized.lower())
 
+    def test_selection_identity_survives_json_round_trip(self) -> None:
+        identity = self.config.identity("bounded_regression")
+        self.assertEqual(json.loads(json.dumps(identity)), identity)
+        self.assertIsInstance(identity["score_fields"], list)
+
     def test_selection_is_integer_primary_and_exact_step(self) -> None:
         events = [
             {"global_step": 100, "macro_integer_rmse": .7, "macro_integer_spearman": .9, "macro_continuous_rmse": .1},

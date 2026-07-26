@@ -308,6 +308,11 @@ class PretrainConfig:
         raw = asdict(self)
         for key in ("run_id", "output_root", "heads", "historical_reference_selected_step", "historical_reference_classification"):
             raw.pop(key)
+        # Identity is persisted as JSON and read back for the fresh refit.
+        # Normalize tuple-valued config fields before comparison so an
+        # otherwise identical selection/refit pair is not rejected merely
+        # because JSON arrays deserialize as lists.
+        raw["score_fields"] = list(raw["score_fields"])
         raw["head"] = head
         return raw
 

@@ -104,6 +104,7 @@ class DecoderAIHubConfig:
         raw = asdict(self)
         for key in ("run_id", "output_root", "architectures"):
             raw.pop(key)
+        raw["score_fields"] = list(raw["score_fields"])
         raw["architecture"] = architecture
         return raw
 

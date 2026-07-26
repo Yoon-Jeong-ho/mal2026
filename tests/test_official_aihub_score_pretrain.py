@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 import inspect
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -82,6 +83,12 @@ class AIHubIntegerScorePretrainTests(unittest.TestCase):
         serialized = Path("configs/official_aihub_integer_score_pretrain.v1.json").read_text()
         self.assertNotIn("validation.jsonl", serialized)
         self.assertNotIn("warmstate_path", serialized)
+
+    def test_selection_identity_survives_json_round_trip(self) -> None:
+        config = PretrainConfig.from_json(Path("configs/official_aihub_integer_score_pretrain.v1.json"), require_dependencies=False)
+        identity = config.identity("bounded_regression")
+        self.assertEqual(json.loads(json.dumps(identity)), identity)
+        self.assertIsInstance(identity["score_fields"], list)
 
     def test_downstream_contract_keys_are_explicit_at_every_artifact_layer(self) -> None:
         config = PretrainConfig.from_json(Path("configs/official_aihub_integer_score_pretrain.v1.json"), require_dependencies=False)
