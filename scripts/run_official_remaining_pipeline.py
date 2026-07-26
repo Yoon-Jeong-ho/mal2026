@@ -83,15 +83,22 @@ class Runner:
         self.manifest = RUN_ROOT / "manifest.json"
         self.ledger = RUN_ROOT / "ledger.jsonl"
         RUN_ROOT.mkdir(parents=True, exist_ok=True)
+        git_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         if self.manifest.is_file():
             value = read_json(self.manifest, "remaining-pipeline manifest")
             if value.get("schema_version") != "mal2026-official-remaining-pipeline-v1" or value.get("run_id") != RUN_ID:
                 raise RuntimeError("remaining-pipeline manifest differs")
+            resumptions = value.setdefault("resumptions", [])
+            if not isinstance(resumptions, list):
+                raise RuntimeError("remaining-pipeline resumptions differ")
+            resumptions.append({"resumed_at": now(), "git_sha": git_sha})
+            value["status"] = "running"
+            atomic_json(self.manifest, value)
         else:
             atomic_json(self.manifest, {
                 "schema_version": "mal2026-official-remaining-pipeline-v1", "status": "running",
                 "run_id": RUN_ID, "started_at": now(),
-                "git_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
+                "git_sha": git_sha, "resumptions": [],
                 "gpu_scope": [0, 1, 2, 3], "gpu_authorization": "default MAL2026 scope and explicit user request",
                 "scientific_protocol": "declared public-spec rationale RL then fixed embedding/decoder score matrices",
             })
