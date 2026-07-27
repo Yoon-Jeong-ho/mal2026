@@ -1,6 +1,8 @@
-# Official-prompt-aligned score and rationale program v1
+# Public-spec-aligned score and rationale program v1
 
-Status: **public-spec-aligned API/SFT/structure comparison complete; AI-Hub full-parameter continuation running** (2026-07-27)
+Status: **API/SFT/AI-Hub rationale comparisons complete; RL fail-closed at
+the frozen safety gate; independent integer-score pretraining running**
+(2026-07-27)
 
 ## Prompt-provenance terminology
 
@@ -21,6 +23,12 @@ hidden judge prompt.  This record therefore uses these precise terms:
 The exact Q4_K_M model and pinned llama.cpp runtime are official-runtime
 matches; that fact does not turn reconstructed prompt wording into a verbatim
 official prompt.
+
+Accordingly, the new API corpus, all new rationale SFT arms, the AI-Hub to API
+continuation, and the declared downstream RL/score runners use this same
+public-spec-aligned contract.  Historical runs remain immutable comparison
+artifacts and were not rewritten in place.  No artifact in this record is
+described as using an unavailable organizer-authored prompt.
 
 ## Authorization and question
 
@@ -197,7 +205,7 @@ axis-triplet and 29 favoring bundled.  The judge is substantially saturated on
 these candidates.  Aggregate evidence is stored in
 `outputs/official-prompt-alignment-v1/structure-comparison/official-rationale-structure-comparison-v1-20260727-001/`.
 
-The selected AI-Hub path trains A.X full parameters for one epoch on the
+The selected AI-Hub path trained A.X full parameters for one epoch on the
 48,030 axis-projected argumentative feedback examples, then trains three
 separate LoRA continuations on the same 6,000 API candidates used by the
 no-AI-Hub arms.  GPU0 and four-GPU FSDP2 one-update gates passed.  Two
@@ -207,6 +215,23 @@ rejected simultaneous generic and FSDP activation checkpointing.  Repairs
 only changed launcher-state detection and selected the maintained FSDP2
 activation-checkpointing path; data, model, prompts, targets, optimization,
 and selection were unchanged.
+
+The full-parameter run completed at step 1,501 with loss `1.2437230634` on
+48,030 records; its final-model SHA256 is
+`2c1295cc97f35768b4dab06e7a85c52b4aae8ca0be5d96aa939af9948091ebb4`.
+The content, organization, and expression API LoRA continuations each used all
+6,000 candidates for 750 optimizer steps and completed with losses
+`1.3120444883`, `1.3212566541`, and `1.0212873802`, respectively.  All three
+validation generations were strict 400/400.
+
+The frozen Q4 comparison gave AI-Hub-full-then-API-LoRA `4.9889583333`
+(worst cell `4.950`) and the no-AI-Hub axis triplet `4.9891666667` (worst cell
+`4.955`).  The predeclared rule therefore selected the no-AI-Hub triplet, but
+the difference was only `-0.0002083333` for AI-Hub minus no-AI-Hub.  Paired
+essay macros favored AI-Hub for 33, no-AI-Hub for 29, and tied for 338 of 400.
+Furthermore, 4,754/4,800 AI-Hub cells and 4,750/4,800 no-AI-Hub cells were
+score 5.  This is a saturated null comparison, not evidence that AI-Hub
+pretraining materially harms rationale quality.
 
 ## Official judge and reward gates
 
@@ -221,6 +246,41 @@ the expected directional response to: swapped-axis rationales
 (`score_rationale_consistency`), and unsupported rationale replacement
 (`groundedness`).  RL is skipped and preserved as a negative gate if this
 audit fails.  The old v6 reward is never reused as official reward.
+
+The directional train-32 gate passed all three predeclared checks: swapped-axis
+domain-match mean decrease `1.6145833` (75% paired decrease), two-point score
+perturbation consistency decrease `1.5104167` (78.125%), and unsupported
+groundedness decrease `3.9791667` (100%).  A separate frozen prompt-injection
+gate did not pass.  The injected strings never increased the macro score, but
+the judge mostly tied rather than applying the predeclared degradation:
+rationale injection decreased by only `0.0182292` with 9.375% paired decreases,
+and essay injection by `0.0026042` with 3.125% paired decreases.  Therefore
+`aggregate_rl_safety_gate.json` has `status=failed_gates` and
+`rl_allowed=false`; DPO/GRPO jobs were not launched.  This should not be
+misread as evidence that the model followed the attack.  It is evidence that
+the immutable gate required a stronger adverse response than the saturated
+proxy judge exhibited.  Changing that gate or prompt after seeing these
+results is a scientific-protocol change and requires recorded authorization.
+
+## Independent integer-score pretraining status
+
+Score-model work continues independently of the failed rationale-RL gate.  It
+uses only the three integer axes (`content`, `organization`, `expression`),
+with deterministic half-up projection for AI-Hub decimals; the source
+`average` member is neither read as a target nor evaluated as an output.
+
+The first Qwen3-Embedding-8B full-pretraining run was preserved after a JSON
+tuple/list selection-to-refit identity mismatch.  The second was preserved
+after Transformers 5.14 selected FSDP2 by default: the mixed policy first
+exposed a FP32/BF16 score-head GEMM mismatch and then Adafactor failed on mixed
+Tensor/DTensor optimizer state.  The repaired lineage keeps the declared
+Adafactor optimization and pins the supported FSDP1 full-shard backend; its
+root score head is initialized in the backbone dtype and the head input follows
+the live parameter dtype.  A four-GPU, one-update FSDP preflight passed at
+global step 1 with finite loss `2.3809757233`.  Full selection is now running
+on GPUs 0--3 under run
+`official-aihub-integer-score-full-pretrain-v1-20260727-003`, Git commit
+`8da22b9`.  Failed outputs and logs remain preserved rather than overwritten.
 
 ## Execution task card
 
