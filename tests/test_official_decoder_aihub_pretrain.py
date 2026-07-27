@@ -35,7 +35,7 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
 
     def test_repaired_lineage_pins_fsdp1_for_adafactor(self) -> None:
         config = DecoderAIHubConfig.from_json(
-            Path("configs/official_decoder_aihub_integer_score_pretrain.repair3.v1.json"),
+            Path("configs/official_decoder_aihub_integer_score_pretrain.repair4.v1.json"),
             require_dependencies=False,
         )
         self.assertEqual(config.optimizer, "adafactor")
@@ -144,6 +144,8 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
         self.assertFalse(model.config.use_cache)
         self.assertEqual(tokenizer.padding_side, "right")
         self.assertEqual((predictions, invalid), ([(3, 3, 3), (3, 3, 3)], 0))
+        source = Path("src/mal2026/official_decoder_score.py").read_text()
+        self.assertIn('torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda")', source)
 
 
 if __name__ == "__main__": unittest.main()

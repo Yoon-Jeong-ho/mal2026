@@ -457,14 +457,20 @@ def generate_integer_predictions(model: Any, tokenizer: Any, rows: Sequence[Any]
         for start in range(0, len(rows), config.per_device_eval_batch_size):
             batch_rows = rows[start:start + config.per_device_eval_batch_size]
             prompts = [chat_prompt(tokenizer, row, input_view, None if rationales is None else rationales[row.identifier]) for row in batch_rows]
-            encoded = tokenizer(prompts, padding=True, truncation=True, max_length=config.max_length - max_new_tokens, return_tensors="pt").to(next(model.parameters()).device)
+            device = next(model.parameters()).device
+            encoded = tokenizer(prompts, padding=True, truncation=True, max_length=config.max_length - max_new_tokens, return_tensors="pt").to(device)
             prefix_width = encoded["input_ids"].shape[1]
 
             def allowed(_: int, sent: Any) -> list[int]:
                 prefix = tuple(int(value) for value in sent[prefix_width:].tolist())
                 return list(trie.get(prefix, (tokenizer.eos_token_id,)))
 
-            with torch.inference_mode():
+            # FSDP1 keeps its summoned full parameters in FP32 even though
+            # training uses BF16 mixed precision.  Directly calling the
+            # unwrapped module would otherwise make constrained generation a
+            # very slow FP32 workload.  Autocast restores the declared BF16
+            # inference path without mutating the checkpoint tensors.
+            with torch.inference_mode(), torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
                 generated = model.generate(**encoded, do_sample=False, max_new_tokens=max_new_tokens, prefix_allowed_tokens_fn=allowed, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
             for sequence in generated[:, prefix_width:]:
                 parsed = parse_generated(tokenizer.decode(sequence, skip_special_tokens=True))
