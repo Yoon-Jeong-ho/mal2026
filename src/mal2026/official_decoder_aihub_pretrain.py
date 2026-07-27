@@ -89,6 +89,7 @@ class DecoderAIHubConfig:
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-003",
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-004",
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-005",
+            "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-006",
         }, "pretrain run identity differs")
         _need((self.model_id, self.model_revision) == (MODEL_ID, MODEL_REVISION), "decoder model pin differs")
         _need(self.architectures == ARCHITECTURES and self.score_fields == AXES, "architecture/axis contract differs")
@@ -179,12 +180,13 @@ def build_full_model(config: DecoderAIHubConfig, architecture: str) -> Any:
 
 
 def initialization_contract_sha256(config: DecoderAIHubConfig, architecture: str, model: Any) -> str:
+    import torch
     head_hash = None
     if architecture != "generative":
         digest = sha256()
         for name, tensor in sorted(model.score_head.state_dict().items()):
             value = tensor.detach().cpu().contiguous()
-            digest.update(name.encode()); digest.update(str(value.dtype).encode()); digest.update(json.dumps(list(value.shape)).encode()); digest.update(value.numpy().tobytes())
+            digest.update(name.encode()); digest.update(str(value.dtype).encode()); digest.update(json.dumps(list(value.shape)).encode()); digest.update(value.view(torch.uint8).numpy().tobytes())
         head_hash = digest.hexdigest()
     payload = {"model_id": config.model_id, "model_revision": config.model_revision, "model_path": str(Path(config.model_path).resolve()), "architecture": architecture, "head_initial_sha256": head_hash, "seed": config.seed, "training_method": config.training_method}
     return sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

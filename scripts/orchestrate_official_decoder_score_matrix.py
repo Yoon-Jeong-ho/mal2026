@@ -65,17 +65,29 @@ def _run(command: list[str], visible: str) -> None:
 
 def _resolve_config(source: Path, config: DecoderScoreConfig, aihub_config: DecoderAIHubConfig) -> Path:
     raw = json.loads(source.read_text(encoding="utf-8"))
+    aggregate_path = Path(aihub_config.output_root) / aihub_config.run_id / "aggregate_results.json"
+    aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+    if aggregate.get("schema_version") != "mal2026-official-decoder-aihub-pretrain-aggregate-v1" or aggregate.get("status") != "completed" or aggregate.get("run_id") != aihub_config.run_id:
+        raise RuntimeError("decoder AI-Hub aggregate identity differs")
+    results = aggregate.get("results")
+    if not isinstance(results, list) or {item.get("architecture") for item in results if isinstance(item, dict)} != set(ARCHITECTURES):
+        raise RuntimeError("decoder AI-Hub aggregate architecture coverage differs")
+    by_architecture = {item["architecture"]: item for item in results}
     for architecture in ARCHITECTURES:
-        directory = Path(aihub_config.output_root) / aihub_config.run_id / f"{architecture}-refit"
-        completion = directory / "training_complete.json"
-        metadata = directory / "full_model_state.json"
-        artifact = directory / "full_model"
+        result = by_architecture[architecture]
+        completion = Path(result["completion_path"])
+        metadata = Path(result["state_metadata_path"])
+        artifact = Path(result["artifact_path"])
+        if file_sha256(completion) != result.get("completion_sha256") or file_sha256(metadata) != result.get("state_metadata_sha256"):
+            raise RuntimeError(f"AI-Hub {architecture} aggregate checksums differ")
         payload = json.loads(completion.read_text(encoding="utf-8"))
         if payload.get("status") != "completed" or payload.get("architecture") != architecture or payload.get("phase") != "refit" or payload.get("training_method") != "full_parameter":
             raise RuntimeError(f"AI-Hub {architecture} completion is invalid")
+        if payload.get("state", {}).get("artifact_sha256") != result.get("artifact_sha256"):
+            raise RuntimeError(f"AI-Hub {architecture} artifact checksum binding differs")
         raw["aihub_artifacts"][architecture] = {
             "completion_path": str(completion.resolve()), "completion_sha256": file_sha256(completion),
-            "artifact_path": str(artifact.resolve()), "artifact_sha256": payload["state"]["artifact_sha256"],
+            "artifact_path": str(artifact.resolve()), "artifact_sha256": result["artifact_sha256"],
             "state_metadata_path": str(metadata.resolve()), "state_metadata_sha256": file_sha256(metadata),
         }
     destination = Path(config.output_root) / "resolved_config.json"

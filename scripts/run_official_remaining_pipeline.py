@@ -40,8 +40,12 @@ EMBED_PRETRAIN = ROOT / "configs/official_aihub_integer_score_pretrain.repair2.v
 EMBED_TEMPLATE = ROOT / "configs/official_score_matrix.v1.json"
 HANDOFF_TEMPLATE = ROOT / "configs/official_rationale_handoff.v1.json"
 DECODER_TEMPLATE = ROOT / "configs/official_decoder_score_matrix.v1.json"
-DECODER_PRETRAIN = ROOT / "configs/official_decoder_aihub_integer_score_pretrain.repair4.v1.json"
+DECODER_PRETRAIN = ROOT / "configs/official_decoder_aihub_integer_score_pretrain.repair5.v1.json"
 DECODER_PRETRAIN_ROOT = (
+    ROOT / "outputs/official-decoder-aihub-integer-score-full-pretrain-v1"
+    / "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-006"
+)
+DECODER_GENERATIVE_REUSE_ROOT = (
     ROOT / "outputs/official-decoder-aihub-integer-score-full-pretrain-v1"
     / "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-005"
 )
@@ -221,7 +225,10 @@ def main() -> None:
     runner.stage(
         "decoder_aihub_full_pretrain",
         lambda: {"aggregate_sha256": file_sha256(DECODER_PRETRAIN_ROOT / "aggregate_results.json")},
-        lambda: command([str(PYTHON), "scripts/orchestrate_official_decoder_aihub_score_pretrain.py", "--config", str(DECODER_PRETRAIN)], RUN_ROOT / "logs/decoder-aihub-full-pretrain.log"),
+        lambda: command([
+            str(PYTHON), "scripts/orchestrate_official_decoder_aihub_score_pretrain.py", "--config", str(DECODER_PRETRAIN),
+            "--reuse-generative-from", str(DECODER_GENERATIVE_REUSE_ROOT),
+        ], RUN_ROOT / "logs/decoder-aihub-full-pretrain.log"),
     )
     runner.stage(
         "rl_complete",

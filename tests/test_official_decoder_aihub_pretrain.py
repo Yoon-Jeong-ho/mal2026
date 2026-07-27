@@ -11,7 +11,8 @@ import torch
 from safetensors.torch import save_file
 
 from mal2026.official_decoder_aihub_pretrain import (
-    ARCHITECTURES, DecoderAIHubConfig, exported_tensor_contract, select_event,
+    ARCHITECTURES, DecoderAIHubConfig, exported_tensor_contract,
+    initialization_contract_sha256, select_event,
 )
 from mal2026.official_decoder_score import generate_integer_predictions
 from scripts.orchestrate_official_decoder_aihub_score_pretrain import plan
@@ -35,7 +36,7 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
 
     def test_repaired_lineage_pins_fsdp1_for_adafactor(self) -> None:
         config = DecoderAIHubConfig.from_json(
-            Path("configs/official_decoder_aihub_integer_score_pretrain.repair4.v1.json"),
+            Path("configs/official_decoder_aihub_integer_score_pretrain.repair5.v1.json"),
             require_dependencies=False,
         )
         self.assertEqual(config.optimizer, "adafactor")
@@ -45,6 +46,17 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
         source = Path("src/mal2026/official_decoder_aihub_pretrain.py").read_text()
         self.assertIn("gradient_checkpointing=config.activation_checkpointing and not distributed", source)
         self.assertIn("gradient_checkpointing_kwargs={\"use_reentrant\": False} if not distributed else None", source)
+
+    def test_bfloat16_head_initialization_hashes_raw_tensor_bytes(self) -> None:
+        config = DecoderAIHubConfig.from_json(
+            Path("configs/official_decoder_aihub_integer_score_pretrain.repair5.v1.json"),
+            require_dependencies=False,
+        )
+        model = SimpleNamespace(score_head=torch.nn.Linear(2, 3, dtype=torch.bfloat16))
+        digest = initialization_contract_sha256(config, "bounded_regression", model)
+        self.assertEqual(len(digest), 64)
+        source = Path("src/mal2026/official_decoder_aihub_pretrain.py").read_text()
+        self.assertIn("value.view(torch.uint8).numpy().tobytes()", source)
 
     def test_selection_identity_survives_json_round_trip(self) -> None:
         identity = self.config.identity("bounded_regression")
@@ -86,6 +98,12 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
         source = Path("scripts/orchestrate_official_decoder_aihub_score_pretrain.py").read_text()
         self.assertIn("fsdp4_full_parameter", source)
         self.assertNotIn('"4,5,6,7"', source)
+
+    def test_recovery_reuses_only_the_completed_generative_lineage(self) -> None:
+        source = Path("scripts/orchestrate_official_decoder_aihub_score_pretrain.py").read_text()
+        self.assertIn("--reuse-generative-from", source)
+        self.assertIn("_validate_reused_generative", source)
+        self.assertIn('stage["architecture"] != "generative"', source)
 
     def test_export_contract_distinguishes_generative_and_matched_heads(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
