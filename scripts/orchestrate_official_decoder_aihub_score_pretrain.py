@@ -11,6 +11,7 @@ from typing import Any
 
 from mal2026.official_decoder_aihub_pretrain import ARCHITECTURES, DecoderAIHubConfig, artifact_inventory
 from mal2026.official_decoder_score import file_sha256
+from mal2026.official_score_prompt import provenance as score_prompt_provenance
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = ROOT / ".venv-standard" / "bin" / "python"
@@ -105,14 +106,14 @@ def main() -> None:
             raise RuntimeError("dry/real generative reuse root differs")
         stages = [stage for stage in stages if stage["architecture"] != "generative"]
     if args.dry_run:
-        print(json.dumps({"status":"dry_run_passed","gpu_started":False,"gpu_scope":{"smoke":[0],"full":[0,1,2,3]},"training_method":"full_parameter","distributed_strategy":"fsdp_full_shard_auto_wrap","fsdp_version":config.fsdp_version,"canonical_validation_access":False,"reused_generative_root":str(args.reuse_generative_from.resolve()) if args.reuse_generative_from else None,"stages":stages}, indent=2, sort_keys=True))
+        print(json.dumps({"status":"dry_run_passed","gpu_started":False,"gpu_scope":{"smoke":[0],"full":[0,1,2,3]},"training_method":"full_parameter","distributed_strategy":"fsdp_full_shard_auto_wrap","fsdp_version":config.fsdp_version,"canonical_validation_access":False,"reused_generative_root":str(args.reuse_generative_from.resolve()) if args.reuse_generative_from else None,**score_prompt_provenance(config.score_prompt_kind),"stages":stages}, indent=2, sort_keys=True))
         return
     reused_generative = _validate_reused_generative(config, args.reuse_generative_from) if args.reuse_generative_from is not None else None
     root = Path(config.output_root) / config.run_id
     if root.exists(): raise RuntimeError(f"refusing to reuse run root: {root}")
     root.mkdir(parents=True); logs = root / "logs"; logs.mkdir()
     manifest_path = root / "manifest.json"; ledger = root / "ledger.jsonl"
-    manifest = {"schema_version":"mal2026-official-decoder-aihub-pretrain-run-v1","status":"running","started_at":datetime.now(timezone.utc).isoformat(),"git_sha":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),"gpu_scope":{"smoke":[0],"full":[0,1,2,3],"authorization":"default MAL2026 GPU scope"},"training_method":"full_parameter","fsdp_version":config.fsdp_version,"canonical_validation_access":False,"reused_completed_architectures":{"generative":reused_generative} if reused_generative else {}}
+    manifest = {"schema_version":"mal2026-official-decoder-aihub-pretrain-run-v1","status":"running","started_at":datetime.now(timezone.utc).isoformat(),"git_sha":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),"gpu_scope":{"smoke":[0],"full":[0,1,2,3],"authorization":"default MAL2026 GPU scope"},"training_method":"full_parameter","fsdp_version":config.fsdp_version,"canonical_validation_access":False,**score_prompt_provenance(config.score_prompt_kind),"reused_completed_architectures":{"generative":reused_generative} if reused_generative else {}}
     manifest_path.write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n")
     env=os.environ.copy(); env.update({"PYTHONPATH":str(ROOT/"src"),"TOKENIZERS_PARALLELISM":"false","WANDB_DISABLED":"true"})
     for index,stage in enumerate(stages):
@@ -130,7 +131,7 @@ def main() -> None:
             continue
         completion=root/f"{architecture}-refit"/"training_complete.json"; payload=json.loads(completion.read_text())
         results.append(_result_from_completion(architecture, completion, source_run_id=config.run_id))
-    aggregate={"schema_version":"mal2026-official-decoder-aihub-pretrain-aggregate-v1","status":"completed","run_id":config.run_id,"score_fields":list(config.score_fields),"integer_target_used":True,"average_target_used":False,"training_method":"full_parameter","downstream_adaptation":"fresh_MAL_LoRA","canonical_validation_access":False,"reused_completed_architectures":["generative"] if reused_generative else [],"results":results,"privacy":"aggregate_only_no_rows_text_ids_or_predictions"}
+    aggregate={"schema_version":"mal2026-official-decoder-aihub-pretrain-aggregate-v1","status":"completed","run_id":config.run_id,"score_fields":list(config.score_fields),"integer_target_used":True,"average_target_used":False,"training_method":"full_parameter","downstream_adaptation":"fresh_MAL_LoRA","canonical_validation_access":False,**score_prompt_provenance(config.score_prompt_kind),"reused_completed_architectures":["generative"] if reused_generative else [],"results":results,"privacy":"aggregate_only_no_rows_text_ids_or_predictions"}
     aggregate_path=root/"aggregate_results.json"; aggregate_path.write_text(json.dumps(aggregate,indent=2,sort_keys=True)+"\n")
     manifest.update({"status":"completed","completed_at":datetime.now(timezone.utc).isoformat(),"aggregate_sha256":file_sha256(aggregate_path)}); manifest_path.write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n")
 

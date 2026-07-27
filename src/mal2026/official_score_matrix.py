@@ -17,6 +17,14 @@ from pathlib import Path
 import time
 from typing import Any, Iterable, Mapping, Sequence
 
+from .official_score_prompt import (
+    LEGACY_COMPACT,
+    PUBLIC_SPEC_SCORE_ONLY,
+    SCORE_PROMPT_KINDS,
+    embedding_input,
+    provenance as score_prompt_provenance,
+)
+
 
 ROOT = Path(__file__).resolve().parents[2]
 AXES = ("content", "organization", "expression")
@@ -131,6 +139,7 @@ class MatrixConfig:
     lora_alpha: int
     lora_dropout: float
     training_dtype: str
+    score_prompt_kind: str = LEGACY_COMPACT
 
     @classmethod
     def from_json(cls, path: Path, *, require_dependencies: bool = False) -> "MatrixConfig":
@@ -139,6 +148,7 @@ class MatrixConfig:
         except (OSError, json.JSONDecodeError) as exc:
             raise OfficialScoreMatrixError("matrix config is unreadable") from exc
         _need(isinstance(raw, dict), "matrix config must be an object")
+        raw.setdefault("score_prompt_kind", LEGACY_COMPACT)
         for field in ("score_fields", "selection_epochs"):
             _need(isinstance(raw.get(field), list), f"{field} must be a list")
             raw[field] = tuple(raw[field])
@@ -151,7 +161,12 @@ class MatrixConfig:
 
     def validate(self) -> None:
         _need(self.schema_version == "mal2026-official-score-matrix-v1", "matrix schema differs")
-        _need(self.run_id == "official-score-matrix-v1-20260727-001", "matrix run identity differs")
+        expected_run = {
+            LEGACY_COMPACT: "official-score-matrix-v1-20260727-001",
+            PUBLIC_SPEC_SCORE_ONLY: "official-score-matrix-public-spec-score-prompt-v1-20260728-001",
+        }
+        _need(self.score_prompt_kind in SCORE_PROMPT_KINDS, "score prompt kind differs")
+        _need(self.run_id == expected_run[self.score_prompt_kind], "matrix run identity differs")
         _need((self.model_id, self.model_revision) == (MODEL_ID, MODEL_REVISION), "model pin differs")
         _need(self.score_fields == AXES, "only content/organization/expression targets are allowed")
         _need(self.selection_epochs == (1, 2, 3, 4) and self.internal_dev_fraction == 0.2, "selection protocol differs")
@@ -162,7 +177,12 @@ class MatrixConfig:
         _need(self.aihub_warmstart_load_mode == "full_backbone_and_matched_head_then_fresh_mal_lora", "AI-Hub warmstart semantics differ")
         _need(self.historical_warmstate_classification == "historical_continuous_four_axis_backbone_only_not_primary", "historical warmstate classification differs")
         output = Path(self.output_root)
-        _need(output.resolve() == (ROOT / "outputs" / "official-score-matrix-v1").resolve(), "matrix output root differs")
+        expected_output = ROOT / "outputs" / (
+            "official-score-matrix-v1"
+            if self.score_prompt_kind == LEGACY_COMPACT
+            else "official-score-matrix-public-spec-score-prompt-v1"
+        )
+        _need(output.resolve() == expected_output.resolve(), "matrix output root differs")
         _need(Path(self.bootstrap_selection_path).resolve() == (output / "bootstrap_selection.json").resolve(), "bootstrap selection path differs")
         _need(Path(self.restricted_bootstrap_output_root).resolve() == (ROOT / "data" / "processed" / "restricted" / "official_prompt_alignment_v1" / "score_matrix_bootstrap" / self.run_id).resolve(), "restricted bootstrap output root differs")
         _need(
@@ -175,7 +195,12 @@ class MatrixConfig:
         # lineage, which is also the root bound by the remaining-pipeline
         # resolver.  Keep this validation fail-closed to that exact immutable
         # producer rather than accepting an arbitrary same-shaped directory.
-        pretrain = ROOT / "outputs" / "official-aihub-integer-score-full-pretrain-v1" / "official-aihub-integer-score-full-pretrain-v1-20260727-003"
+        pretrain_run = (
+            "official-aihub-integer-score-full-pretrain-v1-20260727-003"
+            if self.score_prompt_kind == LEGACY_COMPACT
+            else "official-aihub-integer-score-full-pretrain-v1-20260728-001"
+        )
+        pretrain = ROOT / "outputs" / "official-aihub-integer-score-full-pretrain-v1" / pretrain_run
         for head, completion, artifact in (
             ("bounded_regression", self.aihub_bounded_completion_path, self.aihub_bounded_artifact_path),
             ("ordinal_cumulative", self.aihub_ordinal_completion_path, self.aihub_ordinal_artifact_path),
@@ -219,6 +244,11 @@ class MatrixConfig:
             _need(metadata.get("schema_version") == "mal2026-aihub-integer-score-pretrain-completion-v2" and metadata.get("status") == "completed" and metadata.get("phase") == "refit", "AI-Hub completion identity differs")
             _need(metadata.get("head") == dependency_head and metadata.get("score_fields") == list(AXES), "AI-Hub head/axis lineage differs")
             _need(metadata.get("integer_target_used") is True and metadata.get("average_target_used") is False and metadata.get("target_projection") == "official_half_up", "AI-Hub warmstate is not integer three-axis only")
+            expected_prompt = score_prompt_provenance(self.score_prompt_kind)
+            actual_prompt_kind = metadata.get("score_prompt_kind", LEGACY_COMPACT)
+            _need(actual_prompt_kind == expected_prompt["score_prompt_kind"], "AI-Hub score prompt kind differs")
+            if self.score_prompt_kind != LEGACY_COMPACT:
+                _need(metadata.get("score_prompt_sha256") == expected_prompt["score_prompt_sha256"], "AI-Hub score prompt hash differs")
             _need(state.get("schema_version") == "mal2026-aihub-integer-score-full-state-v2" and state.get("head") == dependency_head, "AI-Hub full-state identity differs")
             _need(state.get("model_id") == self.model_id and state.get("model_revision") == self.model_revision, "AI-Hub full-state model pin differs")
             _need(state.get("score_fields") == list(AXES) and state.get("integer_target_used") is True and state.get("average_target_used") is False and state.get("target_projection") == "official_half_up", "AI-Hub full-state score contract differs")
@@ -375,14 +405,24 @@ def load_rationales(path: Path, expected_sha: str, rows: Sequence[ScoreRow]) -> 
     return result
 
 
-def render_input(row: ScoreRow, input_view: str, rationales: Mapping[str, str] | None = None) -> str:
+def render_input(
+    row: ScoreRow,
+    input_view: str,
+    rationales: Mapping[str, str] | None = None,
+    score_prompt_kind: str = LEGACY_COMPACT,
+) -> str:
     _need(input_view in INPUTS, "input view differs")
-    prefix = "Instruct: Predict three integer Korean writing scores (content, organization, expression), each from 1 to 5.\nQuery:\n"
-    text = f"<writing_prompt>\n{row.prompt}\n</writing_prompt>\n<student_essay>\n{row.essay}\n</student_essay>"
     if input_view == "rationale":
         _need(rationales is not None and set(rationales) == set(AXES), "rationale input is unavailable")
-        text += "\n<evaluation_rationales>\n" + "\n".join(f"<{axis}>{rationales[axis]}</{axis}>" for axis in AXES) + "\n</evaluation_rationales>"
-    return prefix + text
+    try:
+        return embedding_input(
+            row.prompt,
+            row.essay,
+            score_prompt_kind,
+            rationales if input_view == "rationale" else None,
+        )
+    except ValueError as exc:
+        raise OfficialScoreMatrixError(str(exc)) from exc
 
 
 def ordinal_targets(labels: Any) -> Any:
@@ -486,8 +526,21 @@ def select_bootstrap_candidate(rows: Sequence[Mapping[str, Any]]) -> Mapping[str
     )
 
 
-def _examples(rows: Sequence[ScoreRow], input_view: str, rationales: Mapping[str, Mapping[str, str]] | None) -> list[dict[str, Any]]:
-    return [{"text": render_input(row, input_view, None if rationales is None else rationales[row.identifier]), "labels": list(row.labels)} for row in rows]
+def _examples(
+    rows: Sequence[ScoreRow],
+    input_view: str,
+    rationales: Mapping[str, Mapping[str, str]] | None,
+    score_prompt_kind: str = LEGACY_COMPACT,
+) -> list[dict[str, Any]]:
+    return [{
+        "text": render_input(
+            row,
+            input_view,
+            None if rationales is None else rationales[row.identifier],
+            score_prompt_kind,
+        ),
+        "labels": list(row.labels),
+    } for row in rows]
 
 
 def _dataset(items: Sequence[Mapping[str, Any]], tokenizer: Any, max_length: int) -> Any:
@@ -686,8 +739,8 @@ def run_arm(config: MatrixConfig, arm: str, *, smoke: bool = False) -> dict[str,
         tokenizer.pad_token = tokenizer.eos_token
     model, initialization_provenance = build_model(config, head, initialization)
     selection_head_initial_sha256 = score_head_initial_sha256(model)
-    train_dataset = _dataset(_examples(selection_train, input_view, rationales_train), tokenizer, config.max_length)
-    dev_dataset = _dataset(_examples(selection_dev, input_view, rationales_train), tokenizer, config.max_length)
+    train_dataset = _dataset(_examples(selection_train, input_view, rationales_train, config.score_prompt_kind), tokenizer, config.max_length)
+    dev_dataset = _dataset(_examples(selection_dev, input_view, rationales_train, config.score_prompt_kind), tokenizer, config.max_length)
     epoch_rows: list[dict[str, Any]] = []
     selection_root = output / "selection"
 
@@ -739,7 +792,7 @@ def run_arm(config: MatrixConfig, arm: str, *, smoke: bool = False) -> dict[str,
     _need(isinstance(epoch_rows, list) and epoch_rows, "selection emitted no epoch metrics")
     best = select_epoch(epoch_rows)
     if smoke:
-        payload = {"status": "completed", "mode": "gpu0_smoke", "arm": arm, "score_fields": list(AXES), "average_read": False, "average_target_used": False, "split_fingerprint": split_fingerprint, "selection": epoch_rows, "initialization": initialization_provenance, "score_head_initial_sha256": selection_head_initial_sha256}
+        payload = {"status": "completed", "mode": "gpu0_smoke", "arm": arm, "score_fields": list(AXES), "average_read": False, "average_target_used": False, "split_fingerprint": split_fingerprint, "selection": epoch_rows, "initialization": initialization_provenance, "score_head_initial_sha256": selection_head_initial_sha256, **score_prompt_provenance(config.score_prompt_kind)}
         if selector.is_world_process_zero():
             (output / "smoke_complete.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
         return payload
@@ -755,7 +808,7 @@ def run_arm(config: MatrixConfig, arm: str, *, smoke: bool = False) -> dict[str,
     refit_model, refit_initialization = build_model(config, head, initialization)
     refit_head_initial_sha256 = score_head_initial_sha256(refit_model)
     _need(refit_head_initial_sha256 == selection_head_initial_sha256, "selection/refit score-head initialization differs")
-    full_dataset = _dataset(_examples(train_rows, input_view, rationales_train), tokenizer, config.max_length)
+    full_dataset = _dataset(_examples(train_rows, input_view, rationales_train, config.score_prompt_kind), tokenizer, config.max_length)
     refit_root = output / "refit"
     refitter = Trainer(model=refit_model, args=TrainingArguments(
         output_dir=str(refit_root), do_train=True, do_eval=False, eval_strategy="no", save_strategy="no", num_train_epochs=float(best["epoch"]),
@@ -781,7 +834,7 @@ def run_arm(config: MatrixConfig, arm: str, *, smoke: bool = False) -> dict[str,
     # Canonical validation is intentionally first loaded here and evaluated once.
     validation_rows = load_score_rows(Path(config.validation_path), config.validation_sha256, 400)
     rationales_validation = load_rationales(Path(config.rationale_validation_path), config.rationale_validation_sha256, validation_rows) if input_view == "rationale" else None
-    validation_dataset = _dataset(_examples(validation_rows, input_view, rationales_validation), tokenizer, config.max_length)
+    validation_dataset = _dataset(_examples(validation_rows, input_view, rationales_validation, config.score_prompt_kind), tokenizer, config.max_length)
     final_metrics, _, validation_integer_predictions, _ = _predict(refitter, validation_dataset, head)
     emitted: dict[str, Any] | None = None
     if input_view == "essay":
@@ -807,6 +860,7 @@ def run_arm(config: MatrixConfig, arm: str, *, smoke: bool = False) -> dict[str,
     payload = {
         "status": "completed", "run_id": config.run_id, "arm": arm, "head": head, "initialization": initialization,
         "input_view": input_view, "score_fields": list(AXES), "average_read": False, "average_target_used": False,
+        **score_prompt_provenance(config.score_prompt_kind),
         "integer_projection": "official_half_up", "ordinal_projection": "cumulative_minimum_nonincreasing",
         "internal_split": {"train": 1600, "dev": 400, "group_fields": ["prompt_num", "document_id"], "fingerprint": split_fingerprint},
         "selection": {

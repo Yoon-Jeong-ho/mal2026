@@ -26,6 +26,14 @@ from .official_score_matrix import (
     load_rationales, load_score_rows, ordinal_targets, score_metrics,
     select_epoch,
 )
+from .official_score_prompt import (
+    LEGACY_COMPACT,
+    PUBLIC_SPEC_SCORE_ONLY,
+    SCORE_PROMPT_KINDS,
+    provenance as score_prompt_provenance,
+    query_text,
+    system_prompt,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -73,22 +81,23 @@ def parse_generated(text: str) -> tuple[int, int, int] | None:
 
 def render_input(row: Any, input_view: str, rationales: Mapping[str, str] | None = None) -> str:
     _need(input_view in INPUT_VIEWS, "unknown decoder input view")
-    text = (
-        "<writing_prompt>\n" + row.prompt + "\n</writing_prompt>\n"
-        "<student_essay>\n" + row.essay + "\n</student_essay>"
-    )
     if input_view == "rationale":
         _need(rationales is not None and set(rationales) == set(AXES), "three rationale axes are required")
-        text += "\n<evaluation_rationales>\n" + "\n".join(f"<{axis}>{rationales[axis]}</{axis}>" for axis in AXES) + "\n</evaluation_rationales>"
-    return (
-        "다음 한국어 글을 평가하십시오. content, organization, expression의 1~5 정수 점수만 "
-        "정확한 JSON으로 출력하고 설명이나 average를 출력하지 마십시오.\n" + text
-    )
+    try:
+        return query_text(row.prompt, row.essay, rationales if input_view == "rationale" else None)
+    except ValueError as exc:
+        raise OfficialDecoderScoreError(str(exc)) from exc
 
 
-def chat_prompt(tokenizer: Any, row: Any, input_view: str, rationales: Mapping[str, str] | None = None) -> str:
+def chat_prompt(
+    tokenizer: Any,
+    row: Any,
+    input_view: str,
+    rationales: Mapping[str, str] | None = None,
+    score_prompt_kind: str = LEGACY_COMPACT,
+) -> str:
     messages = [
-        {"role": "system", "content": "당신은 한국어 글쓰기 평가자입니다. 과제와 학생 글만 근거로 세 정수 점수만 출력하십시오."},
+        {"role": "system", "content": system_prompt(score_prompt_kind)},
         {"role": "user", "content": render_input(row, input_view, rationales)},
     ]
     return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -139,6 +148,7 @@ class DecoderScoreConfig:
     lora_target_modules: tuple[str, ...]
     training_dtype: str
     historical_result_classification: str
+    score_prompt_kind: str = LEGACY_COMPACT
 
     @classmethod
     def from_json(cls, path: Path, *, require_dependencies: bool = True) -> "DecoderScoreConfig":
@@ -147,6 +157,7 @@ class DecoderScoreConfig:
         except (OSError, json.JSONDecodeError) as exc:
             raise OfficialDecoderScoreError("decoder config is unreadable") from exc
         _need(isinstance(raw, dict), "decoder config must be an object")
+        raw.setdefault("score_prompt_kind", LEGACY_COMPACT)
         for key in ("score_fields", "selection_epochs", "lora_target_modules"):
             _need(isinstance(raw.get(key), list), f"{key} must be a list")
             raw[key] = tuple(raw[key])
@@ -160,7 +171,12 @@ class DecoderScoreConfig:
 
     def validate(self, *, require_dependencies: bool = True) -> None:
         _need(self.schema_version == "mal2026-official-decoder-score-config-v1", "decoder config schema differs")
-        _need(self.run_id == "official-decoder-score-matrix-v1-20260727-001", "decoder run identity differs")
+        expected_run = {
+            LEGACY_COMPACT: "official-decoder-score-matrix-v1-20260727-001",
+            PUBLIC_SPEC_SCORE_ONLY: "official-decoder-score-matrix-public-spec-score-prompt-v1-20260728-001",
+        }
+        _need(self.score_prompt_kind in SCORE_PROMPT_KINDS, "score prompt kind differs")
+        _need(self.run_id == expected_run[self.score_prompt_kind], "decoder run identity differs")
         _need((self.model_id, self.model_revision) == (MODEL_ID, MODEL_REVISION), "decoder model pin differs")
         _need(self.score_fields == AXES, "only three analytic axes are allowed")
         _need(self.selection_epochs == (1, 2, 3, 4), "selection epochs differ")
@@ -170,7 +186,12 @@ class DecoderScoreConfig:
         _need((self.lora_r, self.lora_alpha, self.lora_dropout) == (16, 32, 0.05), "LoRA contract differs")
         _need(self.lora_target_modules == LORA_TARGETS and self.training_dtype == "bfloat16", "LoRA target/dtype differs")
         _need(self.historical_result_classification == "descriptive_only_continuous_or_four_axis_not_loaded", "historical-result boundary differs")
-        _need(Path(self.output_root).resolve() == (ROOT / "outputs" / "official-decoder-score-matrix-v1").resolve(), "output root differs")
+        expected_output = ROOT / "outputs" / (
+            "official-decoder-score-matrix-v1"
+            if self.score_prompt_kind == LEGACY_COMPACT
+            else "official-decoder-score-matrix-public-spec-score-prompt-v1"
+        )
+        _need(Path(self.output_root).resolve() == expected_output.resolve(), "output root differs")
         _need(Path(self.validation_path).resolve() == (ROOT / "eval" / "validation.jsonl").resolve(), "canonical validation path differs")
         _need(self.validation_sha256 == "0805445029328848164cf15f34b90b88fb5f7896d7b73f24f1717b733a9a00a4", "canonical validation pin differs")
         if not require_dependencies:
@@ -213,6 +234,11 @@ class DecoderScoreConfig:
         _need(completion.get("phase") == "refit" and completion.get("architecture") == architecture, "AI-Hub completion lineage differs")
         _need(completion.get("initialization") == "public" and completion.get("input_view") == "essay", "AI-Hub initialization/input lineage differs")
         _need(completion.get("score_fields") == list(AXES) and completion.get("integer_target_used") is True and completion.get("average_target_used") is False, "AI-Hub target contract differs")
+        expected_prompt = score_prompt_provenance(self.score_prompt_kind)
+        actual_prompt_kind = completion.get("score_prompt_kind", LEGACY_COMPACT)
+        _need(actual_prompt_kind == expected_prompt["score_prompt_kind"], "AI-Hub score prompt kind differs")
+        if self.score_prompt_kind != LEGACY_COMPACT:
+            _need(completion.get("score_prompt_sha256") == expected_prompt["score_prompt_sha256"], "AI-Hub score prompt hash differs")
         _need(completion.get("rationale_output_used") is False and completion.get("canonical_validation") is None, "AI-Hub pretraining crossed a forbidden output/evaluation boundary")
         _need(completion.get("data", {}).get("dataset") == "aihub_human_feedback_v1", "AI-Hub dataset lineage differs")
         reproducibility = completion.get("reproducibility", {})
@@ -355,10 +381,11 @@ def trainable_state(model: Any, architecture: str) -> dict[str, Any]:
 
 
 def state_sha256(state: Mapping[str, Any]) -> str:
+    import torch
     digest = sha256()
     for name, tensor in sorted(state.items()):
         value = tensor.detach().cpu().contiguous()
-        digest.update(name.encode()); digest.update(str(value.dtype).encode()); digest.update(json.dumps(list(value.shape)).encode()); digest.update(value.numpy().tobytes())
+        digest.update(name.encode()); digest.update(str(value.dtype).encode()); digest.update(json.dumps(list(value.shape)).encode()); digest.update(value.view(torch.uint8).numpy().tobytes())
     return digest.hexdigest()
 
 
@@ -375,13 +402,23 @@ def experiment_contract(config: DecoderScoreConfig) -> dict[str, Any]:
         "aihub_pretraining": "same decoder architecture; full-parameter integer three-axis AI-Hub selection/exact-step refit; then fresh MAL LoRA; no rationale or canonical validation",
         "generative_output_space": {"format": '{"content":I,"organization":I,"expression":I}', "canonical_outputs": 125, "rationale": False, "average": False},
         "historical_results": config.historical_result_classification,
+        **score_prompt_provenance(config.score_prompt_kind),
         "privacy": "aggregate_only_no_rows_text_ids_rationales_or_predictions_persisted",
     }
 
 
 def _head_dataset(rows: Sequence[Any], tokenizer: Any, config: DecoderScoreConfig, input_view: str, rationales: Mapping[str, Mapping[str, str]] | None) -> Any:
     from datasets import Dataset
-    texts = [chat_prompt(tokenizer, row, input_view, None if rationales is None else rationales[row.identifier]) for row in rows]
+    texts = [
+        chat_prompt(
+            tokenizer,
+            row,
+            input_view,
+            None if rationales is None else rationales[row.identifier],
+            config.score_prompt_kind,
+        )
+        for row in rows
+    ]
     dataset = Dataset.from_dict({"text": texts, "labels": [list(row.labels) for row in rows]})
     return dataset.map(lambda batch: tokenizer(batch["text"], truncation=True, max_length=config.max_length), batched=True, remove_columns=["text"])
 
@@ -401,7 +438,13 @@ def _causal_dataset(rows: Sequence[Any], tokenizer: Any, config: DecoderScoreCon
     items: list[dict[str, Any]] = []
     _need(tokenizer.eos_token_id is not None, "decoder tokenizer has no EOS token")
     for row in rows:
-        prompt = chat_prompt(tokenizer, row, input_view, None if rationales is None else rationales[row.identifier])
+        prompt = chat_prompt(
+            tokenizer,
+            row,
+            input_view,
+            None if rationales is None else rationales[row.identifier],
+            config.score_prompt_kind,
+        )
         prompt_ids = tokenizer(prompt, add_special_tokens=False, truncation=True, max_length=config.max_length - 32)["input_ids"]
         target_ids = tokenizer(render_target(row.labels), add_special_tokens=False)["input_ids"] + [tokenizer.eos_token_id]
         _need(len(prompt_ids) + len(target_ids) <= config.max_length, "decoder training example exceeds max_length")
@@ -456,7 +499,16 @@ def generate_integer_predictions(model: Any, tokenizer: Any, rows: Sequence[Any]
     try:
         for start in range(0, len(rows), config.per_device_eval_batch_size):
             batch_rows = rows[start:start + config.per_device_eval_batch_size]
-            prompts = [chat_prompt(tokenizer, row, input_view, None if rationales is None else rationales[row.identifier]) for row in batch_rows]
+            prompts = [
+                chat_prompt(
+                    tokenizer,
+                    row,
+                    input_view,
+                    None if rationales is None else rationales[row.identifier],
+                    getattr(config, "score_prompt_kind", LEGACY_COMPACT),
+                )
+                for row in batch_rows
+            ]
             device = next(model.parameters()).device
             encoded = tokenizer(prompts, padding=True, truncation=True, max_length=config.max_length - max_new_tokens, return_tensors="pt").to(device)
             prefix_width = encoded["input_ids"].shape[1]
@@ -596,6 +648,7 @@ def _run_selection_refit(config: DecoderScoreConfig, architecture: str, initiali
         "architecture": architecture, "initialization": initialization, "input_view": input_view,
         "score_fields": list(AXES), "integer_target_used": True, "target_projection": "official_half_up",
         "average_read": False, "average_target_used": False, "rationale_output_used": False,
+        **score_prompt_provenance(config.score_prompt_kind),
         "selection": {"events": events, "selected_epoch": best["epoch"], "rule": "integer RMSE, integer Spearman, continuous RMSE, earlier epoch", "initial_state_sha256": initial_hash, "split_fingerprint": split_fingerprint},
         "refit": {"records": len(refit_rows), "epochs": best["epoch"], "initial_state_sha256": refit_hash},
         "state": {"path": str(state_path.resolve()), "sha256": file_sha256(state_path), "schema_version": STATE_SCHEMA},

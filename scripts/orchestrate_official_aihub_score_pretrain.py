@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from mal2026.official_aihub_score_pretrain import (  # noqa: E402
     HEADS, PretrainConfig, downstream_target_contract, file_sha256,
 )
+from mal2026.official_score_prompt import provenance as score_prompt_provenance  # noqa: E402
 
 
 def now() -> str:
@@ -74,6 +75,7 @@ def main() -> None:
             "distributed_strategy": "fsdp_full_shard_auto_wrap",
             "fsdp_version": config.fsdp_version,
             **downstream_target_contract(config),
+            **score_prompt_provenance(config.score_prompt_kind),
             "canonical_validation_access": False, "plan": stages,
         }, indent=2, sort_keys=True))
         return
@@ -92,6 +94,7 @@ def main() -> None:
         "git_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "gpu_scope": {"smoke": [0], "full": [0, 1, 2, 3], "authorization": "default MAL2026 GPU scope"},
         "heads": list(config.heads), **downstream_target_contract(config),
+        **score_prompt_provenance(config.score_prompt_kind),
         "training_method": "full_parameter",
         "distributed_strategy": config.distributed_strategy,
         "fsdp_version": config.fsdp_version,
@@ -138,7 +141,7 @@ def main() -> None:
     aggregate = {
         "schema_version": "mal2026-aihub-integer-score-pretrain-aggregate-v2",
         "status": "completed", "run_id": config.run_id,
-        **downstream_target_contract(config), "average_read": False,
+        **downstream_target_contract(config), **score_prompt_provenance(config.score_prompt_kind), "average_read": False,
         "training_method": "full_parameter",
         "downstream_adaptation": "fresh_MAL2026_LoRA_on_selected_full_AIHub_backbone_with_matched_head_retained",
         "selection_source": "AI-Hub selection_dev only", "refit_records": 48016,

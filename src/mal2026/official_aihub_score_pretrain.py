@@ -25,6 +25,13 @@ from pathlib import Path
 import time
 from typing import Any, Iterable, Mapping, Sequence
 
+from .official_score_prompt import (
+    LEGACY_COMPACT,
+    SCORE_PROMPT_KINDS,
+    embedding_input,
+    provenance as score_prompt_provenance,
+)
+
 
 ROOT = Path(__file__).resolve().parents[2]
 CANONICAL_MANIFEST = ROOT / "data" / "manifests" / "aihub_human_feedback_v1.json"
@@ -138,13 +145,9 @@ def load_integer_split(split: str, manifest_path: Path = CANONICAL_MANIFEST) -> 
     return rows, digest
 
 
-def render_input(row: IntegerScoreRow) -> str:
-    return (
-        "Instruct: Predict three integer Korean writing scores "
-        "(content, organization, expression), each from 1 to 5.\nQuery:\n"
-        f"<writing_prompt>\n{row.prompt}\n</writing_prompt>\n"
-        f"<student_essay>\n{row.essay}\n</student_essay>"
-    )
+def render_input(row: IntegerScoreRow, score_prompt_kind: str = LEGACY_COMPACT) -> str:
+    """Render a reproducible legacy or public-spec score-only encoder input."""
+    return embedding_input(row.prompt, row.essay, score_prompt_kind)
 
 
 def ordinal_targets(labels: Any) -> Any:
@@ -265,6 +268,7 @@ class PretrainConfig:
     # Transformers/PyTorch stack cannot update DTensor parameters, so the
     # repaired lineage explicitly selects the still-supported FSDP1 backend.
     fsdp_version: int = 2
+    score_prompt_kind: str = LEGACY_COMPACT
 
     @classmethod
     def from_json(cls, path: Path, *, require_dependencies: bool = True) -> "PretrainConfig":
@@ -276,6 +280,7 @@ class PretrainConfig:
         # Configs from the two preserved failed lineages predate the explicit
         # version field and therefore reproduce Transformers' FSDP2 default.
         raw.setdefault("fsdp_version", 2)
+        raw.setdefault("score_prompt_kind", LEGACY_COMPACT)
         for field in ("score_fields", "heads"):
             _need(isinstance(raw.get(field), list), f"{field} must be a list")
             raw[field] = tuple(raw[field])
@@ -304,6 +309,7 @@ class PretrainConfig:
         _need(self.activation_checkpointing is True, "full tuning requires activation checkpointing")
         _need(self.fsdp_transformer_layer_class == "Qwen3DecoderLayer" and self.fsdp_state_dict_type == "FULL_STATE_DICT", "FSDP save/wrap contract differs")
         _need(self.training_dtype == "bfloat16", "training dtype differs")
+        _need(self.score_prompt_kind in SCORE_PROMPT_KINDS, "score prompt kind differs")
         _need(self.historical_reference_selected_step == 1900, "historical provenance step differs")
         _need(self.historical_reference_classification == "reference_only_continuous_four_axis_not_loaded", "historical warmstate must remain reference-only")
         if require_dependencies:
@@ -336,9 +342,17 @@ def downstream_target_contract(config: PretrainConfig) -> dict[str, Any]:
     }
 
 
-def _dataset(rows: Sequence[IntegerScoreRow], tokenizer: Any, max_length: int) -> Any:
+def _dataset(
+    rows: Sequence[IntegerScoreRow],
+    tokenizer: Any,
+    max_length: int,
+    score_prompt_kind: str = LEGACY_COMPACT,
+) -> Any:
     from datasets import Dataset
-    dataset = Dataset.from_dict({"text": [render_input(row) for row in rows], "labels": [list(row.labels) for row in rows]})
+    dataset = Dataset.from_dict({
+        "text": [render_input(row, score_prompt_kind) for row in rows],
+        "labels": [list(row.labels) for row in rows],
+    })
     return dataset.map(lambda batch: tokenizer(batch["text"], truncation=True, max_length=max_length), batched=True, remove_columns=["text"])
 
 
@@ -574,8 +588,8 @@ def run_training(config: PretrainConfig, head: str, phase: str, *, smoke: bool =
     initial_hash = initialization_contract_sha256(config, head, initial_head_hash)
     if phase == "refit":
         _need(initial_hash == selection_initial_hash, "selection/refit initialization replay differs")
-    train_dataset = _dataset(train_rows, tokenizer, config.max_length)
-    eval_dataset = _dataset(dev_rows, tokenizer, config.max_length) if dev_rows is not None else None
+    train_dataset = _dataset(train_rows, tokenizer, config.max_length, config.score_prompt_kind)
+    eval_dataset = _dataset(dev_rows, tokenizer, config.max_length, config.score_prompt_kind) if dev_rows is not None else None
     events: list[dict[str, Any]] = []
 
     class SelectionCallback(TrainerCallback):
@@ -672,6 +686,7 @@ def run_training(config: PretrainConfig, head: str, phase: str, *, smoke: bool =
         "head": head,
         "identity": config.identity(head),
         **downstream_target_contract(config),
+        **score_prompt_provenance(config.score_prompt_kind),
         "integer_projection": "Decimal ROUND_HALF_UP to 1..5",
         "average_read": False,
         "canonical_validation_access": False,
@@ -706,6 +721,7 @@ def run_training(config: PretrainConfig, head: str, phase: str, *, smoke: bool =
                 "schema_version": STATE_SCHEMA,
                 "head": head,
                 **downstream_target_contract(config),
+                **score_prompt_provenance(config.score_prompt_kind),
                 "model_id": config.model_id,
                 "model_revision": config.model_revision,
                 "training_method": "full_parameter",

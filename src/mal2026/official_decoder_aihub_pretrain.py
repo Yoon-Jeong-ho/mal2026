@@ -16,6 +16,11 @@ from .official_decoder_score import (
     _head_dataset, file_sha256, generate_integer_predictions,
 )
 from .official_score_matrix import decode_logits, ordinal_targets, score_metrics
+from .official_score_prompt import (
+    LEGACY_COMPACT,
+    SCORE_PROMPT_KINDS,
+    provenance as score_prompt_provenance,
+)
 
 
 OUTPUT_ROOT = ROOT / "outputs" / "official-decoder-aihub-integer-score-full-pretrain-v1"
@@ -64,6 +69,7 @@ class DecoderAIHubConfig:
     fsdp_state_dict_type: str
     training_dtype: str
     fsdp_version: int = 2
+    score_prompt_kind: str = LEGACY_COMPACT
 
     @classmethod
     def from_json(cls, path: Path, *, require_dependencies: bool = True) -> "DecoderAIHubConfig":
@@ -73,6 +79,7 @@ class DecoderAIHubConfig:
             raise DecoderAIHubPretrainError("decoder AI-Hub config is unreadable") from exc
         _need(isinstance(raw, dict), "decoder AI-Hub config must be an object")
         raw.setdefault("fsdp_version", 2)
+        raw.setdefault("score_prompt_kind", LEGACY_COMPACT)
         for field in ("architectures", "score_fields"):
             _need(isinstance(raw.get(field), list), f"{field} must be a list")
             raw[field] = tuple(raw[field])
@@ -90,6 +97,7 @@ class DecoderAIHubConfig:
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-004",
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-005",
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-006",
+            "official-decoder-aihub-integer-score-full-pretrain-v1-20260728-001",
         }, "pretrain run identity differs")
         _need((self.model_id, self.model_revision) == (MODEL_ID, MODEL_REVISION), "decoder model pin differs")
         _need(self.architectures == ARCHITECTURES and self.score_fields == AXES, "architecture/axis contract differs")
@@ -105,6 +113,7 @@ class DecoderAIHubConfig:
         _need((self.per_device_train_batch_size, self.per_device_eval_batch_size, self.gradient_accumulation_steps) == (1, 2, 8), "batch contract differs")
         _need(self.activation_checkpointing is True and self.fsdp_transformer_layer_class == "Qwen2DecoderLayer" and self.fsdp_state_dict_type == "FULL_STATE_DICT", "FSDP contract differs")
         _need(self.training_dtype == "bfloat16", "training dtype differs")
+        _need(self.score_prompt_kind in SCORE_PROMPT_KINDS, "score prompt kind differs")
         if require_dependencies:
             _need(Path(self.model_path).is_dir() and not Path(self.model_path).is_symlink(), "local decoder snapshot is unavailable")
             _need(Path(self.manifest_path).is_file() and not Path(self.manifest_path).is_symlink(), "AI-Hub manifest is unavailable")
@@ -382,6 +391,7 @@ def run_training(config: DecoderAIHubConfig, architecture: str, phase: str, *, s
         "schema_version": COMPLETION_SCHEMA, "status": "completed", "mode": "gpu0_one_update_smoke" if smoke else "full", "run_id": config.run_id,
         "phase": phase, "architecture": architecture, "identity": config.identity(architecture), "initialization": "public", "input_view": "essay",
         "score_fields": list(AXES), "integer_target_used": True, "target_projection": "official_half_up", "average_read": False, "average_target_used": False,
+        **score_prompt_provenance(config.score_prompt_kind),
         "rationale_output_used": False, "canonical_validation": None, "canonical_validation_access": False, "training_method": "full_parameter", "downstream_adaptation": "fresh_MAL_LoRA",
         "data": {"dataset": "aihub_human_feedback_v1", "split": train_split, "records": len(train_rows), "sha256": train_sha, "selection_dev_sha256": dev_sha},
         "initialization_contract_sha256": initial_contract, "selection": {"events": events, "selected_event": selected_event, "source": "AI-Hub selection_dev only"},
@@ -400,7 +410,7 @@ def run_training(config: DecoderAIHubConfig, architecture: str, phase: str, *, s
             if trainer.is_world_process_zero():
                 tokenizer.save_pretrained(artifact)
                 inventory, artifact_sha = artifact_inventory(artifact)
-                metadata = {"schema_version": STATE_SCHEMA, "architecture": architecture, "model_id": config.model_id, "model_revision": config.model_revision, "training_method": "full_parameter", "score_fields": list(AXES), "integer_target_used": True, "average_target_used": False, "state_scope": "complete_full_parameter_backbone_plus_matched_head", "artifact_path": str(artifact.resolve()), "artifact_sha256": artifact_sha, "inventory": inventory, **exported_tensor_contract(artifact, architecture)}
+                metadata = {"schema_version": STATE_SCHEMA, "architecture": architecture, "model_id": config.model_id, "model_revision": config.model_revision, "training_method": "full_parameter", "score_fields": list(AXES), "integer_target_used": True, "average_target_used": False, "state_scope": "complete_full_parameter_backbone_plus_matched_head", "artifact_path": str(artifact.resolve()), "artifact_sha256": artifact_sha, "inventory": inventory, **score_prompt_provenance(config.score_prompt_kind), **exported_tensor_contract(artifact, architecture)}
                 metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
                 payload["state"] = {**metadata, "metadata_path": str(metadata_path.resolve()), "metadata_sha256": file_sha256(metadata_path)}
             state_shared: list[Any] = [payload.get("state") if trainer.is_world_process_zero() else None]
