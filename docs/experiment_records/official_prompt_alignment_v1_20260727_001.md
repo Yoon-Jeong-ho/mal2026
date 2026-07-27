@@ -1,8 +1,8 @@
 # Public-spec-aligned score and rationale program v1
 
 Status: **API/SFT/AI-Hub rationale comparisons complete; RL fail-closed at
-the frozen safety gate; independent integer-score pretraining running**
-(2026-07-27)
+the frozen safety gate; public-spec score-only integer pretraining and matrix
+evaluation running** (updated 2026-07-28)
 
 ## Prompt-provenance terminology
 
@@ -281,6 +281,69 @@ global step 1 with finite loss `2.3809757233`.  Full selection is now running
 on GPUs 0--3 under run
 `official-aihub-integer-score-full-pretrain-v1-20260727-003`, Git commit
 `8da22b9`.  Failed outputs and logs remain preserved rather than overwritten.
+
+### 2026-07-28 public-score prompt correction and active lineage
+
+The `20260727-003` result above is retained as a legacy compact-prompt
+baseline.  It is not reused as the primary warm start for the public-spec
+matrix.  The active score prompt is the separately versioned
+`public_spec_score_only_v1` reconstruction, SHA256
+`82814db3a6a20e72e73d70126eceb99c7ff653037b70c71723dc514089978d51`.
+It contains the published definitions and 1--5 anchors for content,
+organization, and expression, but prohibits rationale and average output.
+This is a public-spec-aligned reconstruction, not unavailable verbatim
+organizer wording.  Embedding and decoder AI-Hub pretraining and every new
+MAL score-matrix arm are bound to this prompt kind and digest; mismatched
+pretraining completions fail validation rather than being silently loaded.
+
+The public-prompt AI-Hub input audit covered all 9,597 deterministic
+selection-dev records.  The maximum rendered length was 1,419 tokens for the
+embedding tokenizer and 1,418 for the decoder tokenizer, with zero records
+over the fixed 2,048-token cap.  The first public-prompt run,
+`official-aihub-integer-score-full-pretrain-v1-20260728-001`, remains
+preserved with status `superseded_integration_optimization`: its evaluation
+batch of one required about 4.7 minutes for each selection event.  The only
+change in the successor was evaluation batch one to four; training batch,
+gradient accumulation, model, targets, optimizer, seed, selection rule, and
+prompt were unchanged.  This reduced the 9,597-row evaluation to about 74
+seconds after the first event.
+
+The active successor is
+`official-aihub-integer-score-full-pretrain-v1-20260728-002`, launched from
+Git SHA `2ee545552560c5aa8ea7eaf157721b0c2e829d05` with:
+
+```text
+.venv-standard/bin/python scripts/orchestrate_official_aihub_score_pretrain.py \
+  --config configs/official_aihub_integer_score_pretrain.public_spec_score_prompt_eval4.v1.json
+```
+
+It uses seed 2026, the frozen AI-Hub manifest
+`data/manifests/aihub_human_feedback_v1.json`, Qwen3-Embedding-8B revision
+`1d8ad4ca9b3dd8059ad90a75d4983776a23d44af`, full-parameter Adafactor
+training, BF16 FSDP1 full sharding, GPU0 for one-update smokes, and authorized
+GPUs 0--3 for full stages.  Neither the canonical MAL validation split nor
+its labels are accessed during this pretraining.
+
+The bounded-regression selection stage completed normally after early
+stopping at step 2,100.  The predeclared lexicographic selection rule chose
+step 1,800 on AI-Hub selection-dev: macro integer RMSE `0.7658285489`, macro
+integer Spearman `0.3423144375`, and macro continuous RMSE `0.7212457300`.
+There were no OOM, NaN, or traceback events.  The full-data refit is running
+to exactly the selected 1,800 optimizer steps; its displayed 24,020-step
+progress denominator is only the fixed scheduler horizon, and an exact-step
+callback plus completion assertion enforce termination at 1,800.  Current
+state and commands remain authoritative in the ignored append-only
+`ledger.jsonl` under the run root; this paragraph records only the verified
+selection result and declared continuation.
+
+After this run completes both bounded and ordinal refits, the already-launched
+fail-closed follow-up queue resolves artifact checksums and runs (1) the four
+public-prompt embedding MAL essay-only arms, (2) three public-prompt decoder
+AI-Hub full-pretraining architectures, and (3) six public-prompt decoder MAL
+essay-only arms.  Rationale-input score arms remain pending until the final
+rationale handoff exists.  DPO and GRPO remain prohibited while the frozen
+combined judge safety artifact has `rl_allowed=false`; changing the judge or
+gate is a scientific-protocol change, not integration recovery.
 
 ## Execution task card
 
