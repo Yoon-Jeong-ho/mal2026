@@ -32,7 +32,7 @@
   "eval_steps": 100,
   "early_stopping_patience": 3,
   "per_device_train_batch_size": 1,
-  "per_device_eval_batch_size": 2,
+  "per_device_eval_batch_size": 4,
   "gradient_accumulation_steps": 8,
   "activation_checkpointing": true,
   "fsdp_transformer_layer_class": "Qwen2DecoderLayer",

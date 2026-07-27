@@ -81,6 +81,8 @@ class OfficialScorePromptTests(unittest.TestCase):
             (embedding_eval4.per_device_train_batch_size, embedding_eval4.per_device_eval_batch_size, embedding_eval4.gradient_accumulation_steps),
             (1, 4, 8),
         )
+        self.assertEqual(decoder_pretrain.per_device_eval_batch_size, 4)
+        self.assertEqual(decoder_matrix.per_device_eval_batch_size, 4)
         self.assertEqual(json.loads(json.dumps(provenance(PUBLIC_SPEC_SCORE_ONLY))), provenance(PUBLIC_SPEC_SCORE_ONLY))
 
 
