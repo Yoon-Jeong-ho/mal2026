@@ -1,0 +1,43 @@
+{
+  "schema_version": "mal2026-aihub-integer-score-pretrain-config-v2",
+  "run_id": "official-aihub-integer-score-full-pretrain-v1-20260728-002",
+  "model_id": "Qwen/Qwen3-Embedding-8B",
+  "model_revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+  "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/Qwen--Qwen3-Embedding-8B-1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+  "manifest_path": "/dataset/aa007878/mal2026/data/manifests/aihub_human_feedback_v1.json",
+  "output_root": "/dataset/aa007878/mal2026/outputs/official-aihub-integer-score-full-pretrain-v1",
+  "score_fields": [
+    "content",
+    "organization",
+    "expression"
+  ],
+  "integer_target_used": true,
+  "target_projection": "official_half_up",
+  "average_target_used": false,
+  "heads": [
+    "bounded_regression",
+    "ordinal_cumulative"
+  ],
+  "seed": 2026,
+  "max_length": 2048,
+  "training_method": "full_parameter",
+  "distributed_strategy": "fsdp_full_shard_auto_wrap",
+  "optimizer": "adafactor",
+  "learning_rate": 1e-05,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.05,
+  "max_selection_epochs": 20.0,
+  "eval_steps": 100,
+  "early_stopping_patience": 3,
+  "per_device_train_batch_size": 1,
+  "per_device_eval_batch_size": 4,
+  "gradient_accumulation_steps": 8,
+  "activation_checkpointing": true,
+  "fsdp_transformer_layer_class": "Qwen3DecoderLayer",
+  "fsdp_state_dict_type": "FULL_STATE_DICT",
+  "training_dtype": "bfloat16",
+  "historical_reference_selected_step": 1900,
+  "historical_reference_classification": "reference_only_continuous_four_axis_not_loaded",
+  "fsdp_version": 1,
+  "score_prompt_kind": "public_spec_score_only_v1"
+}

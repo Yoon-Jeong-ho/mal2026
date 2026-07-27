@@ -51,6 +51,10 @@ class OfficialScorePromptTests(unittest.TestCase):
             ROOT / "configs/official_aihub_integer_score_pretrain.public_spec_score_prompt.v1.json",
             require_dependencies=False,
         )
+        embedding_eval4 = PretrainConfig.from_json(
+            ROOT / "configs/official_aihub_integer_score_pretrain.public_spec_score_prompt_eval4.v1.json",
+            require_dependencies=False,
+        )
         decoder_pretrain = DecoderAIHubConfig.from_json(
             ROOT / "configs/official_decoder_aihub_integer_score_pretrain.public_spec_score_prompt.v1.json",
             require_dependencies=False,
@@ -66,11 +70,16 @@ class OfficialScorePromptTests(unittest.TestCase):
         self.assertEqual(
             {
                 embedding.score_prompt_kind,
+                embedding_eval4.score_prompt_kind,
                 decoder_pretrain.score_prompt_kind,
                 decoder_matrix.score_prompt_kind,
                 embedding_matrix.score_prompt_kind,
             },
             {PUBLIC_SPEC_SCORE_ONLY},
+        )
+        self.assertEqual(
+            (embedding_eval4.per_device_train_batch_size, embedding_eval4.per_device_eval_batch_size, embedding_eval4.gradient_accumulation_steps),
+            (1, 4, 8),
         )
         self.assertEqual(json.loads(json.dumps(provenance(PUBLIC_SPEC_SCORE_ONLY))), provenance(PUBLIC_SPEC_SCORE_ONLY))
 
