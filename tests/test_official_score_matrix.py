@@ -35,7 +35,10 @@ class OfficialScoreMatrixTests(unittest.TestCase):
         # Stage A public essay arms are runnable before either rationales or
         # the unrelated AI-Hub head artifact exists.
         config.validate_dependencies("bootstrap", head="bounded_regression", require_aihub=False)
-        with self.assertRaisesRegex(Exception, "bounded_regression integer AI-Hub warmstate is unavailable"):
+        # The repaired full-state producer now exists at the template's exact
+        # path; the unbound template must still fail closed on its placeholder
+        # checksum until the resolver writes a checksum-bound runtime config.
+        with self.assertRaisesRegex(Exception, "bounded_regression AI-Hub completion checksum differs"):
             config.validate_dependencies("bootstrap")
 
     def test_half_up_and_bounded_head(self) -> None:

@@ -170,7 +170,12 @@ class MatrixConfig:
             and Path(self.aihub_ordinal_artifact_path).resolve() != Path(self.historical_warmstate_path).resolve(),
             "historical continuous four-axis warmstate cannot initialize a primary arm",
         )
-        pretrain = ROOT / "outputs" / "official-aihub-integer-score-full-pretrain-v1" / "official-aihub-integer-score-full-pretrain-v1-20260727-002"
+        # ``-002`` is the preserved FSDP2/Adafactor integration failure.  The
+        # only completed full-state producer is the repaired FSDP1 ``-003``
+        # lineage, which is also the root bound by the remaining-pipeline
+        # resolver.  Keep this validation fail-closed to that exact immutable
+        # producer rather than accepting an arbitrary same-shaped directory.
+        pretrain = ROOT / "outputs" / "official-aihub-integer-score-full-pretrain-v1" / "official-aihub-integer-score-full-pretrain-v1-20260727-003"
         for head, completion, artifact in (
             ("bounded_regression", self.aihub_bounded_completion_path, self.aihub_bounded_artifact_path),
             ("ordinal_cumulative", self.aihub_ordinal_completion_path, self.aihub_ordinal_artifact_path),
