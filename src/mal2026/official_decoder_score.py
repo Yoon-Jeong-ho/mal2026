@@ -441,30 +441,42 @@ def generate_integer_predictions(model: Any, tokenizer: Any, rows: Sequence[Any]
     import torch
     trie, max_new_tokens = _token_trie(tokenizer)
     previous_padding = tokenizer.padding_side
+    model_config = getattr(model, "config", None)
+    previous_use_cache = getattr(model_config, "use_cache", None)
     tokenizer.padding_side = "left"
+    # Full-parameter training disables the KV cache because it is incompatible
+    # with gradient checkpointing.  Greedy selection evaluation is inference,
+    # however, and leaving the cache disabled recomputes the entire essay for
+    # every generated JSON token.  Restore the training setting afterwards.
+    if previous_use_cache is not None:
+        model_config.use_cache = True
     predictions: list[tuple[int, int, int]] = []
     invalid = 0
     model.eval()
-    for start in range(0, len(rows), config.per_device_eval_batch_size):
-        batch_rows = rows[start:start + config.per_device_eval_batch_size]
-        prompts = [chat_prompt(tokenizer, row, input_view, None if rationales is None else rationales[row.identifier]) for row in batch_rows]
-        encoded = tokenizer(prompts, padding=True, truncation=True, max_length=config.max_length - max_new_tokens, return_tensors="pt").to(next(model.parameters()).device)
-        prefix_width = encoded["input_ids"].shape[1]
+    try:
+        for start in range(0, len(rows), config.per_device_eval_batch_size):
+            batch_rows = rows[start:start + config.per_device_eval_batch_size]
+            prompts = [chat_prompt(tokenizer, row, input_view, None if rationales is None else rationales[row.identifier]) for row in batch_rows]
+            encoded = tokenizer(prompts, padding=True, truncation=True, max_length=config.max_length - max_new_tokens, return_tensors="pt").to(next(model.parameters()).device)
+            prefix_width = encoded["input_ids"].shape[1]
 
-        def allowed(_: int, sent: Any) -> list[int]:
-            prefix = tuple(int(value) for value in sent[prefix_width:].tolist())
-            return list(trie.get(prefix, (tokenizer.eos_token_id,)))
+            def allowed(_: int, sent: Any) -> list[int]:
+                prefix = tuple(int(value) for value in sent[prefix_width:].tolist())
+                return list(trie.get(prefix, (tokenizer.eos_token_id,)))
 
-        with torch.inference_mode():
-            generated = model.generate(**encoded, do_sample=False, max_new_tokens=max_new_tokens, prefix_allowed_tokens_fn=allowed, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
-        for sequence in generated[:, prefix_width:]:
-            parsed = parse_generated(tokenizer.decode(sequence, skip_special_tokens=True))
-            if parsed is None:
-                invalid += 1
-                predictions.append((3, 3, 3))
-            else:
-                predictions.append(parsed)
-    tokenizer.padding_side = previous_padding
+            with torch.inference_mode():
+                generated = model.generate(**encoded, do_sample=False, max_new_tokens=max_new_tokens, prefix_allowed_tokens_fn=allowed, pad_token_id=tokenizer.pad_token_id, eos_token_id=tokenizer.eos_token_id)
+            for sequence in generated[:, prefix_width:]:
+                parsed = parse_generated(tokenizer.decode(sequence, skip_special_tokens=True))
+                if parsed is None:
+                    invalid += 1
+                    predictions.append((3, 3, 3))
+                else:
+                    predictions.append(parsed)
+    finally:
+        tokenizer.padding_side = previous_padding
+        if previous_use_cache is not None:
+            model_config.use_cache = previous_use_cache
     return predictions, invalid
 
 

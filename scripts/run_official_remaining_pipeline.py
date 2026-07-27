@@ -40,10 +40,10 @@ EMBED_PRETRAIN = ROOT / "configs/official_aihub_integer_score_pretrain.repair2.v
 EMBED_TEMPLATE = ROOT / "configs/official_score_matrix.v1.json"
 HANDOFF_TEMPLATE = ROOT / "configs/official_rationale_handoff.v1.json"
 DECODER_TEMPLATE = ROOT / "configs/official_decoder_score_matrix.v1.json"
-DECODER_PRETRAIN = ROOT / "configs/official_decoder_aihub_integer_score_pretrain.repair2.v1.json"
+DECODER_PRETRAIN = ROOT / "configs/official_decoder_aihub_integer_score_pretrain.repair3.v1.json"
 DECODER_PRETRAIN_ROOT = (
     ROOT / "outputs/official-decoder-aihub-integer-score-full-pretrain-v1"
-    / "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-003"
+    / "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-004"
 )
 RL_SAFETY_GATE = (
     ROOT / "outputs/official-prompt-alignment-v1/judge-prompt-injection"

@@ -3,7 +3,9 @@ import inspect
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 import torch
 from safetensors.torch import save_file
@@ -11,6 +13,7 @@ from safetensors.torch import save_file
 from mal2026.official_decoder_aihub_pretrain import (
     ARCHITECTURES, DecoderAIHubConfig, exported_tensor_contract, select_event,
 )
+from mal2026.official_decoder_score import generate_integer_predictions
 from scripts.orchestrate_official_decoder_aihub_score_pretrain import plan
 
 
@@ -32,7 +35,7 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
 
     def test_repaired_lineage_pins_fsdp1_for_adafactor(self) -> None:
         config = DecoderAIHubConfig.from_json(
-            Path("configs/official_decoder_aihub_integer_score_pretrain.repair2.v1.json"),
+            Path("configs/official_decoder_aihub_integer_score_pretrain.repair3.v1.json"),
             require_dependencies=False,
         )
         self.assertEqual(config.optimizer, "adafactor")
@@ -105,6 +108,42 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
         self.assertIn("GenerativeTrainer", source)
         self.assertIn("_distributed_generative_metrics", source)
         self.assertNotIn("token_accuracy", source)
+
+    def test_free_generation_temporarily_enables_kv_cache(self) -> None:
+        class Encoded(dict):
+            def to(self, _: object) -> "Encoded":
+                return self
+
+        class Tokenizer:
+            eos_token_id = 0
+            pad_token_id = 0
+            padding_side = "right"
+
+            def __call__(self, prompts: object, **_: object) -> Encoded:
+                return Encoded(input_ids=torch.tensor([[7, 8], [7, 8]]))
+
+            def decode(self, _: object, **__: object) -> str:
+                return "target"
+
+        class Model(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.anchor = torch.nn.Parameter(torch.zeros(()))
+                self.config = SimpleNamespace(use_cache=False)
+
+            def generate(self, input_ids: torch.Tensor, **_: object) -> torch.Tensor:
+                self.assert_cache = self.config.use_cache
+                return torch.cat([input_ids, torch.ones((2, 1), dtype=torch.long)], dim=1)
+
+        tokenizer, model = Tokenizer(), Model()
+        rows = [SimpleNamespace(identifier="a"), SimpleNamespace(identifier="b")]
+        config = SimpleNamespace(per_device_eval_batch_size=2, max_length=16)
+        with patch("mal2026.official_decoder_score._token_trie", return_value=({(): (1,)}, 1)), patch("mal2026.official_decoder_score.chat_prompt", return_value="prompt"), patch("mal2026.official_decoder_score.parse_generated", return_value=(3, 3, 3)):
+            predictions, invalid = generate_integer_predictions(model, tokenizer, rows, config)
+        self.assertTrue(model.assert_cache)
+        self.assertFalse(model.config.use_cache)
+        self.assertEqual(tokenizer.padding_side, "right")
+        self.assertEqual((predictions, invalid), ([(3, 3, 3), (3, 3, 3)], 0))
 
 
 if __name__ == "__main__": unittest.main()

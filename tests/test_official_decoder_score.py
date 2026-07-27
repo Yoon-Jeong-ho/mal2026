@@ -76,14 +76,16 @@ class OfficialDecoderScoreTests(unittest.TestCase):
     def test_orchestration_is_gpu0_gated_then_ddp4_and_never_names_other_gpus(self) -> None:
         from scripts.orchestrate_official_decoder_score_matrix import command_plan
         plan = command_plan(Path("configs/official_decoder_score_matrix.v1.json"))
-        self.assertEqual(len(plan), 36)  # 3 AI-Hub selection/refit smoke/full + 12 target smoke/full
+        self.assertEqual(len(plan), 37)  # AI-Hub adds one distributed integration preflight; 12 target arms keep smoke/full.
         self.assertTrue(all(stage["gpus"] in ([0], [0, 1, 2, 3]) for stage in plan))
         self.assertEqual(sum(stage["gpus"] == [0] for stage in plan), 18)
-        self.assertEqual(sum(stage["gpus"] == [0, 1, 2, 3] for stage in plan), 18)
+        self.assertEqual(sum(stage["gpus"] == [0, 1, 2, 3] for stage in plan), 19)
+        aihub_production = [stage for stage in plan[:13] if stage["stage"] != "fsdp4_one_update_preflight"]
         for offset in (0, 4, 8):
-            self.assertEqual([stage["gpus"] for stage in plan[offset:offset+4]], [[0], [0], [0,1,2,3], [0,1,2,3]])
+            self.assertEqual([stage["gpus"] for stage in aihub_production[offset:offset+4]], [[0], [0], [0,1,2,3], [0,1,2,3]])
         source = Path("scripts/orchestrate_official_decoder_score_matrix.py").read_text()
         self.assertNotIn('"4,5,6,7"', source)
+        self.assertIn('"fsdp4_one_update_preflight"', source)
 
     def test_final_ranking_is_integer_primary(self) -> None:
         def result(name, integer_rmse, integer_spearman, continuous_rmse):

@@ -98,7 +98,7 @@ def main() -> None:
     if args.dry_run:
         stages = command_plan(args.config, args.aihub_config)
         if args.reuse_completed_aihub_pretrain:
-            stages = [stage for stage in stages if stage.get("stage") not in {"gpu0_one_update_smoke", "fsdp4_full_parameter"}]
+            stages = [stage for stage in stages if stage.get("stage") not in {"gpu0_one_update_smoke", "fsdp4_one_update_preflight", "fsdp4_full_parameter"}]
         print(json.dumps({"status": "dry_run_passed", "gpu_started": False, "authorized_gpu_scope": [0, 1, 2, 3], "reuse_completed_aihub_pretrain": args.reuse_completed_aihub_pretrain, "stages": stages}, ensure_ascii=False, indent=2))
         return
     manifest_path = Path(config.output_root) / "orchestration_manifest.json"

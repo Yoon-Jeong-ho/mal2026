@@ -87,6 +87,7 @@ class DecoderAIHubConfig:
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-001",
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-002",
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-003",
+            "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-004",
         }, "pretrain run identity differs")
         _need((self.model_id, self.model_revision) == (MODEL_ID, MODEL_REVISION), "decoder model pin differs")
         _need(self.architectures == ARCHITECTURES and self.score_fields == AXES, "architecture/axis contract differs")
