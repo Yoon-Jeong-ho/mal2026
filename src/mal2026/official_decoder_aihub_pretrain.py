@@ -86,6 +86,7 @@ class DecoderAIHubConfig:
         _need(self.run_id in {
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-001",
             "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-002",
+            "official-decoder-aihub-integer-score-full-pretrain-v1-20260727-003",
         }, "pretrain run identity differs")
         _need((self.model_id, self.model_revision) == (MODEL_ID, MODEL_REVISION), "decoder model pin differs")
         _need(self.architectures == ARCHITECTURES and self.score_fields == AXES, "architecture/axis contract differs")
@@ -283,7 +284,9 @@ def run_training(config: DecoderAIHubConfig, architecture: str, phase: str, *, s
     import torch
     from transformers import AutoTokenizer, Trainer, TrainerCallback, TrainingArguments, set_seed
 
-    output = Path(config.output_root) / config.run_id / (f"smoke-{architecture}-{phase}" if smoke else f"{architecture}-{phase}")
+    distributed = int(os.environ.get("WORLD_SIZE", "1")) > 1
+    smoke_prefix = "smoke-fsdp4" if distributed else "smoke"
+    output = Path(config.output_root) / config.run_id / (f"{smoke_prefix}-{architecture}-{phase}" if smoke else f"{architecture}-{phase}")
     _wait_output(output)
     train_split = "selection_train" if phase == "selection" else "refit_train"
     train_rows, train_sha = load_integer_split(train_split, Path(config.manifest_path))
@@ -334,7 +337,6 @@ def run_training(config: DecoderAIHubConfig, architecture: str, phase: str, *, s
             if selected_steps is not None and int(state.global_step) >= selected_steps: control.should_training_stop = True
             return control
 
-    distributed = int(os.environ.get("WORLD_SIZE", "1")) > 1
     fsdp_config = {"version": config.fsdp_version, "transformer_layer_cls_to_wrap": [config.fsdp_transformer_layer_class], "activation_checkpointing": config.activation_checkpointing, "use_orig_params": True, "state_dict_type": config.fsdp_state_dict_type, "sync_module_states": True, "limit_all_gathers": True} if distributed else None
     args = TrainingArguments(
         output_dir=str(output / "trainer"), do_train=True, do_eval=phase == "selection", eval_strategy="steps" if phase == "selection" else "no", save_strategy="no",
@@ -343,7 +345,12 @@ def run_training(config: DecoderAIHubConfig, architecture: str, phase: str, *, s
         learning_rate=config.learning_rate, weight_decay=config.weight_decay, warmup_ratio=config.warmup_ratio, optim=config.optimizer,
         per_device_train_batch_size=config.per_device_train_batch_size, per_device_eval_batch_size=config.per_device_eval_batch_size,
         gradient_accumulation_steps=1 if smoke else config.gradient_accumulation_steps, bf16=True, tf32=True, report_to=[], remove_unused_columns=False,
-        gradient_checkpointing=config.activation_checkpointing, gradient_checkpointing_kwargs={"use_reentrant": False}, fsdp="full_shard auto_wrap" if distributed else None, fsdp_config=fsdp_config,
+        # Distributed runs use FSDP's activation-checkpointing hook.  Enabling
+        # Trainer gradient checkpointing at the same time is rejected by
+        # Accelerate and would also install two checkpointing mechanisms.
+        gradient_checkpointing=config.activation_checkpointing and not distributed,
+        gradient_checkpointing_kwargs={"use_reentrant": False} if not distributed else None,
+        fsdp="full_shard auto_wrap" if distributed else None, fsdp_config=fsdp_config,
         dataloader_num_workers=0, ddp_find_unused_parameters=False, logging_steps=1 if smoke else 5, save_only_model=True, seed=config.seed, data_seed=config.seed,
     )
 

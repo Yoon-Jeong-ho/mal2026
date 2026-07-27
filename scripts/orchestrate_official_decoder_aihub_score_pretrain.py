@@ -31,6 +31,10 @@ def plan(config_path: Path, config: DecoderAIHubConfig) -> list[dict[str, Any]]:
         stages.extend([
             {"architecture": architecture, "phase": "selection", "stage": "gpu0_one_update_smoke", "gpus": [0], "command": _command(config_path, architecture, "selection", True)},
             {"architecture": architecture, "phase": "refit", "stage": "gpu0_one_update_smoke", "gpus": [0], "command": _command(config_path, architecture, "refit", True, smoke_selection)},
+        ])
+        if architecture == "generative":
+            stages.append({"architecture": architecture, "phase": "selection", "stage": "fsdp4_one_update_preflight", "gpus": [0,1,2,3], "command": _command(config_path, architecture, "selection", True, distributed=True)})
+        stages.extend([
             {"architecture": architecture, "phase": "selection", "stage": "fsdp4_full_parameter", "gpus": [0,1,2,3], "command": _command(config_path, architecture, "selection", False, distributed=True)},
             {"architecture": architecture, "phase": "refit", "stage": "fsdp4_full_parameter", "gpus": [0,1,2,3], "command": _command(config_path, architecture, "refit", False, selection, True)},
         ])

@@ -32,11 +32,16 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
 
     def test_repaired_lineage_pins_fsdp1_for_adafactor(self) -> None:
         config = DecoderAIHubConfig.from_json(
-            Path("configs/official_decoder_aihub_integer_score_pretrain.repair1.v1.json"),
+            Path("configs/official_decoder_aihub_integer_score_pretrain.repair2.v1.json"),
             require_dependencies=False,
         )
         self.assertEqual(config.optimizer, "adafactor")
         self.assertEqual(config.fsdp_version, 1)
+
+    def test_fsdp_owns_distributed_activation_checkpointing(self) -> None:
+        source = Path("src/mal2026/official_decoder_aihub_pretrain.py").read_text()
+        self.assertIn("gradient_checkpointing=config.activation_checkpointing and not distributed", source)
+        self.assertIn("gradient_checkpointing_kwargs={\"use_reentrant\": False} if not distributed else None", source)
 
     def test_selection_identity_survives_json_round_trip(self) -> None:
         identity = self.config.identity("bounded_regression")
@@ -69,10 +74,12 @@ class DecoderAIHubPretrainTests(unittest.TestCase):
 
     def test_gpu0_smoke_then_fsdp4_selection_refit_for_all_architectures(self) -> None:
         stages = plan(self.path, self.config)
-        self.assertEqual(len(stages), 12)
-        for offset in range(0, 12, 4):
-            self.assertEqual([stage["gpus"] for stage in stages[offset:offset+4]], [[0], [0], [0,1,2,3], [0,1,2,3]])
-            self.assertEqual([stage["phase"] for stage in stages[offset:offset+4]], ["selection", "refit", "selection", "refit"])
+        self.assertEqual(len(stages), 13)
+        self.assertEqual(stages[2]["stage"], "fsdp4_one_update_preflight")
+        self.assertEqual(stages[2]["gpus"], [0,1,2,3])
+        production = [stage for stage in stages if stage["stage"] == "fsdp4_full_parameter"]
+        self.assertEqual(len(production), 6)
+        self.assertEqual([stage["phase"] for stage in production], ["selection", "refit"] * 3)
         source = Path("scripts/orchestrate_official_decoder_aihub_score_pretrain.py").read_text()
         self.assertIn("fsdp4_full_parameter", source)
         self.assertNotIn('"4,5,6,7"', source)
