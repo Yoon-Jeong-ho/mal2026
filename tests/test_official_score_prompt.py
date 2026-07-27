@@ -7,6 +7,7 @@ import unittest
 from mal2026.official_aihub_score_pretrain import PretrainConfig, IntegerScoreRow, render_input
 from mal2026.official_decoder_aihub_pretrain import DecoderAIHubConfig
 from mal2026.official_decoder_score import DecoderScoreConfig
+from mal2026.official_score_matrix import MatrixConfig
 from mal2026.official_score_prompt import (
     LEGACY_COMPACT,
     PUBLIC_SPEC_SCORE_ONLY,
@@ -58,8 +59,17 @@ class OfficialScorePromptTests(unittest.TestCase):
             ROOT / "configs/official_decoder_score_matrix.public_spec_score_prompt.v1.json",
             require_dependencies=False,
         )
+        embedding_matrix = MatrixConfig.from_json(
+            ROOT / "configs/official_score_matrix.public_spec_score_prompt.v1.json",
+            require_dependencies=False,
+        )
         self.assertEqual(
-            {embedding.score_prompt_kind, decoder_pretrain.score_prompt_kind, decoder_matrix.score_prompt_kind},
+            {
+                embedding.score_prompt_kind,
+                decoder_pretrain.score_prompt_kind,
+                decoder_matrix.score_prompt_kind,
+                embedding_matrix.score_prompt_kind,
+            },
             {PUBLIC_SPEC_SCORE_ONLY},
         )
         self.assertEqual(json.loads(json.dumps(provenance(PUBLIC_SPEC_SCORE_ONLY))), provenance(PUBLIC_SPEC_SCORE_ONLY))

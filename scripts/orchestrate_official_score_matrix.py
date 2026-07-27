@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mal2026.official_score_matrix import MatrixConfig, arm_names, file_sha256, parse_arm, select_bootstrap_candidate  # noqa: E402
+from mal2026.official_score_prompt import provenance as score_prompt_provenance  # noqa: E402
 
 
 def command(config: Path, arm: str, smoke: bool) -> list[str]:
@@ -80,6 +81,7 @@ def main() -> None:
             "started_at": now(), "git_sha": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
             "resource_scope": {"preflight": [0], "full": [0, 1, 2, 3], "authorization": "default MAL2026 GPU scope"},
             "arm_count": 8, "stage_a_arm_count": 4, "score_fields": ["content", "organization", "expression"], "average_target_used": False,
+            **score_prompt_provenance(config.score_prompt_kind),
             "aihub_full_pretrain": {
                 "bounded_completion_sha256": config.aihub_bounded_completion_sha256, "bounded_artifact_sha256": config.aihub_bounded_artifact_sha256,
                 "ordinal_completion_sha256": config.aihub_ordinal_completion_sha256, "ordinal_artifact_sha256": config.aihub_ordinal_artifact_sha256,
@@ -131,6 +133,7 @@ def main() -> None:
             "selection_rule": "lowest macro integer RMSE, then highest macro integer Spearman, then lowest continuous RMSE, then arm name",
             "candidates": candidates, "selected_arm": winner["arm"], "selected_result_path": winner["result_path"], "selected_result_sha256": winner["result_sha256"],
             "selected_score_files": winner["score_files"], "average_target_used": False,
+            **score_prompt_provenance(config.score_prompt_kind),
         }
         write_new_json(bootstrap_path, bootstrap)
         manifest.update({"status": "stage_a_completed", "stage_a_completed_at": now(), "bootstrap_selection_sha256": file_sha256(bootstrap_path), "external_handoff": "generate final restricted train/validation rationales from selected emitted integer score files, then bind all SHAs in config"})
@@ -153,6 +156,7 @@ def main() -> None:
     summary = {
         "schema_version": "mal2026-official-score-matrix-aggregate-v1", "status": "completed", "run_id": config.run_id,
         "score_fields": ["content", "organization", "expression"], "average_target_used": False, "arms": results,
+        **score_prompt_provenance(config.score_prompt_kind),
         "descriptive_validation_ranking": [row["arm"] for row in ranking],
         "descriptive_validation_ranking_rule": "lowest macro integer RMSE, then highest macro integer Spearman, then lowest macro continuous RMSE, then arm name",
         "ranking_caveat": "canonical validation is descriptive and was not used for epoch selection or refit",
