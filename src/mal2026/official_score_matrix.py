@@ -198,7 +198,7 @@ class MatrixConfig:
         pretrain_run = (
             "official-aihub-integer-score-full-pretrain-v1-20260727-003"
             if self.score_prompt_kind == LEGACY_COMPACT
-            else "official-aihub-integer-score-full-pretrain-v1-20260728-001"
+            else "official-aihub-integer-score-full-pretrain-v1-20260728-002"
         )
         pretrain = ROOT / "outputs" / "official-aihub-integer-score-full-pretrain-v1" / pretrain_run
         for head, completion, artifact in (
