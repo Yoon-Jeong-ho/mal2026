@@ -87,6 +87,21 @@ class OfficialDecoderScoreTests(unittest.TestCase):
         self.assertNotIn('"4,5,6,7"', source)
         self.assertIn('"fsdp4_one_update_preflight"', source)
 
+    def test_orchestration_can_run_six_essay_arms_before_rationales_exist(self) -> None:
+        from scripts.orchestrate_official_decoder_score_matrix import command_plan, target_arms
+        config = Path("configs/official_decoder_score_matrix.public_spec_score_prompt.v1.json")
+        aihub = Path("configs/official_decoder_aihub_integer_score_pretrain.public_spec_score_prompt.v1.json")
+        essay = target_arms("essay")
+        rationale = target_arms("rationale")
+        self.assertEqual(len(essay), 6)
+        self.assertEqual(len(rationale), 6)
+        self.assertTrue(all(arm.endswith("__essay") for arm in essay))
+        self.assertTrue(all(arm.endswith("__rationale") for arm in rationale))
+        plan = command_plan(config, aihub, "essay")
+        target = [stage for stage in plan if str(stage["stage"]).startswith("target_")]
+        self.assertEqual(len(target), 12)
+        self.assertEqual({stage["arm"] for stage in target}, set(essay))
+
     def test_final_ranking_is_integer_primary(self) -> None:
         def result(name, integer_rmse, integer_spearman, continuous_rmse):
             return {
