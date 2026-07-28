@@ -118,7 +118,7 @@ def policy_request(
             except json.JSONDecodeError:
                 if finish_reason == "length":
                     return None, 0, 0, 1, 0
-                raise strict_error
+                return None, 0, 0, 0, 1
             parsed = parse_rationale_output(decoded, axes)
             relaxed = 1
         if not all(
@@ -128,41 +128,51 @@ def policy_request(
             return None, relaxed, 0, 0, 1
         return parsed, relaxed, int(finish_reason == "length"), 0, 0
 
-    def parse_choices(choices: list[dict[str, Any]]) -> tuple[list[dict[str, str] | None], int, int, int, int]:
+    def parse_choices(choices: list[dict[str, Any]]) -> tuple[list[dict[str, str] | None], int, int, list[int], list[int]]:
         values = [parse_choice(choice) for choice in choices]
         return (
             [value[0] for value in values],
             sum(value[1] for value in values),
             sum(value[2] for value in values),
-            sum(value[3] for value in values),
-            sum(value[4] for value in values),
+            [value[3] for value in values],
+            [value[4] for value in values],
         )
 
     choices = response_choices(body, candidates)
-    parsed, relaxed, complete_length, truncated, semantic_invalid = parse_choices(choices)
+    parsed, relaxed, complete_length, truncated_flags, semantic_flags = parse_choices(choices)
+    truncated, semantic_invalid = sum(truncated_flags), sum(semantic_flags)
     length_retry_requests = length_retry_candidates = 0
     semantic_retry_requests = semantic_retry_candidates = 0
     invalid_indices = [index for index, value in enumerate(parsed) if value is None]
     if invalid_indices:
         for index in invalid_indices:
-            # Sample each malformed slot independently. Repeating n=4 and
-            # selecting the same index can reproduce an index-correlated long
-            # sample even under an alternate group seed.
-            retry_body = {
-                **body,
-                "n": 1,
-                "seed": seed + 1_000_003 + index,
-                "max_tokens": initial_max_tokens,
-            }
-            retry_choice = response_choices(retry_body, 1)[0]
-            replacement, retry_relaxed, retry_complete_length, retry_truncated, retry_semantic = parse_choice(retry_choice)
-            need(replacement is not None and retry_truncated == 0 and retry_semantic == 0, "policy rollout remained invalid after bounded candidate replacement")
+            replacement = None
+            attempts_used = 0
+            for replacement_attempt in range(1, 5):
+                # Independently sample only the malformed slot. Four bounded
+                # attempts avoid turning a rare invalid draw into a full-run
+                # failure while keeping every valid initial candidate frozen.
+                retry_body = {
+                    **body,
+                    "n": 1,
+                    "seed": seed + replacement_attempt * 1_000_003 + index,
+                    "max_tokens": initial_max_tokens,
+                }
+                retry_choice = response_choices(retry_body, 1)[0]
+                candidate, retry_relaxed, retry_complete_length, retry_truncated, retry_semantic = parse_choice(retry_choice)
+                attempts_used += 1
+                relaxed += retry_relaxed
+                complete_length += retry_complete_length
+                if candidate is not None and retry_truncated == 0 and retry_semantic == 0:
+                    replacement = candidate
+                    break
+            need(replacement is not None, "policy rollout remained invalid after four bounded candidate replacements")
             parsed[index] = replacement
-            relaxed += retry_relaxed
-            complete_length += retry_complete_length
-        length_retry_requests = truncated
+            if truncated_flags[index]:
+                length_retry_requests += attempts_used
+            else:
+                semantic_retry_requests += attempts_used
         length_retry_candidates = truncated
-        semantic_retry_requests = semantic_invalid
         semantic_retry_candidates = semantic_invalid
     need(all(value is not None for value in parsed), "policy rollout parse state differs")
     return (

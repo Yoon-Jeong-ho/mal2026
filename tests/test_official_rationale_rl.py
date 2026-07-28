@@ -300,11 +300,6 @@ class OfficialRationaleRLTest(unittest.TestCase):
             ["properties"]["content"]["properties"]["rationale"]["maxLength"],
             384,
         )
-        self.assertEqual(
-            mocked.call_args_list[0].args[1]["response_format"]["json_schema"]["schema"]
-            ["properties"]["content"]["properties"]["rationale"]["pattern"],
-            ".*[가-힣].*",
-        )
 
         initial_two = {
             "choices": [
@@ -339,17 +334,22 @@ class OfficialRationaleRLTest(unittest.TestCase):
         semantic_invalid = {
             "choices": [{"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"English only"}}'}}],
         }
+        semantic_invalid_again = {
+            "choices": [{"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"Still English"}}'}}],
+        }
         semantic_replacement = {
             "choices": [{"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"한국어 교체 근거"}}'}}],
         }
-        with patch.object(preferences, "http_json", side_effect=[semantic_invalid, semantic_replacement]):
+        with patch.object(preferences, "http_json", side_effect=[semantic_invalid, semantic_invalid_again, semantic_replacement]) as mocked:
             outputs, _, _, length_requests, length_candidates, semantic_requests, semantic_candidates = preferences.policy_request(
                 "http://127.0.0.1:9999", "policy", "content",
                 [{"role": "user", "content": "입력"}], 1, settings, 42,
             )
         self.assertEqual(outputs, [{"content": "한국어 교체 근거"}])
         self.assertEqual((length_requests, length_candidates), (0, 0))
-        self.assertEqual((semantic_requests, semantic_candidates), (1, 1))
+        self.assertEqual((semantic_requests, semantic_candidates), (2, 1))
+        self.assertEqual(mocked.call_args_list[1].args[1]["seed"], 1_000_045)
+        self.assertEqual(mocked.call_args_list[2].args[1]["seed"], 2_000_048)
 
     def test_bundle_rollout_ceiling_covers_frozen_three_field_character_bound(self) -> None:
         root = Path(__file__).resolve().parents[1]

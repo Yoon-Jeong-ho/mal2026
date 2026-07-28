@@ -141,7 +141,6 @@ def rationale_schema(axes: Sequence[str], character_limit: int | None = None) ->
     text_schema: dict[str, Any] = {"type": "string", "minLength": 1}
     if character_limit is not None:
         text_schema["maxLength"] = character_limit
-        text_schema["pattern"] = ".*[가-힣].*"
     part = {"type": "object", "properties": {"rationale": text_schema}, "required": ["rationale"], "additionalProperties": False}
     return {"type": "object", "properties": {axis: part for axis in chosen}, "required": list(chosen), "additionalProperties": False}
 
