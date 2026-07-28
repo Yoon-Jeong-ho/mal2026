@@ -55,6 +55,7 @@ LEGACY_GRPO_ARMS = (
     "ax4_bundle_random1_v8_replication",
     "ax4_bundle_all5_v8_replication",
 )
+DPO_SMOKE_GROUPS = 32
 
 
 class OfficialRLExperimentError(RuntimeError):
@@ -127,6 +128,7 @@ class DurableRun:
             "contrastive_gate_sha256": self.gates["directional"]["sha256"],
             "rl_safety_gate_sha256": self.gates["combined_safety"]["sha256"],
             "judge_prompt_sha256": self.judge_prompt_sha256,
+            "dpo_smoke_groups": DPO_SMOKE_GROUPS,
             "validation_used_for_preferences_or_reward": False,
         }
         if self.manifest_path.is_file():
@@ -355,8 +357,8 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
                                   adapters=policy_adapters(run.dpo, ("bundle",)), aliases={"bundle": ALIASES["bundle"]},
                                   max_num_seqs=32, max_num_batched_tokens=8192, dynamic_updates=False) as (endpoint, attestation):
             run.command("dpo-smoke-rollout", attempt, preference_command(run, "dpo-smoke-rollout", attempt, phase="rollout", arm="bundle", output=raw, aggregate=aggregate,
-                                                                 endpoint=endpoint, attestation=attestation, aliases={"bundle": ALIASES["bundle"]}, limit=1))
-        return {"raw": str(raw), "raw_sha256": sha256_file(raw), "aggregate": str(aggregate), "groups": 1}
+                                                                 endpoint=endpoint, attestation=attestation, aliases={"bundle": ALIASES["bundle"]}, limit=DPO_SMOKE_GROUPS))
+        return {"raw": str(raw), "raw_sha256": sha256_file(raw), "aggregate": str(aggregate), "groups": DPO_SMOKE_GROUPS}
 
     reports["dpo-smoke-rollout"] = run.run_stage("dpo-smoke-rollout", smoke_rollout)
     smoke_rollout_raw = Path(reports["dpo-smoke-rollout"]["evidence"]["raw"])
@@ -368,7 +370,7 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
         with q4_judge_servers(runtime_root=run.root, label=f"dpo-smoke-a{attempt:03d}", gpus=(0,), ports=(19420,), judge_prompt_sha256=run.judge_prompt_sha256) as (endpoints, attestation):
             run.command("dpo-smoke-judge", attempt, preference_command(run, "dpo-smoke-judge", attempt, phase="judge", arm="bundle", output=raw, aggregate=aggregate,
                                                                input_path=smoke_rollout_raw, attestation=attestation, judge_endpoints=endpoints))
-        return {"raw": str(raw), "raw_sha256": sha256_file(raw), "aggregate": str(aggregate), "judgments": 4}
+        return {"raw": str(raw), "raw_sha256": sha256_file(raw), "aggregate": str(aggregate), "judgments": 4 * DPO_SMOKE_GROUPS}
 
     reports["dpo-smoke-judge"] = run.run_stage("dpo-smoke-judge", smoke_judge)
     smoke_judged = Path(reports["dpo-smoke-judge"]["evidence"]["raw"])

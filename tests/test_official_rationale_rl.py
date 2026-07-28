@@ -9,6 +9,7 @@ from unittest.mock import patch
 import mal2026.official_rationale_rl as rl
 import scripts.generate_official_dpo_preferences as preferences
 import scripts.run_official_rationale_rl as runner
+import scripts.run_official_rationale_rl_experiment as experiment_runner
 
 
 def judge(value: int) -> dict:
@@ -212,6 +213,9 @@ class OfficialRationaleRLTest(unittest.TestCase):
         idle = type("Result", (), {"returncode": 0, "stdout": ""})()
         with patch.object(runner.subprocess, "run", return_value=idle):
             runner.require_gpu_idle(3)
+
+    def test_dpo_smoke_uses_enough_groups_to_measure_saturated_reward_variance(self) -> None:
+        self.assertEqual(experiment_runner.DPO_SMOKE_GROUPS, 32)
 
 
 if __name__ == "__main__":

@@ -571,3 +571,17 @@ applies the unchanged strict rationale schema and text checks.  Aggregate
 artifacts count every relaxed control-character parse.  This is serialization
 recovery only; generation prompts, seeds, sampling, candidates, rewards, and
 training settings are unchanged.
+
+The fourth launch preserved a scientifically valid negative at the DPO
+reward-variance smoke gate.  Its single train group produced four candidates,
+but the exact judge assigned all four the maximum 60-cell-sum reward; the
+zero-variance group fraction was therefore `1.0`, above the frozen `0.8`
+maximum.  Preference assembly correctly emitted no pair and no model update
+was attempted.  Because one group cannot estimate a fraction against an
+`0.8` threshold except as either zero or one, the next integration attempt
+uses 32 deterministic train-only smoke groups (128 judgments), while retaining
+the same prompt, sampling parameters, seed derivation, strict gate threshold,
+and one-update trainer check.  This changes only the preflight sample size;
+the full DPO/GRPO scientific protocol is unchanged.  If that 32-group gate
+also fails, the exact judge is treated as too reward-saturated and RL remains
+fail-closed.
