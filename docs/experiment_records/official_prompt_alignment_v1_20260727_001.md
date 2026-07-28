@@ -624,3 +624,15 @@ The recovery therefore mirrors the policy-side fail-closed rule: accept only
 pass.  A genuinely truncated or malformed judge object still raises and no
 score is retained.  This changes neither prompt, decoding, reward projection,
 nor score values; a fresh Git-bound run is required.
+
+The eighth launch passed the complete smoke and then served all 6,000 TP4
+bundle requests plus three bounded retry requests.  It failed because the
+first retry implementation additionally required a retried stochastic sample
+to begin with the byte-identical prefix of the unusable truncated sample.
+vLLM's batched `n=4` sampling does not guarantee that property when the token
+ceiling changes.  The corrected recovery never replaces a valid initial
+candidate: it retains those three slots unchanged and uses the corresponding
+strictly parsed retry output only for the malformed length-finish slot.  The
+same prompt, seed, temperature, and top-p are retained, the retry is counted,
+and a second malformed result still fails closed.  This is missing-output
+recovery, not a quality-driven resampling or a change to reward/optimization.

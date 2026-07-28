@@ -278,23 +278,33 @@ class OfficialRationaleRLTest(unittest.TestCase):
         self.assertEqual(mocked.call_args_list[0].args[1]["max_tokens"], 350)
         self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 500)
 
-        divergent = {
-            "choices": [{
-                "finish_reason": "stop",
-                "message": {"content": '{"content":{"rationale":"다른 생성 근거"}}'},
-            }],
+        initial_two = {
+            "choices": [
+                {"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"기존 완성 근거"}}'}},
+                {"finish_reason": "length", "message": {"content": '{"content":{"rationale":"잘린 근거"'}},
+            ],
         }
-        with patch.object(preferences, "http_json", side_effect=[truncated, divergent]):
-            with self.assertRaisesRegex(RuntimeError, "original generated prefix"):
-                preferences.policy_request(
-                    "http://127.0.0.1:9999",
-                    "policy",
-                    "content",
-                    [{"role": "user", "content": "입력"}],
-                    1,
-                    settings,
-                    42,
-                )
+        retry_two = {
+            "choices": [
+                {"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"무시할 재생성 근거"}}'}},
+                {"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"교체된 완성 근거"}}'}},
+            ],
+        }
+        with patch.object(preferences, "http_json", side_effect=[initial_two, retry_two]):
+            outputs, _, _, retry_requests, retry_candidates = preferences.policy_request(
+                "http://127.0.0.1:9999",
+                "policy",
+                "content",
+                [{"role": "user", "content": "입력"}],
+                2,
+                settings,
+                42,
+            )
+        self.assertEqual(outputs, [
+            {"content": "기존 완성 근거"},
+            {"content": "교체된 완성 근거"},
+        ])
+        self.assertEqual((retry_requests, retry_candidates), (1, 1))
 
     def test_gpu_conflict_gate_is_read_only_and_fail_closed(self) -> None:
         busy = type("Result", (), {"returncode": 0, "stdout": "12345\n"})()
