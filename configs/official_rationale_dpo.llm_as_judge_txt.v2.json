@@ -28,7 +28,7 @@
     "candidates_per_prompt": 4,
     "sampling_temperature": 0.7,
     "sampling_top_p": 0.95,
-    "max_completion_tokens": 900,
+    "max_completion_tokens": 2400,
     "max_length": 3072,
     "max_prompt_length": 2304,
     "loss_type": "sigmoid",

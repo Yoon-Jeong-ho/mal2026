@@ -650,3 +650,17 @@ the maintained structured-output schema for both DPO and GRPO and rechecks it
 after parsing.  It does not introduce a tuned threshold or change the prompt,
 reward, data, seed, sampling distribution, or optimization; it makes rollout
 generation conform to the pre-existing reward/output contract.
+
+The tenth launch passed smoke and enforced the 384-character grammar, but one
+of the 6,000 bundle groups still exhausted both the original 900-token and
+1,200-token retry ceilings.  A local A.X tokenizer audit over all 6,000 exact
+train prompts found a maximum bundle prompt length of 1,023 tokens (p99 953,
+mean 820.8405).  Synthetic complete JSON at the already frozen 384-character
+bound per field required 601--2,329 completion tokens across sampled Korean
+characters; the maximum prompt-plus-sample total was 3,352, within the frozen
+4,096 vLLM context.  Single-axis samples required at most 777 tokens and had a
+maximum prompt length of 985.  Accordingly the exact DPO/GRPO bundle ceiling
+is corrected to 2,400 tokens and the DPO single-axis ceiling to 800, with a
+bounded 2,800/950 retry.  This is a capacity correction needed to realize the
+pre-existing 384-character schema, not permission for longer rationales; the
+grammar and post-parse check continue to cap every field at 384 characters.

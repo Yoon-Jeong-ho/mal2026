@@ -275,8 +275,8 @@ class OfficialRationaleRLTest(unittest.TestCase):
             )
         self.assertEqual(outputs, [{"content": "잘린 판단 근거"}])
         self.assertEqual((relaxed, complete_length, retry_requests, retry_candidates), (0, 0, 1, 1))
-        self.assertEqual(mocked.call_args_list[0].args[1]["max_tokens"], 350)
-        self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 500)
+        self.assertEqual(mocked.call_args_list[0].args[1]["max_tokens"], 800)
+        self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 950)
         self.assertEqual(
             mocked.call_args_list[0].args[1]["response_format"]["json_schema"]["schema"]
             ["properties"]["content"]["properties"]["rationale"]["maxLength"],
@@ -310,6 +310,25 @@ class OfficialRationaleRLTest(unittest.TestCase):
             {"content": "교체된 완성 근거"},
         ])
         self.assertEqual((retry_requests, retry_candidates), (1, 1))
+
+    def test_bundle_rollout_ceiling_covers_frozen_three_field_character_bound(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        settings = rl.RLSettings.from_json(root / "configs/official_rationale_dpo.llm_as_judge_txt.v2.json")
+        response = {
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {"content": json.dumps({
+                    axis: {"rationale": "완결된 판단 근거"}
+                    for axis in rl.AXES
+                }, ensure_ascii=False)},
+            }],
+        }
+        with patch.object(preferences, "http_json", return_value=response) as mocked:
+            preferences.policy_request(
+                "http://127.0.0.1:9999", "policy", "bundle",
+                [{"role": "user", "content": "입력"}], 1, settings, 42,
+            )
+        self.assertEqual(mocked.call_args.args[1]["max_tokens"], 2400)
 
     def test_gpu_conflict_gate_is_read_only_and_fail_closed(self) -> None:
         busy = type("Result", (), {"returncode": 0, "stdout": "12345\n"})()
