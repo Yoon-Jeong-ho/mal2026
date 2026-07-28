@@ -515,3 +515,14 @@ it is not reclassified as passing.  Authorization and immutable bindings are
 recorded in
 `configs/official_rationale_rl_authorization.llm_as_judge_txt.v1.json`.
 Validation rows remain unavailable to preference construction and reward.
+
+For the downstream Qwen3-Embedding-8B score model, the exact evaluation-prompt
+lineage is predeclared in
+`configs/official_aihub_integer_score_pretrain.evaluation_prompt.v1.json` and
+`configs/official_score_matrix.evaluation_prompt.v1.json`.  It repeats the
+AI-Hub full-parameter pretraining followed by fresh MAL LoRA rather than
+silently reusing a differently prompted full-state artifact.  The matrix keeps
+essay-only and essay-plus-rationale input arms distinct; rationales are inputs,
+while only the three integer axes are targets and `average` is never read or
+optimized.  Canonical validation remains deferred until train-internal epoch
+selection and all-2,000-row refit are complete.

@@ -20,6 +20,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from .official_score_prompt import (
     LEGACY_COMPACT,
     PUBLIC_SPEC_SCORE_ONLY,
+    USER_SUPPLIED_EVALUATION,
     SCORE_PROMPT_KINDS,
     embedding_input,
     provenance as score_prompt_provenance,
@@ -164,6 +165,7 @@ class MatrixConfig:
         expected_run = {
             LEGACY_COMPACT: "official-score-matrix-v1-20260727-001",
             PUBLIC_SPEC_SCORE_ONLY: "official-score-matrix-public-spec-score-prompt-v1-20260728-001",
+            USER_SUPPLIED_EVALUATION: "official-score-matrix-evaluation-prompt-v1-20260728-001",
         }
         _need(self.score_prompt_kind in SCORE_PROMPT_KINDS, "score prompt kind differs")
         _need(self.run_id == expected_run[self.score_prompt_kind], "matrix run identity differs")
@@ -177,11 +179,12 @@ class MatrixConfig:
         _need(self.aihub_warmstart_load_mode == "full_backbone_and_matched_head_then_fresh_mal_lora", "AI-Hub warmstart semantics differ")
         _need(self.historical_warmstate_classification == "historical_continuous_four_axis_backbone_only_not_primary", "historical warmstate classification differs")
         output = Path(self.output_root)
-        expected_output = ROOT / "outputs" / (
-            "official-score-matrix-v1"
-            if self.score_prompt_kind == LEGACY_COMPACT
-            else "official-score-matrix-public-spec-score-prompt-v1"
-        )
+        output_name = {
+            LEGACY_COMPACT: "official-score-matrix-v1",
+            PUBLIC_SPEC_SCORE_ONLY: "official-score-matrix-public-spec-score-prompt-v1",
+            USER_SUPPLIED_EVALUATION: "official-score-matrix-evaluation-prompt-v1",
+        }[self.score_prompt_kind]
+        expected_output = ROOT / "outputs" / output_name
         _need(output.resolve() == expected_output.resolve(), "matrix output root differs")
         _need(Path(self.bootstrap_selection_path).resolve() == (output / "bootstrap_selection.json").resolve(), "bootstrap selection path differs")
         _need(Path(self.restricted_bootstrap_output_root).resolve() == (ROOT / "data" / "processed" / "restricted" / "official_prompt_alignment_v1" / "score_matrix_bootstrap" / self.run_id).resolve(), "restricted bootstrap output root differs")
@@ -195,11 +198,11 @@ class MatrixConfig:
         # lineage, which is also the root bound by the remaining-pipeline
         # resolver.  Keep this validation fail-closed to that exact immutable
         # producer rather than accepting an arbitrary same-shaped directory.
-        pretrain_run = (
-            "official-aihub-integer-score-full-pretrain-v1-20260727-003"
-            if self.score_prompt_kind == LEGACY_COMPACT
-            else "official-aihub-integer-score-full-pretrain-v1-20260728-002"
-        )
+        pretrain_run = {
+            LEGACY_COMPACT: "official-aihub-integer-score-full-pretrain-v1-20260727-003",
+            PUBLIC_SPEC_SCORE_ONLY: "official-aihub-integer-score-full-pretrain-v1-20260728-002",
+            USER_SUPPLIED_EVALUATION: "official-aihub-integer-score-full-pretrain-evaluation-prompt-v1-20260728-001",
+        }[self.score_prompt_kind]
         pretrain = ROOT / "outputs" / "official-aihub-integer-score-full-pretrain-v1" / pretrain_run
         for head, completion, artifact in (
             ("bounded_regression", self.aihub_bounded_completion_path, self.aihub_bounded_artifact_path),

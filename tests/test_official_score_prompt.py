@@ -109,6 +109,19 @@ class OfficialScorePromptTests(unittest.TestCase):
         self.assertEqual(decoder_matrix.per_device_eval_batch_size, 4)
         self.assertEqual(json.loads(json.dumps(provenance(PUBLIC_SPEC_SCORE_ONLY))), provenance(PUBLIC_SPEC_SCORE_ONLY))
 
+    def test_evaluation_prompt_configs_bind_embedding_pretrain_and_matrix(self) -> None:
+        pretrain = PretrainConfig.from_json(
+            ROOT / "configs/official_aihub_integer_score_pretrain.evaluation_prompt.v1.json",
+            require_dependencies=False,
+        )
+        matrix = MatrixConfig.from_json(
+            ROOT / "configs/official_score_matrix.evaluation_prompt.v1.json",
+            require_dependencies=False,
+        )
+        self.assertEqual(pretrain.score_prompt_kind, USER_SUPPLIED_EVALUATION)
+        self.assertEqual(matrix.score_prompt_kind, USER_SUPPLIED_EVALUATION)
+        self.assertEqual(matrix.run_id, "official-score-matrix-evaluation-prompt-v1-20260728-001")
+
 
 if __name__ == "__main__":
     unittest.main()
