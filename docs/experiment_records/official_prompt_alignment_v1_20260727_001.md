@@ -526,3 +526,11 @@ essay-only and essay-plus-rationale input arms distinct; rationales are inputs,
 while only the three integer axes are targets and `average` is never read or
 optimized.  Canonical validation remains deferred until train-internal epoch
 selection and all-2,000-row refit are complete.
+
+The first exact-prompt RL launch
+`official-rationale-rl-experiment-v1-exact-judge-20260728-001` failed before
+any model request or update.  Its rollout producer tried to create the
+runner-owned aggregate directory without `exist_ok=True`, raising
+`FileExistsError`.  The vLLM server had completed startup but received no
+generation request; all failure logs and the append-only ledger are preserved.
+This was an integration-only path-ownership defect, not a scientific result.

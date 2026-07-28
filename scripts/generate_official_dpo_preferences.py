@@ -353,13 +353,12 @@ def main() -> None:
     settings = RLSettings.from_json(args.config)
     validate_runtime_versions()
     if args.validate_only:
-        gate_files_ready = all((ROOT / str(settings.gate[key])).is_file() for key in ("path", "safety_path"))
-        print(json.dumps({"status": "validated", "algorithm": settings.algorithm, "gate_ready": settings.gate_evidence() if gate_files_ready else False}, sort_keys=True))
+        print(json.dumps({"status": "validated", "algorithm": settings.algorithm, "gate_ready": settings.gate_evidence()}, sort_keys=True))
         return
     need(args.stage is not None and args.arm is not None and args.output is not None and args.aggregate_output is not None and args.max_inflight >= 1, "stage arguments are incomplete")
     gate = settings.gate_evidence()
     aggregate_path = output_fresh(args.aggregate_output)
-    aggregate_path.parent.mkdir(parents=True)
+    aggregate_path.parent.mkdir(parents=True, exist_ok=True)
     if args.stage == "rollout":
         need(args.policy_endpoint and args.policy_attestation, "rollout policy arguments are incomplete")
         report = rollout(args, settings, gate, parse_aliases(args.model))
