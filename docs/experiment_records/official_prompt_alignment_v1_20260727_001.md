@@ -345,6 +345,77 @@ rationale handoff exists.  DPO and GRPO remain prohibited while the frozen
 combined judge safety artifact has `rl_allowed=false`; changing the judge or
 gate is a scientific-protocol change, not integration recovery.
 
+### 2026-07-28 completed public-prompt essay-only score matrix
+
+The follow-up queue completed all declared AI-Hub pretraining and MAL
+essay-only arms.  Qwen3-Embedding-8B AI-Hub full pretraining selected step
+1,800 for bounded regression (integer RMSE `0.7658285489`, Spearman
+`0.3423144375`) and step 2,700 for cumulative ordinal (integer RMSE
+`0.8499938415`, Spearman `0.1393128823`).  Both selected states were freshly
+refit on the full eligible AI-Hub population and checksum-bound before MAL
+LoRA adaptation.
+
+The four embedding MAL arms produced the following single final descriptive
+metrics on the 400-row canonical validation split.  Validation was not used
+to choose an arm or epoch.
+
+| embedding arm | integer RMSE | integer Spearman | continuous RMSE | continuous Spearman |
+|---|---:|---:|---:|---:|
+| bounded, public initialization | `0.6979703099` | `0.4937684638` | `0.6713512221` | `0.5162320981` |
+| bounded, AI-Hub matched full initialization | `0.7066794047` | `0.4699002131` | `0.6603604325` | `0.5306839154` |
+| ordinal, public initialization | `0.9470503003` | `0.0000000000` | `0.8201086698` | `0.5548210885` |
+| ordinal, AI-Hub matched full initialization | `0.7530631854` | `0.2799085048` | `0.7120321257` | `0.5463415041` |
+
+The train-internal selection rule chose
+`bounded_regression__aihub_matched_full__essay` for bootstrap score emission;
+the descriptively best canonical-validation arm was instead public-initialized
+bounded regression.  This difference is preserved rather than selecting on
+validation after observing it.  The authoritative aggregate is
+`outputs/official-score-matrix-public-spec-score-prompt-v1/bootstrap_selection.json`.
+
+Qwen2.5-7B-Instruct decoder AI-Hub full pretraining completed for constrained
+generative, bounded-regression-head, and cumulative-ordinal-head architectures.
+Their selected AI-Hub dev integer RMSE/Spearman pairs were, respectively,
+`0.7624400558/0.3662155082`, `0.7523974843/0.3693720676`, and
+`0.7519465706/0.3713056423`.  Each architecture was freshly full-parameter
+refit before a new MAL LoRA was attached.
+
+All six decoder MAL essay-only arms then completed with strict three-axis
+integer output and no average or rationale target:
+
+| decoder arm | integer RMSE | integer Spearman | continuous RMSE | continuous Spearman |
+|---|---:|---:|---:|---:|
+| constrained generative, public | `0.7221767088` | `0.4433148256` | `0.7221767088` | `0.4433148256` |
+| constrained generative, AI-Hub matched | `0.7021636532` | `0.4834621804` | `0.7021636532` | `0.4834621804` |
+| bounded head, public | `0.7141186567` | `0.4436299557` | `0.6682010498` | `0.5000198030` |
+| bounded head, AI-Hub matched | `0.7087269751` | `0.4644076402` | `0.6561260123` | `0.5339045173` |
+| cumulative ordinal head, public | `0.7044890932` | `0.4649240482` | `0.6529047105` | `0.5387973884` |
+| cumulative ordinal head, AI-Hub matched | `0.7104686786` | `0.4653404056` | `0.6589121547` | `0.5261740089` |
+
+The constrained generative AI-Hub arm was selected from train-internal metrics
+and was also the descriptively best decoder arm on canonical validation.  It
+had strict parse rate `1.0`; all 400 outputs belonged to the fixed 125-element
+three-integer JSON space.  Across embedding and decoder essay-only arms, the
+lowest observed canonical-validation integer RMSE remains the public-initialized
+Qwen3-Embedding bounded head at `0.6979703099`.
+
+After the sixth decoder arm completed, aggregate creation failed without any
+loss of model or metric artifacts because the orchestrator expected a stale
+`selection.selected_event` key while the runner correctly emitted
+`selection.selected_epoch` plus the full `selection.events` history.  Commit
+`0581433` repairs only that integration schema lookup, adds strict completed-arm
+identity checks and an aggregate-only no-GPU recovery mode, and preserves the
+original six completions.  The recovery wrote
+`outputs/official-decoder-score-matrix-public-spec-score-prompt-v1/essay_bootstrap_aggregate.json`
+with SHA256
+`e65a6ee51b093ba21880737c54c7bb3faff17bc4ada5097d2ca5e863c1e6b2d3`;
+the orchestration manifest is now `status=completed`.  No arm was retrained.
+
+Rationale-input score arms still require the final SHA-bound rationale handoff.
+That handoff remains downstream of the DPO/GRPO comparison, which remains
+fail-closed until a scientifically authorized replacement safety protocol is
+predeclared and passes.  Existing failed gate artifacts are not reclassified.
+
 ## Execution task card
 
 - Run ID: `official-prompt-alignment-v1-20260727-001`.
