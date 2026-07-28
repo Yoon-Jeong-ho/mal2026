@@ -558,3 +558,16 @@ pooling and LoRA targets with a fresh three-axis bounded head.  `average` is
 never read or optimized.  The template is
 `configs/official_kure_score.evaluation_prompt.v1.json`; rationale paths and
 hashes remain unresolved until the final rationale handoff is complete.
+
+The third exact-prompt RL launch passed the complete GPU0 rollout, exact-Q4
+reward-variance, preference-assembly, and real one-update DPO smoke.  Its TP4
+full bundle rollout then completed all 6,000 HTTP groups but failed before
+persistence because one schema-constrained completion contained a literal
+control character inside a JSON string.  Python's default strict JSON decoder
+raised `Invalid control character`; no preference or parameter update from the
+full stage was produced.  The preserved recovery accepts such wire strings
+with `json.loads(..., strict=False)` only after strict parsing fails, then still
+applies the unchanged strict rationale schema and text checks.  Aggregate
+artifacts count every relaxed control-character parse.  This is serialization
+recovery only; generation prompts, seeds, sampling, candidates, rewards, and
+training settings are unchanged.

@@ -24,7 +24,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mal2026.api_rationale_data import sha256_file  # noqa: E402
-from mal2026.official_rationale_data import axes_for_task, parse_rationale_output, rationale_schema  # noqa: E402
+from mal2026.official_rationale_data import (  # noqa: E402
+    OfficialRationaleDataError,
+    axes_for_task,
+    parse_rationale_output,
+    rationale_schema,
+)
 from mal2026.official_rationale_rl import (  # noqa: E402
     AXES,
     RLSettings,
@@ -68,7 +73,7 @@ def parse_aliases(values: list[str]) -> dict[str, str]:
     return result
 
 
-def policy_request(endpoint: str, alias: str, task: str, prompt: list[dict[str, str]], candidates: int, settings: RLSettings, seed: int) -> list[dict[str, str]]:
+def policy_request(endpoint: str, alias: str, task: str, prompt: list[dict[str, str]], candidates: int, settings: RLSettings, seed: int) -> tuple[list[dict[str, str]], int]:
     axes = axes_for_task(task)
     body = {
         "model": alias,
@@ -84,10 +89,23 @@ def policy_request(endpoint: str, alias: str, task: str, prompt: list[dict[str, 
     choices = outer.get("choices")
     need(isinstance(choices, list) and len(choices) == candidates, "policy rollout choice count differs")
     parsed: list[dict[str, str]] = []
+    relaxed_control_character_parses = 0
     for choice in choices:
         need(isinstance(choice, dict) and choice.get("finish_reason") == "stop", "policy rollout did not stop cleanly")
-        parsed.append(parse_rationale_output(choice["message"]["content"], axes))
-    return parsed
+        content = choice["message"]["content"]
+        try:
+            parsed.append(parse_rationale_output(content, axes))
+        except OfficialRationaleDataError:
+            # vLLM's JSON-schema decoder can occasionally serialize a literal
+            # control character inside a JSON string.  Python's strict parser
+            # rejects that wire representation even though the schema and
+            # semantic string are otherwise valid.  ``strict=False`` changes
+            # only control-character acceptance; the normal strict rationale
+            # shape validator still runs on the decoded object.
+            decoded = json.loads(content, strict=False)
+            parsed.append(parse_rationale_output(decoded, axes))
+            relaxed_control_character_parses += 1
+    return parsed, relaxed_control_character_parses
 
 
 def write_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> None:
@@ -124,9 +142,11 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
     def one(index_row: tuple[int, Mapping[str, Any]]) -> dict[str, Any]:
         index, row = index_row
         generations: list[dict[str, str]] = [dict() for _ in range(candidate_count)]
+        relaxed_control_character_parses = 0
         for task in sorted(required):
             task_prompt = prompts_by_task[task][index]
-            outputs = policy_request(args.policy_endpoint, aliases[task], task, task_prompt, candidate_count, settings, int(settings.policy["seed"]) + index)
+            outputs, relaxed = policy_request(args.policy_endpoint, aliases[task], task, task_prompt, candidate_count, settings, int(settings.policy["seed"]) + index)
+            relaxed_control_character_parses += relaxed
             for candidate_index, parsed in enumerate(outputs):
                 generations[candidate_index].update(parsed)
         need(all(set(value) == set(AXES) for value in generations), "rollout did not produce all axes")
@@ -139,6 +159,7 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
             "source_key": row["source_key"],
             "scores": row["scores"],
             "generations": generations,
+            "relaxed_control_character_json_parses": relaxed_control_character_parses,
         }
 
     results: list[dict[str, Any]] = []
@@ -156,6 +177,8 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         "arm": args.arm,
         "groups": len(results),
         "candidates": len(results) * candidate_count,
+        "relaxed_control_character_json_parses": sum(int(row["relaxed_control_character_json_parses"]) for row in results),
+        "relaxed_parse_semantics": "json.loads(strict=False) only after strict parse failure; strict rationale schema validation still required",
         "raw_sha256": sha256_file(output),
         "input_provenance": provenance,
         "contrastive_gate_sha256": gate["directional"]["sha256"],

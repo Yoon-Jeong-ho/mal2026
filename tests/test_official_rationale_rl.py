@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import mal2026.official_rationale_rl as rl
+import scripts.generate_official_dpo_preferences as preferences
 import scripts.run_official_rationale_rl as runner
 
 
@@ -177,6 +178,28 @@ class OfficialRationaleRLTest(unittest.TestCase):
             evidence = settings.gate_evidence()
             self.assertEqual(evidence["combined_safety"]["status"], "user_authorized_exact_prompt")
             self.assertIs(evidence["combined_safety"]["legacy_failed_gate_preserved"], True)
+
+    def test_rollout_accepts_only_control_character_json_relaxation_then_revalidates_schema(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        settings = rl.RLSettings.from_json(root / "configs/official_rationale_dpo.llm_as_judge_txt.v2.json")
+        response = {
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {"content": '{"content":{"rationale":"첫 줄\n둘째 줄"}}'},
+            }],
+        }
+        with patch.object(preferences, "http_json", return_value=response):
+            outputs, relaxed = preferences.policy_request(
+                "http://127.0.0.1:9999",
+                "policy",
+                "content",
+                [{"role": "user", "content": "입력"}],
+                1,
+                settings,
+                42,
+            )
+        self.assertEqual(relaxed, 1)
+        self.assertEqual(outputs, [{"content": "첫 줄\n둘째 줄"}])
 
     def test_gpu_conflict_gate_is_read_only_and_fail_closed(self) -> None:
         busy = type("Result", (), {"returncode": 0, "stdout": "12345\n"})()
