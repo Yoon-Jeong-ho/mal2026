@@ -95,10 +95,10 @@ def policy_request(
         "max_tokens": initial_max_tokens,
         "response_format": {"type": "json_schema", "json_schema": {"name": f"official_dpo_{task}", "strict": True, "schema": rationale_schema(axes, character_limit)}},
     }
-    def response_choices(request: Mapping[str, Any]) -> list[dict[str, Any]]:
+    def response_choices(request: Mapping[str, Any], expected: int) -> list[dict[str, Any]]:
         outer = http_json(endpoint, request)
         values = outer.get("choices")
-        need(isinstance(values, list) and len(values) == candidates, "policy rollout choice count differs")
+        need(isinstance(values, list) and len(values) == expected, "policy rollout choice count differs")
         need(all(isinstance(choice, dict) for choice in values), "policy rollout choice differs")
         return values
 
@@ -136,25 +136,29 @@ def policy_request(
             sum(value[3] for value in values),
         )
 
-    choices = response_choices(body)
+    choices = response_choices(body, candidates)
     parsed, relaxed, complete_length, truncated = parse_choices(choices)
     length_retry_requests = 0
     length_retry_candidates = 0
     truncated_indices = [index for index, value in enumerate(parsed) if value is None]
     if truncated_indices:
-        # The endpoint requires one n-candidate request. Retrying a sampled
-        # request with the original seed can reproduce the same malformed
-        # length-finish forever. Use one frozen alternate seed, retain every
-        # valid initial candidate, and replace only transport-truncated slots.
-        retry_body = {**body, "seed": seed + 1_000_003, "max_tokens": initial_max_tokens}
-        retry_choices = response_choices(retry_body)
         for index in truncated_indices:
-            replacement, retry_relaxed, retry_complete_length, retry_truncated = parse_choice(retry_choices[index])
+            # Sample each malformed slot independently. Repeating n=4 and
+            # selecting the same index can reproduce an index-correlated long
+            # sample even under an alternate group seed.
+            retry_body = {
+                **body,
+                "n": 1,
+                "seed": seed + 1_000_003 + index,
+                "max_tokens": initial_max_tokens,
+            }
+            retry_choice = response_choices(retry_body, 1)[0]
+            replacement, retry_relaxed, retry_complete_length, retry_truncated = parse_choice(retry_choice)
             need(replacement is not None and retry_truncated == 0, "policy rollout remained truncated after bounded length retry")
             parsed[index] = replacement
             relaxed += retry_relaxed
             complete_length += retry_complete_length
-        length_retry_requests = 1
+        length_retry_requests = len(truncated_indices)
         length_retry_candidates = truncated
     need(all(value is not None for value in parsed), "policy rollout parse state differs")
     return [value for value in parsed if value is not None], relaxed, complete_length, length_retry_requests, length_retry_candidates
@@ -252,7 +256,7 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         "length_finish_semantics": "accepted only when the unchanged strict rationale schema parser validates the complete JSON object",
         "length_retry_requests": sum(int(row["length_retry_requests"]) for row in results),
         "length_retry_candidates": sum(int(row["length_retry_candidates"]) for row in results),
-        "length_retry_semantics": "same prompt, sampling, and capacity-safe token ceiling with one frozen +1000003 alternate-seed retry; retain every valid initial candidate and replace only malformed length-finish slots",
+        "length_retry_semantics": "same prompt, sampling, and capacity-safe token ceiling; retain every valid initial candidate and independently resample each malformed slot with n=1 and frozen seed +1000003+slot_index",
         "raw_sha256": sha256_file(output),
         "input_provenance": provenance,
         "contrastive_gate_sha256": gate["directional"]["sha256"],

@@ -290,6 +290,8 @@ class OfficialRationaleRLTest(unittest.TestCase):
         self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 1200)
         self.assertEqual(mocked.call_args_list[0].args[1]["seed"], 42)
         self.assertEqual(mocked.call_args_list[1].args[1]["seed"], 1_000_045)
+        self.assertEqual(mocked.call_args_list[0].args[1]["n"], 1)
+        self.assertEqual(mocked.call_args_list[1].args[1]["n"], 1)
         self.assertEqual(
             mocked.call_args_list[0].args[1]["response_format"]["json_schema"]["schema"]
             ["properties"]["content"]["properties"]["rationale"]["maxLength"],
@@ -304,11 +306,10 @@ class OfficialRationaleRLTest(unittest.TestCase):
         }
         retry_two = {
             "choices": [
-                {"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"무시할 재생성 근거"}}'}},
                 {"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"교체된 완성 근거"}}'}},
             ],
         }
-        with patch.object(preferences, "http_json", side_effect=[initial_two, retry_two]):
+        with patch.object(preferences, "http_json", side_effect=[initial_two, retry_two]) as mocked:
             outputs, _, _, retry_requests, retry_candidates = preferences.policy_request(
                 "http://127.0.0.1:9999",
                 "policy",
@@ -323,6 +324,8 @@ class OfficialRationaleRLTest(unittest.TestCase):
             {"content": "교체된 완성 근거"},
         ])
         self.assertEqual((retry_requests, retry_candidates), (1, 1))
+        self.assertEqual(mocked.call_args_list[1].args[1]["n"], 1)
+        self.assertEqual(mocked.call_args_list[1].args[1]["seed"], 1_000_046)
 
     def test_bundle_rollout_ceiling_covers_frozen_three_field_character_bound(self) -> None:
         root = Path(__file__).resolve().parents[1]

@@ -22,3 +22,9 @@ Outputs use the matching run ID below ignored `outputs/official-rationale-rl-v1/
 Relative to run 013, the only integration change is a deterministic capacity retry for an incomplete Q4 judge `length` response: normal complete responses retain the 1,800-token ceiling; only an incomplete response is repeated unchanged at 3,600 tokens. Invalid `stop` output still fails. The exact prompt, schema, model, seed, score projection, policy generation, data, and objectives are unchanged. Run 013's failure remains preserved.
 
 Preflight: 46 targeted tests and `git diff --check` passed. Final aggregate metrics and deviations must be appended after completion or failure.
+
+## Terminal result
+
+Run 014 passed the complete smoke, including the judge capacity repair, but failed at 06:47:48 KST after the 6,000-group full bundle rollout. The server returned 6,003 successful HTTP responses: 6,000 base group requests and three group-level retry requests. At least one replacement remained an incomplete length-finish. The later vLLM `EngineDeadError` was caused by the orchestrator shutting down the still-running server after the Python stage exception; it was not the originating failure.
+
+The group-level retry used a new seed but still generated `n=4` and selected the original candidate index. The next integration repair retains every complete original candidate and replaces each malformed slot through its own `n=1` request with seed `original_seed + 1000003 + slot_index`. This removes index-correlated resampling and does not alter the requested four valid candidates, sampling distribution, prompts, schema, limits, or learning protocol.
