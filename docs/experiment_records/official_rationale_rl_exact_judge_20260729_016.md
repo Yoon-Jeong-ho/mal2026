@@ -18,3 +18,9 @@ PYTHONPATH=src:. .venv-standard/bin/python scripts/run_official_rationale_rl_exp
 Outputs use matching ignored orchestration/restricted run roots. Relative to run 015, vLLM structured output is explicitly XGrammar with arbitrary JSON whitespace disabled, bundle completion transport capacity is 7,100 tokens, single-axis capacity is 2,400, and server context is 8,192. The decoded schema remains capped at 384 characters per axis. Largest audited prompt 1,023 plus completion 7,100 equals 8,123, below context. All prompts, candidates, judge, scores, data, and training objectives remain unchanged. Run-015 negative evidence is preserved.
 
 Preflight: local vLLM 0.25.1 configuration source verified `disable_any_whitespace` support for XGrammar; 46 targeted tests, dry-plan 8,192-token assertions, and `git diff --check` passed. Append terminal metrics/deviations after completion or failure.
+
+## Terminal result
+
+Run 016 failed at 07:22:20 KST in the 32-group rollout smoke. The server successfully applied XGrammar, `disable_any_whitespace=true`, and the 8,192-token context. A schema-complete candidate then violated the post-schema scientific contract because at least one rationale field contained no Hangul. The prior generator treated any such sampled candidate as a fatal stage error rather than replacing only the invalid slot.
+
+The next integration repair classifies schema-complete but non-Korean/over-384 candidates separately from transport truncation, preserves every valid candidate, and uses the same independent `n=1` frozen-seed replacement for only invalid slots. Aggregate records expose semantic and length retries separately. The required four valid Korean candidates and all other protocol elements remain unchanged.

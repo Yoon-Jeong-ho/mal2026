@@ -222,7 +222,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
             }],
         }
         with patch.object(preferences, "http_json", return_value=response):
-            outputs, relaxed, complete_length, retry_requests, retry_candidates = preferences.policy_request(
+            outputs, relaxed, complete_length, retry_requests, retry_candidates, semantic_requests, semantic_candidates = preferences.policy_request(
                 "http://127.0.0.1:9999",
                 "policy",
                 "content",
@@ -235,6 +235,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
         self.assertEqual(complete_length, 0)
         self.assertEqual(retry_requests, 0)
         self.assertEqual(retry_candidates, 0)
+        self.assertEqual((semantic_requests, semantic_candidates), (0, 0))
         self.assertEqual(outputs, [{"content": "첫 줄\n둘째 줄"}])
 
     def test_rollout_accepts_only_schema_complete_length_finish(self) -> None:
@@ -247,7 +248,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
             }],
         }
         with patch.object(preferences, "http_json", return_value=valid):
-            outputs, relaxed, complete_length, retry_requests, retry_candidates = preferences.policy_request(
+            outputs, relaxed, complete_length, retry_requests, retry_candidates, semantic_requests, semantic_candidates = preferences.policy_request(
                 "http://127.0.0.1:9999",
                 "policy",
                 "content",
@@ -261,6 +262,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
         self.assertEqual(complete_length, 1)
         self.assertEqual(retry_requests, 0)
         self.assertEqual(retry_candidates, 0)
+        self.assertEqual((semantic_requests, semantic_candidates), (0, 0))
 
         truncated = {
             "choices": [{
@@ -275,7 +277,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
             }],
         }
         with patch.object(preferences, "http_json", side_effect=[truncated, extended]) as mocked:
-            outputs, relaxed, complete_length, retry_requests, retry_candidates = preferences.policy_request(
+            outputs, relaxed, complete_length, retry_requests, retry_candidates, semantic_requests, semantic_candidates = preferences.policy_request(
                 "http://127.0.0.1:9999",
                 "policy",
                 "content",
@@ -286,6 +288,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
             )
         self.assertEqual(outputs, [{"content": "잘린 판단 근거"}])
         self.assertEqual((relaxed, complete_length, retry_requests, retry_candidates), (0, 0, 1, 1))
+        self.assertEqual((semantic_requests, semantic_candidates), (0, 0))
         self.assertEqual(mocked.call_args_list[0].args[1]["max_tokens"], 2400)
         self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 2400)
         self.assertEqual(mocked.call_args_list[0].args[1]["seed"], 42)
@@ -310,7 +313,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
             ],
         }
         with patch.object(preferences, "http_json", side_effect=[initial_two, retry_two]) as mocked:
-            outputs, _, _, retry_requests, retry_candidates = preferences.policy_request(
+            outputs, _, _, retry_requests, retry_candidates, semantic_requests, semantic_candidates = preferences.policy_request(
                 "http://127.0.0.1:9999",
                 "policy",
                 "content",
@@ -324,8 +327,24 @@ class OfficialRationaleRLTest(unittest.TestCase):
             {"content": "교체된 완성 근거"},
         ])
         self.assertEqual((retry_requests, retry_candidates), (1, 1))
+        self.assertEqual((semantic_requests, semantic_candidates), (0, 0))
         self.assertEqual(mocked.call_args_list[1].args[1]["n"], 1)
         self.assertEqual(mocked.call_args_list[1].args[1]["seed"], 1_000_046)
+
+        semantic_invalid = {
+            "choices": [{"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"English only"}}'}}],
+        }
+        semantic_replacement = {
+            "choices": [{"finish_reason": "stop", "message": {"content": '{"content":{"rationale":"한국어 교체 근거"}}'}}],
+        }
+        with patch.object(preferences, "http_json", side_effect=[semantic_invalid, semantic_replacement]):
+            outputs, _, _, length_requests, length_candidates, semantic_requests, semantic_candidates = preferences.policy_request(
+                "http://127.0.0.1:9999", "policy", "content",
+                [{"role": "user", "content": "입력"}], 1, settings, 42,
+            )
+        self.assertEqual(outputs, [{"content": "한국어 교체 근거"}])
+        self.assertEqual((length_requests, length_candidates), (0, 0))
+        self.assertEqual((semantic_requests, semantic_candidates), (1, 1))
 
     def test_bundle_rollout_ceiling_covers_frozen_three_field_character_bound(self) -> None:
         root = Path(__file__).resolve().parents[1]

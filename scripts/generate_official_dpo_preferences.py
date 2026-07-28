@@ -81,7 +81,7 @@ def policy_request(
     candidates: int,
     settings: RLSettings,
     seed: int,
-) -> tuple[list[dict[str, str]], int, int, int, int]:
+) -> tuple[list[dict[str, str]], int, int, int, int, int, int]:
     axes = axes_for_task(task)
     character_limit = int(settings.reward["field_character_limit"])
     initial_max_tokens = int(settings.policy["max_completion_tokens"]) if task == "bundle" else 2400
@@ -102,7 +102,7 @@ def policy_request(
         need(all(isinstance(choice, dict) for choice in values), "policy rollout choice differs")
         return values
 
-    def parse_choice(choice: dict[str, Any]) -> tuple[dict[str, str] | None, int, int, int]:
+    def parse_choice(choice: dict[str, Any]) -> tuple[dict[str, str] | None, int, int, int, int]:
         finish_reason = choice.get("finish_reason")
         need(finish_reason in {"stop", "length"}, "policy rollout finish reason differs")
         content = choice["message"]["content"]
@@ -117,32 +117,34 @@ def policy_request(
                 decoded = json.loads(content, strict=False)
             except json.JSONDecodeError:
                 if finish_reason == "length":
-                    return None, 0, 0, 1
+                    return None, 0, 0, 1, 0
                 raise strict_error
             parsed = parse_rationale_output(decoded, axes)
             relaxed = 1
-        need(
-            all(len(text) <= character_limit and any("가" <= char <= "힣" for char in text) for text in parsed.values()),
-            "policy rollout rationale violates the frozen field contract",
-        )
-        return parsed, relaxed, int(finish_reason == "length"), 0
+        if not all(
+            len(text) <= character_limit and any("가" <= char <= "힣" for char in text)
+            for text in parsed.values()
+        ):
+            return None, relaxed, 0, 0, 1
+        return parsed, relaxed, int(finish_reason == "length"), 0, 0
 
-    def parse_choices(choices: list[dict[str, Any]]) -> tuple[list[dict[str, str] | None], int, int, int]:
+    def parse_choices(choices: list[dict[str, Any]]) -> tuple[list[dict[str, str] | None], int, int, int, int]:
         values = [parse_choice(choice) for choice in choices]
         return (
             [value[0] for value in values],
             sum(value[1] for value in values),
             sum(value[2] for value in values),
             sum(value[3] for value in values),
+            sum(value[4] for value in values),
         )
 
     choices = response_choices(body, candidates)
-    parsed, relaxed, complete_length, truncated = parse_choices(choices)
-    length_retry_requests = 0
-    length_retry_candidates = 0
-    truncated_indices = [index for index, value in enumerate(parsed) if value is None]
-    if truncated_indices:
-        for index in truncated_indices:
+    parsed, relaxed, complete_length, truncated, semantic_invalid = parse_choices(choices)
+    length_retry_requests = length_retry_candidates = 0
+    semantic_retry_requests = semantic_retry_candidates = 0
+    invalid_indices = [index for index, value in enumerate(parsed) if value is None]
+    if invalid_indices:
+        for index in invalid_indices:
             # Sample each malformed slot independently. Repeating n=4 and
             # selecting the same index can reproduce an index-correlated long
             # sample even under an alternate group seed.
@@ -153,15 +155,21 @@ def policy_request(
                 "max_tokens": initial_max_tokens,
             }
             retry_choice = response_choices(retry_body, 1)[0]
-            replacement, retry_relaxed, retry_complete_length, retry_truncated = parse_choice(retry_choice)
-            need(replacement is not None and retry_truncated == 0, "policy rollout remained truncated after bounded length retry")
+            replacement, retry_relaxed, retry_complete_length, retry_truncated, retry_semantic = parse_choice(retry_choice)
+            need(replacement is not None and retry_truncated == 0 and retry_semantic == 0, "policy rollout remained invalid after bounded candidate replacement")
             parsed[index] = replacement
             relaxed += retry_relaxed
             complete_length += retry_complete_length
-        length_retry_requests = len(truncated_indices)
+        length_retry_requests = truncated
         length_retry_candidates = truncated
+        semantic_retry_requests = semantic_invalid
+        semantic_retry_candidates = semantic_invalid
     need(all(value is not None for value in parsed), "policy rollout parse state differs")
-    return [value for value in parsed if value is not None], relaxed, complete_length, length_retry_requests, length_retry_candidates
+    return (
+        [value for value in parsed if value is not None], relaxed, complete_length,
+        length_retry_requests, length_retry_candidates,
+        semantic_retry_requests, semantic_retry_candidates,
+    )
 
 
 def write_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> None:
@@ -202,9 +210,11 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         schema_complete_length_finishes = 0
         length_retry_requests = 0
         length_retry_candidates = 0
+        semantic_retry_requests = 0
+        semantic_retry_candidates = 0
         for task in sorted(required):
             task_prompt = prompts_by_task[task][index]
-            outputs, relaxed, complete_length, retry_requests, retry_candidates = policy_request(
+            outputs, relaxed, complete_length, retry_requests, retry_candidates, semantic_requests, semantic_candidates = policy_request(
                 args.policy_endpoint,
                 aliases[task],
                 task,
@@ -217,6 +227,8 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
             schema_complete_length_finishes += complete_length
             length_retry_requests += retry_requests
             length_retry_candidates += retry_candidates
+            semantic_retry_requests += semantic_requests
+            semantic_retry_candidates += semantic_candidates
             for candidate_index, parsed in enumerate(outputs):
                 generations[candidate_index].update(parsed)
         need(all(set(value) == set(AXES) for value in generations), "rollout did not produce all axes")
@@ -233,6 +245,8 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
             "schema_complete_length_finishes": schema_complete_length_finishes,
             "length_retry_requests": length_retry_requests,
             "length_retry_candidates": length_retry_candidates,
+            "semantic_retry_requests": semantic_retry_requests,
+            "semantic_retry_candidates": semantic_retry_candidates,
         }
 
     results: list[dict[str, Any]] = []
@@ -257,6 +271,9 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         "length_retry_requests": sum(int(row["length_retry_requests"]) for row in results),
         "length_retry_candidates": sum(int(row["length_retry_candidates"]) for row in results),
         "length_retry_semantics": "same prompt, sampling, and capacity-safe token ceiling; retain every valid initial candidate and independently resample each malformed slot with n=1 and frozen seed +1000003+slot_index",
+        "semantic_retry_requests": sum(int(row["semantic_retry_requests"]) for row in results),
+        "semantic_retry_candidates": sum(int(row["semantic_retry_candidates"]) for row in results),
+        "semantic_retry_semantics": "retain schema-complete Korean candidates and independently replace only candidates that violate the frozen 384-character and Hangul-presence contract",
         "raw_sha256": sha256_file(output),
         "input_provenance": provenance,
         "contrastive_gate_sha256": gate["directional"]["sha256"],
