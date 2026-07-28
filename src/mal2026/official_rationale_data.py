@@ -135,9 +135,13 @@ def rationale_object(rationales: Mapping[str, str], axes: Sequence[str]) -> dict
     return {axis: {"rationale": str(rationales[axis]).strip()} for axis in chosen}
 
 
-def rationale_schema(axes: Sequence[str]) -> dict[str, Any]:
+def rationale_schema(axes: Sequence[str], character_limit: int | None = None) -> dict[str, Any]:
     chosen = tuple(axes)
-    part = {"type": "object", "properties": {"rationale": {"type": "string", "minLength": 1}}, "required": ["rationale"], "additionalProperties": False}
+    need(character_limit is None or (type(character_limit) is int and character_limit > 0), "rationale schema character limit differs")
+    text_schema: dict[str, Any] = {"type": "string", "minLength": 1}
+    if character_limit is not None:
+        text_schema["maxLength"] = character_limit
+    part = {"type": "object", "properties": {"rationale": text_schema}, "required": ["rationale"], "additionalProperties": False}
     return {"type": "object", "properties": {axis: part for axis in chosen}, "required": list(chosen), "additionalProperties": False}
 
 

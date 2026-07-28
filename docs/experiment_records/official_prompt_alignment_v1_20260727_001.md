@@ -636,3 +636,17 @@ strictly parsed retry output only for the malformed length-finish slot.  The
 same prompt, seed, temperature, and top-p are retained, the retry is counted,
 and a second malformed result still fails closed.  This is missing-output
 recovery, not a quality-driven resampling or a change to reward/optimization.
+
+The ninth launch again passed the complete smoke, then served all 6,000 bundle
+requests and three retries.  At least one corresponding retry remained
+malformed at the larger 1,200-token ceiling.  Inspection exposed a contract
+wiring defect: both frozen exact-RL configs already declare
+`field_character_limit=384`, and GRPO reward parsing enforces it, but the DPO
+and external-GRPO JSON schemas had omitted `maxLength`.  Both observed smoke
+populations respected the declared bound (384/384 rationale fields valid;
+maxima 336 and 358 characters), while the rare failure was an uncontrolled
+long-form tail.  The repair passes the already frozen 384-character limit into
+the maintained structured-output schema for both DPO and GRPO and rechecks it
+after parsing.  It does not introduce a tuned threshold or change the prompt,
+reward, data, seed, sampling distribution, or optimization; it makes rollout
+generation conform to the pre-existing reward/output contract.

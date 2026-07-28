@@ -83,6 +83,7 @@ def policy_request(
     seed: int,
 ) -> tuple[list[dict[str, str]], int, int, int, int]:
     axes = axes_for_task(task)
+    character_limit = int(settings.reward["field_character_limit"])
     initial_max_tokens = 900 if task == "bundle" else 350
     body = {
         "model": alias,
@@ -92,7 +93,7 @@ def policy_request(
         "top_p": settings.policy["sampling_top_p"],
         "seed": seed,
         "max_tokens": initial_max_tokens,
-        "response_format": {"type": "json_schema", "json_schema": {"name": f"official_dpo_{task}", "strict": True, "schema": rationale_schema(axes)}},
+        "response_format": {"type": "json_schema", "json_schema": {"name": f"official_dpo_{task}", "strict": True, "schema": rationale_schema(axes, character_limit)}},
     }
     def response_choices(request: Mapping[str, Any]) -> list[dict[str, Any]]:
         outer = http_json(endpoint, request)
@@ -120,6 +121,10 @@ def policy_request(
                 raise strict_error
             parsed = parse_rationale_output(decoded, axes)
             relaxed = 1
+        need(
+            all(len(text) <= character_limit and any("가" <= char <= "힣" for char in text) for text in parsed.values()),
+            "policy rollout rationale violates the frozen field contract",
+        )
         return parsed, relaxed, int(finish_reason == "length"), 0
 
     def parse_choices(choices: list[dict[str, Any]]) -> tuple[list[dict[str, str] | None], int, int, int]:

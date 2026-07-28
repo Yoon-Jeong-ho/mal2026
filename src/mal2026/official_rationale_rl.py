@@ -688,7 +688,7 @@ class ExternalVLLMRollout:
             "top_p": float(self.settings.policy["sampling_top_p"]),
             "seed": seed,
             "max_tokens": int(self.settings.policy["max_completion_tokens"]),
-            "response_format": {"type": "json_schema", "json_schema": {"name": f"official_rl_{self.task}", "strict": True, "schema": rationale_schema(axes_for_task(self.task))}},
+            "response_format": {"type": "json_schema", "json_schema": {"name": f"official_rl_{self.task}", "strict": True, "schema": rationale_schema(axes_for_task(self.task), int(self.settings.reward["field_character_limit"]))}},
         }
         outer = http_json(self.endpoint, body)
         choices = outer.get("choices")
