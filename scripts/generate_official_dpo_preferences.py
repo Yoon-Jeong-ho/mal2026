@@ -142,10 +142,11 @@ def policy_request(
     length_retry_candidates = 0
     truncated_indices = [index for index, value in enumerate(parsed) if value is None]
     if truncated_indices:
-        # The endpoint requires one n-candidate request. Retry it with the same
-        # prompt, sampling parameters, and seed, but retain every valid initial
-        # candidate and replace only the transport-truncated candidate slots.
-        retry_body = {**body, "max_tokens": initial_max_tokens}
+        # The endpoint requires one n-candidate request. Retrying a sampled
+        # request with the original seed can reproduce the same malformed
+        # length-finish forever. Use one frozen alternate seed, retain every
+        # valid initial candidate, and replace only transport-truncated slots.
+        retry_body = {**body, "seed": seed + 1_000_003, "max_tokens": initial_max_tokens}
         retry_choices = response_choices(retry_body)
         for index in truncated_indices:
             replacement, retry_relaxed, retry_complete_length, retry_truncated = parse_choice(retry_choices[index])
@@ -251,7 +252,7 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         "length_finish_semantics": "accepted only when the unchanged strict rationale schema parser validates the complete JSON object",
         "length_retry_requests": sum(int(row["length_retry_requests"]) for row in results),
         "length_retry_candidates": sum(int(row["length_retry_candidates"]) for row in results),
-        "length_retry_semantics": "same prompt, seed, sampling, and capacity-safe token ceiling; retain every valid initial candidate and replace only malformed length-finish slots from one bounded retry",
+        "length_retry_semantics": "same prompt, sampling, and capacity-safe token ceiling with one frozen +1000003 alternate-seed retry; retain every valid initial candidate and replace only malformed length-finish slots",
         "raw_sha256": sha256_file(output),
         "input_provenance": provenance,
         "contrastive_gate_sha256": gate["directional"]["sha256"],

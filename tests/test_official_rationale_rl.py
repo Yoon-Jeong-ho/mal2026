@@ -277,6 +277,8 @@ class OfficialRationaleRLTest(unittest.TestCase):
         self.assertEqual((relaxed, complete_length, retry_requests, retry_candidates), (0, 0, 1, 1))
         self.assertEqual(mocked.call_args_list[0].args[1]["max_tokens"], 1200)
         self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 1200)
+        self.assertEqual(mocked.call_args_list[0].args[1]["seed"], 42)
+        self.assertEqual(mocked.call_args_list[1].args[1]["seed"], 1_000_045)
         self.assertEqual(
             mocked.call_args_list[0].args[1]["response_format"]["json_schema"]["schema"]
             ["properties"]["content"]["properties"]["rationale"]["maxLength"],

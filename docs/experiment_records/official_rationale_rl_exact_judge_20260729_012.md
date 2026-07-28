@@ -31,7 +31,7 @@ PYTHONPATH=src:. .venv-standard/bin/python scripts/run_official_rationale_rl_exp
 
 ## Preserved negative evidence and repair
 
-Run 011 passed its 32-group smoke and one-update DPO training, then failed during the full bundle rollout after all 6,000 initial candidates and six retries had been served. The immediate failure was `policy rollout remained truncated after bounded length retry`; at least one strict JSON object remained incomplete at the former 2,800-token retry ceiling.
+Run 011 passed its 32-group smoke and one-update DPO training, then failed during the full bundle rollout after all 6,000 input groups (four candidates per group) and six retry requests had been served. The immediate failure was `policy rollout remained truncated after bounded length retry`; at least one strict JSON object remained incomplete at the former 2,800-token retry ceiling.
 
 The run-011 smoke judged 128 candidates with mean 12-cell total 59.7421875/60 and population standard deviation 0.7628697. It retained 13 preference rows from 32 groups; the zero-variance group fraction was 0.59375 and passed the frozen 0.8 operational gate. These numbers diagnose a strongly ceiling-saturated judge and are not a claim of rationale quality.
 
@@ -44,3 +44,9 @@ The repair does not expand the frozen rationale field bound: every axis remains 
 - CPU dry plan verified the exact judge binding, DPO/GRPO 5,120-token server contract, and the authorized GPU topology without querying GPUs.
 
 Final metrics and deviations must be appended after the durable runner completes or fails.
+
+## Run-012 terminal result
+
+Run 012 failed at 06:07:27 KST in `dpo-full-rollout-bundle`. All 6,000 base group requests completed and four group-level retry requests were made, but at least one replacement still ended with an incomplete length-finish. The vLLM server itself returned HTTP 200 for all 6,004 requests and did not fail.
+
+The capacity repair therefore reduced the issue to four rare malformed samples but did not make the retry effective. Inspection found that the retry reused the original sampling seed, which can deterministically reproduce the same malformed candidate. The next integration repair keeps all valid initial candidates and changes only the one bounded replacement request to the frozen alternate seed `original_seed + 1000003`; no prompt, judge, field length, candidate count, dataset, score, or learning objective changes.
