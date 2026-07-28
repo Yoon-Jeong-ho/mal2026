@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
@@ -101,6 +102,37 @@ class OfficialDecoderScoreTests(unittest.TestCase):
         target = [stage for stage in plan if str(stage["stage"]).startswith("target_")]
         self.assertEqual(len(target), 12)
         self.assertEqual({stage["arm"] for stage in target}, set(essay))
+
+    def test_essay_aggregate_resolves_selected_epoch_from_event_history(self) -> None:
+        from scripts.orchestrate_official_decoder_score_matrix import _write_essay_bootstrap_aggregate
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = replace(self.config, output_root=str(root))
+            arm = "generative__public__essay"
+            output = root / arm
+            output.mkdir()
+            completion = {
+                "schema_version": "mal2026-official-decoder-integer-score-completion-v1",
+                "status": "completed", "run_id": config.run_id,
+                "architecture": "generative", "initialization": "public", "input_view": "essay",
+                "score_prompt_kind": config.score_prompt_kind, "average_target_used": False,
+                "selection": {
+                    "selected_epoch": 2,
+                    "events": [
+                        {"epoch": 1, "macro_integer_rmse": 0.8, "macro_integer_spearman": 0.2, "macro_continuous_rmse": 0.7},
+                        {"epoch": 2, "macro_integer_rmse": 0.7, "macro_integer_spearman": 0.3, "macro_continuous_rmse": 0.6},
+                    ],
+                },
+                "canonical_validation": {"use": "single_final_descriptive_evaluation_not_selection", "metrics": {
+                    "macro_integer_rmse": 0.75, "macro_integer_spearman": 0.25, "macro_continuous_rmse": 0.65,
+                }},
+            }
+            (output / "training_complete.json").write_text(json.dumps(completion), encoding="utf-8")
+            aggregate_path = _write_essay_bootstrap_aggregate(config, [arm])
+            aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+            self.assertEqual(aggregate["selected_arm"], arm)
+            self.assertEqual(aggregate["candidates"][0]["epoch"], 2)
+            self.assertEqual(aggregate["candidates"][0]["macro_integer_rmse"], 0.7)
 
     def test_final_ranking_is_integer_primary(self) -> None:
         def result(name, integer_rmse, integer_spearman, continuous_rmse):

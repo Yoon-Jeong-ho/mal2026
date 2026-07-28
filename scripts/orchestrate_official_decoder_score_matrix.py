@@ -119,7 +119,29 @@ def _write_essay_bootstrap_aggregate(config: DecoderScoreConfig, arms: list[str]
     for arm in arms:
         completion = Path(config.output_root) / arm / "training_complete.json"
         payload = json.loads(completion.read_text(encoding="utf-8"))
-        selected = payload["selection"]["selected_event"]
+        architecture, initialization, input_view = parse_arm(arm)
+        if (
+            payload.get("schema_version") != "mal2026-official-decoder-integer-score-completion-v1"
+            or payload.get("status") != "completed"
+            or payload.get("run_id") != config.run_id
+            or payload.get("architecture") != architecture
+            or payload.get("initialization") != initialization
+            or payload.get("input_view") != input_view
+            or payload.get("score_prompt_kind") != config.score_prompt_kind
+            or payload.get("average_target_used") is not False
+            or payload.get("canonical_validation", {}).get("use") != "single_final_descriptive_evaluation_not_selection"
+        ):
+            raise RuntimeError(f"completed decoder essay arm identity differs: {arm}")
+        selection = payload.get("selection")
+        if not isinstance(selection, dict) or not isinstance(selection.get("events"), list):
+            raise RuntimeError(f"decoder essay selection history is unavailable: {arm}")
+        selected_epoch = selection.get("selected_epoch")
+        matches = [event for event in selection["events"] if isinstance(event, dict) and event.get("epoch") == selected_epoch]
+        if len(matches) != 1:
+            raise RuntimeError(f"decoder essay selected epoch is not uniquely represented: {arm}")
+        selected = matches[0]
+        if not all(key in selected for key in ("epoch", "macro_integer_rmse", "macro_integer_spearman", "macro_continuous_rmse")):
+            raise RuntimeError(f"decoder essay selected event metrics are incomplete: {arm}")
         candidates.append({
             "arm": arm,
             **{key: selected[key] for key in ("epoch", "macro_integer_rmse", "macro_integer_spearman", "macro_continuous_rmse")},
@@ -153,16 +175,53 @@ def _write_essay_bootstrap_aggregate(config: DecoderScoreConfig, arms: list[str]
     return output
 
 
+def _finalize_completed_essay_recovery(config: DecoderScoreConfig, manifest_path: Path) -> Path:
+    """Finalize a completed six-arm run after an aggregate-only integration failure."""
+    if not manifest_path.is_file() or manifest_path.is_symlink():
+        raise RuntimeError("decoder essay orchestration manifest is unavailable")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_stages = ["aihub:reused_completed_full_parameter_pretrain"]
+    for arm in target_arms("essay"):
+        expected_stages.extend((f"target_smoke:{arm}", f"target_full:{arm}"))
+    if (
+        manifest.get("schema_version") != "mal2026-official-decoder-score-orchestration-v1"
+        or manifest.get("status") != "running"
+        or manifest.get("target_input_view") != "essay"
+        or manifest.get("config_sha256") != file_sha256(Path(manifest["config_path"]))
+        or manifest.get("resolved_config_sha256") != file_sha256(Path(manifest["resolved_config_path"]))
+        or manifest.get("completed_stages") != expected_stages
+    ):
+        raise RuntimeError("decoder essay recovery manifest state differs")
+    aggregate_path = _write_essay_bootstrap_aggregate(config, target_arms("essay"))
+    manifest["completed_stages"].append("aggregate:decoder_essay_bootstrap")
+    manifest["status"] = "completed"
+    manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
+    manifest["aggregate_path"] = str(aggregate_path.resolve())
+    manifest["aggregate_sha256"] = file_sha256(aggregate_path)
+    temporary = manifest_path.with_suffix(manifest_path.suffix + ".tmp")
+    temporary.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(manifest_path)
+    return aggregate_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--aihub-config", type=Path, default=DEFAULT_AIHUB_CONFIG)
     parser.add_argument("--reuse-completed-aihub-pretrain", action="store_true")
     parser.add_argument("--target-input-view", choices=("all", "essay", "rationale"), default="all")
+    parser.add_argument("--finalize-completed-essay-recovery", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     config = DecoderScoreConfig.from_json(args.config, require_dependencies=False)
     aihub_config = DecoderAIHubConfig.from_json(args.aihub_config, require_dependencies=not args.dry_run)
+    if args.finalize_completed_essay_recovery:
+        if args.dry_run or args.target_input_view != "essay":
+            raise RuntimeError("essay recovery requires --target-input-view essay and a real aggregate write")
+        manifest_path = Path(config.output_root) / "orchestration_manifest.essay.json"
+        aggregate_path = _finalize_completed_essay_recovery(config, manifest_path)
+        print(json.dumps({"status": "completed_recovery", "gpu_started": False, "aggregate_path": str(aggregate_path.resolve()), "aggregate_sha256": file_sha256(aggregate_path)}, sort_keys=True))
+        return
     if args.dry_run:
         stages = command_plan(args.config, args.aihub_config, args.target_input_view)
         if args.reuse_completed_aihub_pretrain:
