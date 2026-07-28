@@ -585,3 +585,19 @@ and one-update trainer check.  This changes only the preflight sample size;
 the full DPO/GRPO scientific protocol is unchanged.  If that 32-group gate
 also fails, the exact judge is treated as too reward-saturated and RL remains
 fail-closed.
+
+The fifth launch passed that 32-group gate: 12/32 groups yielded a usable
+preference, the zero-variance fraction was `0.625`, and the exact-judge total
+over 128 candidates was `59.8515625/60` (population standard deviation
+`0.4855706`).  Its one-update DPO trainer check completed.  The TP4 full bundle
+rollout then served all 6,000 train groups but failed before writing row or
+aggregate artifacts because at least one schema-constrained response reported
+`finish_reason=length`.  The generator had checked the transport finish flag
+before validating the returned JSON, so it could not distinguish a complete
+object ending exactly at the token boundary from a truncated object.  The
+preserved recovery parses and validates the unchanged rationale schema first:
+a `length` finish is accepted and counted only if the complete JSON object
+passes that parser; malformed or truncated JSON still fails closed.  No token
+limit, prompt, sampling parameter, seed, data row, reward, or optimizer setting
+is changed.  Because the repair changes executable code, the next attempt uses
+a fresh run ID and Git lineage rather than resuming the failed run in place.

@@ -73,7 +73,15 @@ def parse_aliases(values: list[str]) -> dict[str, str]:
     return result
 
 
-def policy_request(endpoint: str, alias: str, task: str, prompt: list[dict[str, str]], candidates: int, settings: RLSettings, seed: int) -> tuple[list[dict[str, str]], int]:
+def policy_request(
+    endpoint: str,
+    alias: str,
+    task: str,
+    prompt: list[dict[str, str]],
+    candidates: int,
+    settings: RLSettings,
+    seed: int,
+) -> tuple[list[dict[str, str]], int, int]:
     axes = axes_for_task(task)
     body = {
         "model": alias,
@@ -90,8 +98,11 @@ def policy_request(endpoint: str, alias: str, task: str, prompt: list[dict[str, 
     need(isinstance(choices, list) and len(choices) == candidates, "policy rollout choice count differs")
     parsed: list[dict[str, str]] = []
     relaxed_control_character_parses = 0
+    schema_complete_length_finishes = 0
     for choice in choices:
-        need(isinstance(choice, dict) and choice.get("finish_reason") == "stop", "policy rollout did not stop cleanly")
+        need(isinstance(choice, dict), "policy rollout choice differs")
+        finish_reason = choice.get("finish_reason")
+        need(finish_reason in {"stop", "length"}, "policy rollout finish reason differs")
         content = choice["message"]["content"]
         try:
             parsed.append(parse_rationale_output(content, axes))
@@ -105,7 +116,13 @@ def policy_request(endpoint: str, alias: str, task: str, prompt: list[dict[str, 
             decoded = json.loads(content, strict=False)
             parsed.append(parse_rationale_output(decoded, axes))
             relaxed_control_character_parses += 1
-    return parsed, relaxed_control_character_parses
+        if finish_reason == "length":
+            # A schema-constrained completion may end exactly on the configured
+            # token boundary after emitting a complete JSON object.  Accept it
+            # only after the unchanged rationale parser has validated the full
+            # object; truncated or malformed length finishes still fail closed.
+            schema_complete_length_finishes += 1
+    return parsed, relaxed_control_character_parses, schema_complete_length_finishes
 
 
 def write_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> None:
@@ -143,10 +160,20 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         index, row = index_row
         generations: list[dict[str, str]] = [dict() for _ in range(candidate_count)]
         relaxed_control_character_parses = 0
+        schema_complete_length_finishes = 0
         for task in sorted(required):
             task_prompt = prompts_by_task[task][index]
-            outputs, relaxed = policy_request(args.policy_endpoint, aliases[task], task, task_prompt, candidate_count, settings, int(settings.policy["seed"]) + index)
+            outputs, relaxed, complete_length = policy_request(
+                args.policy_endpoint,
+                aliases[task],
+                task,
+                task_prompt,
+                candidate_count,
+                settings,
+                int(settings.policy["seed"]) + index,
+            )
             relaxed_control_character_parses += relaxed
+            schema_complete_length_finishes += complete_length
             for candidate_index, parsed in enumerate(outputs):
                 generations[candidate_index].update(parsed)
         need(all(set(value) == set(AXES) for value in generations), "rollout did not produce all axes")
@@ -160,6 +187,7 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
             "scores": row["scores"],
             "generations": generations,
             "relaxed_control_character_json_parses": relaxed_control_character_parses,
+            "schema_complete_length_finishes": schema_complete_length_finishes,
         }
 
     results: list[dict[str, Any]] = []
@@ -179,6 +207,8 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         "candidates": len(results) * candidate_count,
         "relaxed_control_character_json_parses": sum(int(row["relaxed_control_character_json_parses"]) for row in results),
         "relaxed_parse_semantics": "json.loads(strict=False) only after strict parse failure; strict rationale schema validation still required",
+        "schema_complete_length_finishes": sum(int(row["schema_complete_length_finishes"]) for row in results),
+        "length_finish_semantics": "accepted only when the unchanged strict rationale schema parser validates the complete JSON object",
         "raw_sha256": sha256_file(output),
         "input_provenance": provenance,
         "contrastive_gate_sha256": gate["directional"]["sha256"],

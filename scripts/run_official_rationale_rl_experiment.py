@@ -665,7 +665,7 @@ def dry_plan(args: argparse.Namespace) -> dict[str, Any]:
         "gate_files_present": all(path.is_file() for path in gate_paths),
         "gpu_scope": [0, 1, 2, 3], "gpu_queries_in_dry_run": False,
         "dpo_stages": [
-            "GPU0 one-group policy rollout", "GPU0 four-candidate exact-Q4 judgment", "bundle preference assembly",
+            f"GPU0 {DPO_SMOKE_GROUPS}-group policy rollout", f"GPU0 {4 * DPO_SMOKE_GROUPS}-candidate exact-Q4 judgment", "bundle preference assembly",
             "GPU0 one-update DPO trainer smoke", "TP4 full bundle+axis rollout", "four-replica exact-Q4 full judgment",
             "bundle 12-cell and per-axis 4-cell assembly", "four official DPO tasks parallel", "three pinned legacy DPO smoke+full pairs",
         ],

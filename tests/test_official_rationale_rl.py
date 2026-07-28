@@ -190,7 +190,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
             }],
         }
         with patch.object(preferences, "http_json", return_value=response):
-            outputs, relaxed = preferences.policy_request(
+            outputs, relaxed, complete_length = preferences.policy_request(
                 "http://127.0.0.1:9999",
                 "policy",
                 "content",
@@ -200,7 +200,49 @@ class OfficialRationaleRLTest(unittest.TestCase):
                 42,
             )
         self.assertEqual(relaxed, 1)
+        self.assertEqual(complete_length, 0)
         self.assertEqual(outputs, [{"content": "첫 줄\n둘째 줄"}])
+
+    def test_rollout_accepts_only_schema_complete_length_finish(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        settings = rl.RLSettings.from_json(root / "configs/official_rationale_dpo.llm_as_judge_txt.v2.json")
+        valid = {
+            "choices": [{
+                "finish_reason": "length",
+                "message": {"content": '{"content":{"rationale":"완결된 판단 근거"}}'},
+            }],
+        }
+        with patch.object(preferences, "http_json", return_value=valid):
+            outputs, relaxed, complete_length = preferences.policy_request(
+                "http://127.0.0.1:9999",
+                "policy",
+                "content",
+                [{"role": "user", "content": "입력"}],
+                1,
+                settings,
+                42,
+            )
+        self.assertEqual(outputs, [{"content": "완결된 판단 근거"}])
+        self.assertEqual(relaxed, 0)
+        self.assertEqual(complete_length, 1)
+
+        invalid = {
+            "choices": [{
+                "finish_reason": "length",
+                "message": {"content": '{"content":{"rationale":"잘린 판단 근거"'},
+            }],
+        }
+        with patch.object(preferences, "http_json", return_value=invalid):
+            with self.assertRaises((preferences.OfficialRationaleDataError, json.JSONDecodeError)):
+                preferences.policy_request(
+                    "http://127.0.0.1:9999",
+                    "policy",
+                    "content",
+                    [{"role": "user", "content": "입력"}],
+                    1,
+                    settings,
+                    42,
+                )
 
     def test_gpu_conflict_gate_is_read_only_and_fail_closed(self) -> None:
         busy = type("Result", (), {"returncode": 0, "stdout": "12345\n"})()
