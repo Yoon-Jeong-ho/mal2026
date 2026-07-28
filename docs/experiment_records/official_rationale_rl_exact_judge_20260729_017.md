@@ -18,3 +18,9 @@ PYTHONPATH=src:. .venv-standard/bin/python scripts/run_official_rationale_rl_exp
 Outputs use matching ignored orchestration/restricted roots. Relative to run 016, only invalid-candidate handling changes: schema-complete samples without Hangul or beyond the frozen 384-character bound are counted separately and their slots are independently replaced. All complete valid candidates remain untouched. The XGrammar compact JSON, 7,100/2,400 output capacities, 8,192 context, prompts, judge, data, four-valid-candidate requirement, and objectives are unchanged. Run-016 negative evidence is preserved.
 
 Preflight: 46 targeted tests, Python compile, and `git diff --check` passed. Append terminal aggregate results/deviations after completion or failure.
+
+## Terminal result
+
+Run 017 passed the smoke, where one semantic-invalid candidate was successfully replaced, then failed at 07:52:33 KST after the full 6,000-group rollout. The server returned 6,093 successful requests: 6,000 base groups and 93 independent candidate replacements. At least one replacement also contained no Hangul, so the one-replacement bound failed. Compact XGrammar and the 7,100-token ceiling eliminated the prior length-finish failure; the remaining issue was semantic rejection sampling.
+
+The fixed Korean-candidate contract is moved into constrained decoding for the next run by adding JSON Schema `pattern: ".*[가-힣].*"` to every rationale field that already has the 384-character bound. Local XGrammar 0.25.1 compilation of the exact three-axis schema passed. Post-parse checks and aggregate semantic counters remain as defense in depth. This excludes only candidates already forbidden by the frozen contract; prompts, valid-candidate distribution target, judge, scores, data, and objectives remain unchanged.

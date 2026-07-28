@@ -300,6 +300,11 @@ class OfficialRationaleRLTest(unittest.TestCase):
             ["properties"]["content"]["properties"]["rationale"]["maxLength"],
             384,
         )
+        self.assertEqual(
+            mocked.call_args_list[0].args[1]["response_format"]["json_schema"]["schema"]
+            ["properties"]["content"]["properties"]["rationale"]["pattern"],
+            ".*[가-힣].*",
+        )
 
         initial_two = {
             "choices": [
