@@ -613,3 +613,14 @@ already completed candidate is byte-identical and every truncated candidate
 preserves its entire original generated prefix; it then applies the unchanged
 strict rationale parser.  A divergent retry or a second truncation still stops
 the run.  Aggregate reports count both retry requests and affected candidates.
+
+The seventh launch completed its 32-group rollout but failed after all 128
+smoke judgments because `q4_score` rejected one non-`stop` transport finish
+flag before parsing the returned schema-constrained judge object.  The judge
+server log showed no 1,800-token ceiling hit (maximum observed decoded count
+was 1,592), and the same smoke population had completed in earlier launches.
+The recovery therefore mirrors the policy-side fail-closed rule: accept only
+`stop` or `length`, then require the unchanged complete 12-cell judge parser to
+pass.  A genuinely truncated or malformed judge object still raises and no
+score is retained.  This changes neither prompt, decoding, reward projection,
+nor score values; a fresh Git-bound run is required.

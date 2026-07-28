@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import mal2026.official_rationale_rl as rl
+from mal2026.official_writing_contract import OfficialContractError
 import scripts.generate_official_dpo_preferences as preferences
 import scripts.run_official_rationale_rl as runner
 import scripts.run_official_rationale_rl_experiment as experiment_runner
@@ -170,6 +171,26 @@ class OfficialRationaleRLTest(unittest.TestCase):
         self.assertEqual(captured["candidate"]["organization"]["rationale"], "조직 근거")
         self.assertEqual(captured["system_prompt"], rl.FROZEN_PROXY_JUDGE_SYSTEM_PROMPT)
         self.assertEqual(reward.aggregate()["projection"], "content_4_cell_mean_from_full_12_cell_judgment")
+
+    def test_q4_judge_accepts_length_only_after_complete_12_cell_parse(self) -> None:
+        complete = json.dumps(judge(4), ensure_ascii=False)
+        response = {"choices": [{"finish_reason": "length", "message": {"content": complete}}]}
+        candidate = {
+            axis: {"score": 3, "rationale": "판단 근거"}
+            for axis in rl.AXES
+        }
+        with patch.object(rl, "http_json", return_value=response):
+            parsed = rl.q4_score(
+                "http://127.0.0.1:9999", "judge", "문제", "학생 글", candidate,
+            )
+        self.assertEqual(parsed, judge(4))
+
+        truncated = {"choices": [{"finish_reason": "length", "message": {"content": complete[:-1]}}]}
+        with patch.object(rl, "http_json", return_value=truncated):
+            with self.assertRaises(OfficialContractError):
+                rl.q4_score(
+                    "http://127.0.0.1:9999", "judge", "문제", "학생 글", candidate,
+                )
 
     def test_exact_user_judge_configs_bind_file_and_preserve_failed_gate(self) -> None:
         root = Path(__file__).resolve().parents[1]

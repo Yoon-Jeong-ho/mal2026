@@ -592,7 +592,11 @@ def q4_score(
     outer = http_json(endpoint, body)
     try:
         choice = outer["choices"][0]
-        need(choice.get("finish_reason") == "stop", "Q4 judge finish reason differs")
+        finish_reason = choice.get("finish_reason")
+        need(finish_reason in {"stop", "length"}, "Q4 judge finish reason differs")
+        # llama-server can report ``length`` for a schema-constrained object
+        # that is already complete. A genuinely truncated object still fails
+        # the unchanged complete 12-cell parser below and is never scored.
         return parse_judge_output(choice["message"]["content"])
     except (KeyError, IndexError, TypeError) as exc:
         raise OfficialRationaleRLError("Q4 judge response envelope differs") from exc
