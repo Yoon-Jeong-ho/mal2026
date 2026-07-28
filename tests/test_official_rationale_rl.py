@@ -186,11 +186,22 @@ class OfficialRationaleRLTest(unittest.TestCase):
         self.assertEqual(parsed, judge(4))
 
         truncated = {"choices": [{"finish_reason": "length", "message": {"content": complete[:-1]}}]}
-        with patch.object(rl, "http_json", return_value=truncated):
+        completed = {"choices": [{"finish_reason": "stop", "message": {"content": complete}}]}
+        with patch.object(rl, "http_json", side_effect=[truncated, completed]) as mocked:
+            parsed = rl.q4_score(
+                "http://127.0.0.1:9999", "judge", "문제", "학생 글", candidate,
+            )
+        self.assertEqual(parsed, judge(4))
+        self.assertEqual(mocked.call_args_list[0].args[1]["max_tokens"], 1800)
+        self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 3600)
+
+        malformed_stop = {"choices": [{"finish_reason": "stop", "message": {"content": complete[:-1]}}]}
+        with patch.object(rl, "http_json", return_value=malformed_stop) as mocked:
             with self.assertRaises(OfficialContractError):
                 rl.q4_score(
                     "http://127.0.0.1:9999", "judge", "문제", "학생 글", candidate,
                 )
+        self.assertEqual(mocked.call_count, 1)
 
     def test_exact_user_judge_configs_bind_file_and_preserve_failed_gate(self) -> None:
         root = Path(__file__).resolve().parents[1]

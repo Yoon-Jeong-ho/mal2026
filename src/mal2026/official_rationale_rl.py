@@ -37,6 +37,7 @@ from .official_rationale_sft import MODEL_ID, MODEL_PATH, MODEL_REVISION
 from .official_writing_contract import (
     FROZEN_PROXY_JUDGE_SYSTEM_PROMPT,
     JUDGE_DIMENSIONS,
+    OfficialContractError,
     judge_json_schema,
     judge_messages,
     judge_messages_with_system,
@@ -591,17 +592,35 @@ def q4_score(
         "messages": request_messages,
         "response_format": {"type": "json_object", "schema": judge_json_schema()},
     }
+    def parse_response(outer: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
+        try:
+            choice = outer["choices"][0]
+            finish_reason = choice.get("finish_reason")
+            need(finish_reason in {"stop", "length"}, "Q4 judge finish reason differs")
+            return parse_judge_output(choice["message"]["content"]), str(finish_reason)
+        except (KeyError, IndexError, TypeError) as exc:
+            raise OfficialRationaleRLError("Q4 judge response envelope differs") from exc
+
     outer = http_json(endpoint, body)
     try:
-        choice = outer["choices"][0]
-        finish_reason = choice.get("finish_reason")
-        need(finish_reason in {"stop", "length"}, "Q4 judge finish reason differs")
+        parsed, _ = parse_response(outer)
         # llama-server can report ``length`` for a schema-constrained object
-        # that is already complete. A genuinely truncated object still fails
-        # the unchanged complete 12-cell parser below and is never scored.
-        return parse_judge_output(choice["message"]["content"])
-    except (KeyError, IndexError, TypeError) as exc:
-        raise OfficialRationaleRLError("Q4 judge response envelope differs") from exc
+        # that is already complete. Accept it only after the complete 12-cell
+        # parser succeeds.
+        return parsed
+    except OfficialContractError:
+        try:
+            finish_reason = outer["choices"][0].get("finish_reason")
+        except (KeyError, IndexError, TypeError) as exc:
+            raise OfficialRationaleRLError("Q4 judge response envelope differs") from exc
+        if finish_reason != "length":
+            raise
+        # A deterministic judge can preserve its decision while receiving
+        # enough transport capacity to close the JSON object. Retry only the
+        # incomplete length-finish; malformed stop responses still fail.
+        retry_outer = http_json(endpoint, {**body, "max_tokens": 3600})
+        parsed, _ = parse_response(retry_outer)
+        return parsed
 
 
 class ExactQ4Reward:

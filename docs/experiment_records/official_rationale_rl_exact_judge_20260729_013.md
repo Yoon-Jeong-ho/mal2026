@@ -26,3 +26,9 @@ Aggregate output is under `outputs/official-rationale-rl-v1/orchestration/offici
 The only deviation from run 012 is the deterministic alternate seed for a malformed replacement request. Prompts, judge, input rows, four-candidate group size, 384-character-per-axis schema, 4,000-token bundle ceiling, 5,120-token vLLM context, score projection, and training objectives are unchanged. This repairs a retry that otherwise reproduced the same invalid stochastic sample. Run 012's failure and all prior negative evidence remain preserved.
 
 Preflight: 46 targeted tests and `git diff --check` passed. Final metrics and deviations must be appended after the durable runner completes or fails.
+
+## Terminal result
+
+Run 013 failed at 06:18:43 KST in `dpo-smoke-judge`. The rollout smoke completed, but one exact-Q4 response hit the frozen 1,800-token judge output ceiling and ended in the middle of a JSON string (`finish_reason=length`). The server remained healthy and reported no truncation of its input context; the failure was the response token cap in `q4_score`, not the policy replacement-seed repair.
+
+The next integration repair preserves every complete 1,800-token-or-shorter judgment. Only an incomplete `length` response is deterministically retried with the same prompt, temperature 0, and seed 42 at a 3,600-token ceiling so the same judgment can close its JSON object. An invalid `stop` response remains a hard failure. Prompt text, JSON schema, score projection, judge model, and scientific protocol are unchanged.
