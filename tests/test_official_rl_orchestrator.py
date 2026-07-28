@@ -19,11 +19,13 @@ class OfficialRLOrchestratorTest(unittest.TestCase):
         static = servers.vllm_policy_command(
             gpus=(0, 1, 2, 3), port=19321, adapters=adapters, aliases=aliases,
             max_num_seqs=256, max_num_batched_tokens=32768, dynamic_updates=False,
+            max_model_len=5120,
         )
         self.assertNotIn("--enforce-eager", static)
         self.assertEqual(static[static.index("--tensor-parallel-size") + 1], "4")
         self.assertEqual(static[static.index("--max-num-seqs") + 1], "256")
         self.assertEqual(static[static.index("--max-num-batched-tokens") + 1], "32768")
+        self.assertEqual(static[static.index("--max-model-len") + 1], "5120")
         self.assertIn("--lora-modules", static)
         self.assertEqual(sum(value.startswith("alias-") for value in static), 4)
         dynamic = servers.vllm_policy_command(
@@ -71,6 +73,7 @@ class OfficialRLOrchestratorTest(unittest.TestCase):
             run.root = root
             run.ledger_path = root / "ledger.jsonl"
             run.gates = {"directional": {"sha256": "a" * 64}, "combined_safety": {"sha256": "b" * 64}}
+            run.judge_prompt_sha256 = "c" * 64
             (root / "stages").mkdir()
             calls = []
 
@@ -101,6 +104,9 @@ class OfficialRLOrchestratorTest(unittest.TestCase):
         args = argparse.Namespace(
             run_id="official-rationale-rl-experiment-v1-synthetic",
             scope="all", grpo_task=["bundle"], grpo_phase=["pilot", "full"],
+            legacy_grpo_arm=list(experiment.LEGACY_GRPO_ARMS),
+            dpo_config=Path(__file__).resolve().parents[1] / "configs/official_rationale_dpo.llm_as_judge_txt.v2.json",
+            grpo_config=Path(__file__).resolve().parents[1] / "configs/official_rationale_grpo.llm_as_judge_txt.v2.json",
         )
         with patch.object(servers, "gpu_compute_pids", side_effect=AssertionError("dry-run queried GPU")):
             plan = experiment.dry_plan(args)

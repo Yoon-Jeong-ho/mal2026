@@ -404,14 +404,16 @@ class RLSettings:
         if self.algorithm == "dpo":
             need(self.policy.get("trainer") == "trl.DPOTrainer" and self.policy.get("offline_preferences") is True, "DPO trainer contract differs")
             need(self.policy.get("loss_type") == "sigmoid" and self.policy.get("beta") == 0.1, "DPO loss contract differs")
-            need((self.runtime.get("generation_tensor_parallel_size"), self.runtime.get("generation_max_model_len"), self.runtime.get("generation_max_num_seqs"), self.runtime.get("generation_max_num_batched_tokens")) == (4, 4096, 256, 32768), "DPO generation topology/batching differs")
+            expected_model_len = 5120 if self.judge.get("prompt_kind") == EXACT_JUDGE_PROMPT_KIND else 4096
+            need((self.runtime.get("generation_tensor_parallel_size"), self.runtime.get("generation_max_model_len"), self.runtime.get("generation_max_num_seqs"), self.runtime.get("generation_max_num_batched_tokens")) == (4, expected_model_len, 256, 32768), "DPO generation topology/batching differs")
         else:
             need(self.policy.get("trainer") == "trl.GRPOTrainer" and self.policy.get("rollout_backend") == "external_vllm_http_rollout_func", "GRPO rollout contract differs")
             need(self.policy.get("use_vllm") is False and self.policy.get("num_generations") == 4, "GRPO integrated-vLLM/group contract differs")
             need(self.policy.get("loss_type") == "dr_grpo" and self.policy.get("scale_rewards") == "none", "GRPO objective differs")
             need((self.policy.get("max_steps"), self.policy.get("full_train_limit"), self.policy.get("pilot_max_steps"), self.policy.get("pilot_train_limit")) == (480, 1920, 80, 320), "GRPO full/pilot bounds differ")
             need(self.runtime.get("rollout_gpus") == [0, 1] and self.runtime.get("policy_gpu") == [2] and self.runtime.get("reward_gpu") == [3], "GRPO GPU partition differs")
-            need((self.runtime.get("rollout_tensor_parallel_size"), self.runtime.get("rollout_max_model_len"), self.runtime.get("rollout_max_num_seqs"), self.runtime.get("rollout_max_num_batched_tokens"), self.runtime.get("gpu_memory_utilization")) == (2, 4096, 192, 65536, 0.9), "GRPO rollout topology/batching differs")
+            expected_model_len = 5120 if self.judge.get("prompt_kind") == EXACT_JUDGE_PROMPT_KIND else 4096
+            need((self.runtime.get("rollout_tensor_parallel_size"), self.runtime.get("rollout_max_model_len"), self.runtime.get("rollout_max_num_seqs"), self.runtime.get("rollout_max_num_batched_tokens"), self.runtime.get("gpu_memory_utilization")) == (2, expected_model_len, 192, 65536, 0.9), "GRPO rollout topology/batching differs")
 
     def gate_evidence(self) -> dict[str, Any]:
         if self.gate.get("mode") == "explicit_user_authorization_after_preserved_v1_failure":

@@ -143,13 +143,14 @@ def wait_health(process: subprocess.Popen[str], endpoint: str, label: str) -> No
 def vllm_policy_command(
     *, gpus: Sequence[int], port: int, adapters: Mapping[str, Path], aliases: Mapping[str, str],
     max_num_seqs: int, max_num_batched_tokens: int, dynamic_updates: bool,
+    max_model_len: int = 4096,
     model_path: Path = MODEL_PATH, model_id: str = MODEL_ID,
 ) -> list[str]:
     command = [
         str(VLLM), "serve", str(model_path), "--served-model-name", model_id,
         "--host", "127.0.0.1", "--port", str(port),
         "--tensor-parallel-size", str(len(tuple(gpus))), "--attention-backend", "FLASH_ATTN",
-        "--max-model-len", "4096", "--max-num-seqs", str(max_num_seqs),
+        "--max-model-len", str(max_model_len), "--max-num-seqs", str(max_num_seqs),
         "--max-num-batched-tokens", str(max_num_batched_tokens), "--gpu-memory-utilization", "0.90",
         "--disable-custom-all-reduce", "--enable-lora", "--max-loras", str(len(adapters)), "--max-lora-rank", "32",
         "--generation-config", "vllm", "--enable-prefix-caching", "--no-enable-flashinfer-autotune",
@@ -180,6 +181,7 @@ def vllm_policy_server(
     max_num_seqs: int,
     max_num_batched_tokens: int,
     dynamic_updates: bool,
+    max_model_len: int = 4096,
     model_path: Path = MODEL_PATH,
     model_id: str = MODEL_ID,
     model_revision: str = MODEL_REVISION,
@@ -202,7 +204,8 @@ def vllm_policy_server(
     attestation.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     command = vllm_policy_command(gpus=chosen, port=port, adapters=adapters, aliases=aliases,
                                    max_num_seqs=max_num_seqs, max_num_batched_tokens=max_num_batched_tokens,
-                                   dynamic_updates=dynamic_updates, model_path=model_path, model_id=model_id)
+                                   dynamic_updates=dynamic_updates, max_model_len=max_model_len,
+                                   model_path=model_path, model_id=model_id)
     visible = ",".join(str(gpu) for gpu in chosen)
     environment = {
         **os.environ,
@@ -224,7 +227,7 @@ def vllm_policy_server(
         atomic_json(attestation, {
             "schema_version": "mal2026-official-rl-policy-server-attestation-v1",
             "created_at": now(), "endpoint": endpoint, "physical_gpus": list(chosen),
-            "tensor_parallel_size": len(chosen), "max_model_len": 4096,
+            "tensor_parallel_size": len(chosen), "max_model_len": max_model_len,
             "max_num_seqs": max_num_seqs, "max_num_batched_tokens": max_num_batched_tokens,
             "gpu_memory_utilization": 0.9, "enforce_eager": False,
             "compatibility_workaround": "disable_custom_all_reduce_and_fuse_allreduce_rms_only; compilation_and_cuda_graphs_remain_enabled",

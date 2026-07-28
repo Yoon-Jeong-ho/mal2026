@@ -84,7 +84,7 @@ def policy_request(
 ) -> tuple[list[dict[str, str]], int, int, int, int]:
     axes = axes_for_task(task)
     character_limit = int(settings.reward["field_character_limit"])
-    initial_max_tokens = int(settings.policy["max_completion_tokens"]) if task == "bundle" else 800
+    initial_max_tokens = int(settings.policy["max_completion_tokens"]) if task == "bundle" else 1200
     body = {
         "model": alias,
         "messages": prompt,
@@ -145,7 +145,7 @@ def policy_request(
         # The endpoint requires one n-candidate request. Retry it with the same
         # prompt, sampling parameters, and seed, but retain every valid initial
         # candidate and replace only the transport-truncated candidate slots.
-        retry_body = {**body, "max_tokens": initial_max_tokens + (400 if task == "bundle" else 150)}
+        retry_body = {**body, "max_tokens": initial_max_tokens}
         retry_choices = response_choices(retry_body)
         for index in truncated_indices:
             replacement, retry_relaxed, retry_complete_length, retry_truncated = parse_choice(retry_choices[index])
@@ -251,7 +251,7 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         "length_finish_semantics": "accepted only when the unchanged strict rationale schema parser validates the complete JSON object",
         "length_retry_requests": sum(int(row["length_retry_requests"]) for row in results),
         "length_retry_candidates": sum(int(row["length_retry_candidates"]) for row in results),
-        "length_retry_semantics": "same prompt, seed, and sampling; retain every valid initial candidate and replace only malformed length-finish slots from one bounded +400 bundle/+150 axis token ceiling retry",
+        "length_retry_semantics": "same prompt, seed, sampling, and capacity-safe token ceiling; retain every valid initial candidate and replace only malformed length-finish slots from one bounded retry",
         "raw_sha256": sha256_file(output),
         "input_provenance": provenance,
         "contrastive_gate_sha256": gate["directional"]["sha256"],

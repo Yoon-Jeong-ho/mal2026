@@ -275,8 +275,8 @@ class OfficialRationaleRLTest(unittest.TestCase):
             )
         self.assertEqual(outputs, [{"content": "잘린 판단 근거"}])
         self.assertEqual((relaxed, complete_length, retry_requests, retry_candidates), (0, 0, 1, 1))
-        self.assertEqual(mocked.call_args_list[0].args[1]["max_tokens"], 800)
-        self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 950)
+        self.assertEqual(mocked.call_args_list[0].args[1]["max_tokens"], 1200)
+        self.assertEqual(mocked.call_args_list[1].args[1]["max_tokens"], 1200)
         self.assertEqual(
             mocked.call_args_list[0].args[1]["response_format"]["json_schema"]["schema"]
             ["properties"]["content"]["properties"]["rationale"]["maxLength"],
@@ -328,7 +328,7 @@ class OfficialRationaleRLTest(unittest.TestCase):
                 "http://127.0.0.1:9999", "policy", "bundle",
                 [{"role": "user", "content": "입력"}], 1, settings, 42,
             )
-        self.assertEqual(mocked.call_args.args[1]["max_tokens"], 2400)
+        self.assertEqual(mocked.call_args.args[1]["max_tokens"], 4000)
 
     def test_gpu_conflict_gate_is_read_only_and_fail_closed(self) -> None:
         busy = type("Result", (), {"returncode": 0, "stdout": "12345\n"})()

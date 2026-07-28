@@ -355,7 +355,8 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
         aggregate = run.root / "aggregates" / f"dpo-smoke-rollout-attempt-{attempt:03d}.json"
         with vllm_policy_server(runtime_root=run.root, label=f"dpo-smoke-rollout-a{attempt:03d}", gpus=(0,), port=19320,
                                   adapters=policy_adapters(run.dpo, ("bundle",)), aliases={"bundle": ALIASES["bundle"]},
-                                  max_num_seqs=32, max_num_batched_tokens=8192, dynamic_updates=False) as (endpoint, attestation):
+                                  max_num_seqs=32, max_num_batched_tokens=8192, dynamic_updates=False,
+                                  max_model_len=int(run.dpo.runtime["generation_max_model_len"])) as (endpoint, attestation):
             run.command("dpo-smoke-rollout", attempt, preference_command(run, "dpo-smoke-rollout", attempt, phase="rollout", arm="bundle", output=raw, aggregate=aggregate,
                                                                  endpoint=endpoint, attestation=attestation, aliases={"bundle": ALIASES["bundle"]}, limit=DPO_SMOKE_GROUPS))
         return {"raw": str(raw), "raw_sha256": sha256_file(raw), "aggregate": str(aggregate), "groups": DPO_SMOKE_GROUPS}
@@ -403,7 +404,8 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
         wait_idle((0, 1, 2, 3))
         adapters = policy_adapters(run.dpo, TASKS)
         with vllm_policy_server(runtime_root=run.root, label=f"dpo-full-rollout-a{attempt:03d}", gpus=(0, 1, 2, 3), port=19321,
-                                  adapters=adapters, aliases=ALIASES, max_num_seqs=256, max_num_batched_tokens=32768, dynamic_updates=False) as (endpoint, attestation):
+                                  adapters=adapters, aliases=ALIASES, max_num_seqs=256, max_num_batched_tokens=32768, dynamic_updates=False,
+                                  max_model_len=int(run.dpo.runtime["generation_max_model_len"])) as (endpoint, attestation):
             result: dict[str, Any] = {}
             for arm, tasks in (("bundle", ("bundle",)), ("axis_triplet", AXES)):
                 raw = run.restricted / f"dpo-full-rollout-{arm}-attempt-{attempt:03d}.jsonl"
@@ -579,7 +581,8 @@ def grpo_one(
                 server_kwargs = {"model_path": model_path, "model_id": model_id, "model_revision": model_revision}
             with vllm_policy_server(runtime_root=run.root, label=f"{output_name}-rollout-a{attempt:03d}", gpus=(0, 1), port=19330,
                                       adapters={task: adapter}, aliases={task: alias}, max_num_seqs=192, max_num_batched_tokens=65536,
-                                      dynamic_updates=True, **server_kwargs) as (rollout_endpoint, rollout_attestation):
+                                      dynamic_updates=True, max_model_len=int(run.grpo.runtime["rollout_max_model_len"]),
+                                      **server_kwargs) as (rollout_endpoint, rollout_attestation):
                 with q4_judge_servers(runtime_root=run.root, label=f"{output_name}-reward-a{attempt:03d}", gpus=(3,), ports=(19430,), judge_prompt_sha256=run.judge_prompt_sha256) as (judge_endpoints, judge_attestation):
                     assert_gpus_idle((2,))
                     selector = ["--legacy-arm", legacy_name] if legacy_name is not None else ["--task", task]
@@ -682,7 +685,8 @@ def dry_plan(args: argparse.Namespace) -> dict[str, Any]:
             "exact_q4_reward": True,
             "legacy_producers": legacy_producers,
         },
-        "server_contract": {"enforce_eager": False, "vllm_max_num_seqs_dpo": 256, "vllm_max_batched_tokens_dpo": 32768, "q4_parallel_per_gpu": 4,
+        "server_contract": {"enforce_eager": False, "vllm_max_model_len_dpo": dpo.runtime["generation_max_model_len"],
+                            "vllm_max_model_len_grpo": grpo.runtime["rollout_max_model_len"], "vllm_max_num_seqs_dpo": 256, "vllm_max_batched_tokens_dpo": 32768, "q4_parallel_per_gpu": 4,
                             "owned_process_stop_only": True, "sequential_policy_then_q4_for_dpo": True},
         "legacy_arms": [item["name"] for item in dpo.legacy_ablations],
         "validation_used_for_preferences_or_reward": False,
