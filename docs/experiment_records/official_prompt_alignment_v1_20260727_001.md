@@ -534,3 +534,11 @@ runner-owned aggregate directory without `exist_ok=True`, raising
 `FileExistsError`.  The vLLM server had completed startup but received no
 generation request; all failure logs and the append-only ledger are preserved.
 This was an integration-only path-ownership defect, not a scientific result.
+
+The second launch
+`official-rationale-rl-experiment-v1-exact-judge-20260728-002` also failed
+before preference data or any parameter update.  The aggregate-directory
+repair exposed the identical missing `exist_ok=True` in the restricted JSONL
+writer.  The failure and server logs remain preserved.  The repair changes
+directory ownership handling only; prompt, data, reward, and optimization
+protocols are unchanged.

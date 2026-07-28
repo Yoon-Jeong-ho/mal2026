@@ -91,7 +91,7 @@ def policy_request(endpoint: str, alias: str, task: str, prompt: list[dict[str, 
 
 
 def write_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> None:
-    path.parent.mkdir(mode=0o700, parents=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n")
