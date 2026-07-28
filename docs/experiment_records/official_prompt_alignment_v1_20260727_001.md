@@ -542,3 +542,19 @@ repair exposed the identical missing `exist_ok=True` in the restricted JSONL
 writer.  The failure and server logs remain preserved.  The repair changes
 directory ownership handling only; prompt, data, reward, and optimization
 protocols are unchanged.
+
+## KURE encoder addition
+
+The user explicitly added `nlpai-lab/KURE-v1` revision
+`d14c8a9423946e268a0c9952fecf3a7aabd73bd9` to the downstream encoder
+comparison on 2026-07-29.  Its local immutable snapshot is already present;
+no download or external transfer is required.  The predeclared KURE protocol
+uses the same exact `evaluation.txt` section routing and three integer targets,
+compares essay-only with essay-plus-selected-rationale input, selects among
+epochs 1--12 solely on the deterministic train-internal 1,600/400 split,
+reinitializes and refits on all 2,000 train essays, and only then performs one
+descriptive canonical-validation evaluation.  It uses KURE's reviewed CLS
+pooling and LoRA targets with a fresh three-axis bounded head.  `average` is
+never read or optimized.  The template is
+`configs/official_kure_score.evaluation_prompt.v1.json`; rationale paths and
+hashes remain unresolved until the final rationale handoff is complete.
