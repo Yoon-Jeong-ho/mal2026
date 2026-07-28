@@ -29,7 +29,7 @@
     "num_generations": 4,
     "sampling_temperature": 0.7,
     "sampling_top_p": 0.95,
-    "max_completion_tokens": 4000,
+    "max_completion_tokens": 7100,
     "loss_type": "dr_grpo",
     "scale_rewards": "none",
     "beta": 0.02,
@@ -82,7 +82,7 @@
       3
     ],
     "rollout_tensor_parallel_size": 2,
-    "rollout_max_model_len": 5120,
+    "rollout_max_model_len": 8192,
     "rollout_max_num_seqs": 192,
     "rollout_max_num_batched_tokens": 65536,
     "gpu_memory_utilization": 0.9,

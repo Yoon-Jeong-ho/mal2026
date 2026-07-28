@@ -154,6 +154,7 @@ def vllm_policy_command(
         "--max-num-batched-tokens", str(max_num_batched_tokens), "--gpu-memory-utilization", "0.90",
         "--disable-custom-all-reduce", "--enable-lora", "--max-loras", str(len(adapters)), "--max-lora-rank", "32",
         "--generation-config", "vllm", "--enable-prefix-caching", "--no-enable-flashinfer-autotune",
+        "--structured-outputs-config", '{"backend":"xgrammar","disable_any_whitespace":true}',
         "--compilation-config", '{"pass_config":{"fuse_allreduce_rms":false}}',
     ]
     if not dynamic_updates:

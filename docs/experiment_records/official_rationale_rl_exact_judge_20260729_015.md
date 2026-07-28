@@ -18,3 +18,9 @@ PYTHONPATH=src:. .venv-standard/bin/python scripts/run_official_rationale_rl_exp
 Outputs use the matching run ID under the ignored orchestration and restricted roots. Relative to run 014, only malformed policy candidates change recovery shape: each incomplete slot is independently resampled with `n=1`; all valid initial candidates are retained. Prompt, four-valid-candidate contract, schema, generation parameters, judge, score projection, data, and training objectives are unchanged. The deterministic judge length retry introduced before run 014 remains active. All run-014 negative evidence is preserved.
 
 Preflight: 46 targeted tests and `git diff --check` passed. Append terminal aggregate results and deviations after completion or failure.
+
+## Terminal result
+
+Run 015 passed the full smoke and failed at 07:16:59 KST after 6,000 base bundle-group requests plus five independent `n=1` replacement requests. At least one independently sampled replacement remained incomplete at 4,000 tokens. This rules out same-seed and same-`n=4`-index replay as sufficient explanations.
+
+The JSON Schema limits each decoded rationale to 384 characters, but JSON can represent a Unicode character as six ASCII `\\uXXXX` characters and the default XGrammar configuration permits arbitrary inter-field whitespace. Therefore 4,000 output tokens was not a safe wire-format bound. The next integration repair explicitly uses XGrammar with `disable_any_whitespace=true`, sets the three-axis completion ceiling to 7,100 tokens, and sets server context to 8,192. The largest audited prompt is 1,023 tokens, so 1,023 + 7,100 = 8,123 is within context. The decoded 384-character-per-axis scientific contract remains unchanged.

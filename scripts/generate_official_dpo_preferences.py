@@ -84,7 +84,7 @@ def policy_request(
 ) -> tuple[list[dict[str, str]], int, int, int, int]:
     axes = axes_for_task(task)
     character_limit = int(settings.reward["field_character_limit"])
-    initial_max_tokens = int(settings.policy["max_completion_tokens"]) if task == "bundle" else 1200
+    initial_max_tokens = int(settings.policy["max_completion_tokens"]) if task == "bundle" else 2400
     body = {
         "model": alias,
         "messages": prompt,

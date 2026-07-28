@@ -19,13 +19,15 @@ class OfficialRLOrchestratorTest(unittest.TestCase):
         static = servers.vllm_policy_command(
             gpus=(0, 1, 2, 3), port=19321, adapters=adapters, aliases=aliases,
             max_num_seqs=256, max_num_batched_tokens=32768, dynamic_updates=False,
-            max_model_len=5120,
+            max_model_len=8192,
         )
         self.assertNotIn("--enforce-eager", static)
         self.assertEqual(static[static.index("--tensor-parallel-size") + 1], "4")
         self.assertEqual(static[static.index("--max-num-seqs") + 1], "256")
         self.assertEqual(static[static.index("--max-num-batched-tokens") + 1], "32768")
-        self.assertEqual(static[static.index("--max-model-len") + 1], "5120")
+        self.assertEqual(static[static.index("--max-model-len") + 1], "8192")
+        structured = static[static.index("--structured-outputs-config") + 1]
+        self.assertEqual(json.loads(structured), {"backend": "xgrammar", "disable_any_whitespace": True})
         self.assertIn("--lora-modules", static)
         self.assertEqual(sum(value.startswith("alias-") for value in static), 4)
         dynamic = servers.vllm_policy_command(

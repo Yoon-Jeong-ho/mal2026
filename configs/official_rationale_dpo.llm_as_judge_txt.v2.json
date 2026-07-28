@@ -28,7 +28,7 @@
     "candidates_per_prompt": 4,
     "sampling_temperature": 0.7,
     "sampling_top_p": 0.95,
-    "max_completion_tokens": 4000,
+    "max_completion_tokens": 7100,
     "max_length": 3072,
     "max_prompt_length": 2304,
     "loss_type": "sigmoid",
@@ -67,7 +67,7 @@
     "external_vllm_http": true,
     "integrated_vllm": false,
     "generation_tensor_parallel_size": 4,
-    "generation_max_model_len": 5120,
+    "generation_max_model_len": 8192,
     "generation_max_num_seqs": 256,
     "generation_max_num_batched_tokens": 32768,
     "enforce_eager": false
