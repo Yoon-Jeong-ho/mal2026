@@ -145,8 +145,9 @@ class OfficialRationaleRLTest(unittest.TestCase):
         settings = rl.RLSettings.from_json(root / "configs/official_rationale_grpo.v1.json")
         captured = {}
 
-        def fake_score(endpoint, model, prompt_text, essay_text, candidate):
+        def fake_score(endpoint, model, prompt_text, essay_text, candidate, *, system_prompt=None):
             captured["candidate"] = candidate
+            captured["system_prompt"] = system_prompt
             output = judge(2)
             for dimension in rl.JUDGE_DIMENSIONS:
                 output["content"][dimension]["score"] = 4
@@ -165,7 +166,17 @@ class OfficialRationaleRLTest(unittest.TestCase):
         self.assertEqual(values, [4.0])
         self.assertEqual(captured["candidate"]["content"]["score"], 2)
         self.assertEqual(captured["candidate"]["organization"]["rationale"], "조직 근거")
+        self.assertEqual(captured["system_prompt"], rl.FROZEN_PROXY_JUDGE_SYSTEM_PROMPT)
         self.assertEqual(reward.aggregate()["projection"], "content_4_cell_mean_from_full_12_cell_judgment")
+
+    def test_exact_user_judge_configs_bind_file_and_preserve_failed_gate(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        for algorithm in ("dpo", "grpo"):
+            settings = rl.RLSettings.from_json(root / f"configs/official_rationale_{algorithm}.llm_as_judge_txt.v2.json")
+            self.assertEqual(settings.judge_system_prompt(), (root / "llm_as_judge.txt").read_text(encoding="utf-8"))
+            evidence = settings.gate_evidence()
+            self.assertEqual(evidence["combined_safety"]["status"], "user_authorized_exact_prompt")
+            self.assertIs(evidence["combined_safety"]["legacy_failed_gate_preserved"], True)
 
     def test_gpu_conflict_gate_is_read_only_and_fail_closed(self) -> None:
         busy = type("Result", (), {"returncode": 0, "stdout": "12345\n"})()

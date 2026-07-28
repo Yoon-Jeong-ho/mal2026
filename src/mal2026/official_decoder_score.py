@@ -79,12 +79,22 @@ def parse_generated(text: str) -> tuple[int, int, int] | None:
     return tuple(map(int, matched.groups())) if matched else None  # type: ignore[return-value]
 
 
-def render_input(row: Any, input_view: str, rationales: Mapping[str, str] | None = None) -> str:
+def render_input(
+    row: Any,
+    input_view: str,
+    rationales: Mapping[str, str] | None = None,
+    score_prompt_kind: str = LEGACY_COMPACT,
+) -> str:
     _need(input_view in INPUT_VIEWS, "unknown decoder input view")
     if input_view == "rationale":
         _need(rationales is not None and set(rationales) == set(AXES), "three rationale axes are required")
     try:
-        return query_text(row.prompt, row.essay, rationales if input_view == "rationale" else None)
+        return query_text(
+            row.prompt,
+            row.essay,
+            rationales if input_view == "rationale" else None,
+            score_prompt_kind,
+        )
     except ValueError as exc:
         raise OfficialDecoderScoreError(str(exc)) from exc
 
@@ -98,7 +108,7 @@ def chat_prompt(
 ) -> str:
     messages = [
         {"role": "system", "content": system_prompt(score_prompt_kind)},
-        {"role": "user", "content": render_input(row, input_view, rationales)},
+        {"role": "user", "content": render_input(row, input_view, rationales, score_prompt_kind)},
     ]
     return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 

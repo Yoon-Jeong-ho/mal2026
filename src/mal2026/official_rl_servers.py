@@ -244,7 +244,14 @@ def vllm_policy_server(
 
 
 @contextmanager
-def q4_judge_servers(*, runtime_root: Path, label: str, gpus: Sequence[int], ports: Sequence[int]) -> Iterator[tuple[list[str], Path]]:
+def q4_judge_servers(
+    *,
+    runtime_root: Path,
+    label: str,
+    gpus: Sequence[int],
+    ports: Sequence[int],
+    judge_prompt_sha256: str = JUDGE_PROMPT_SHA256,
+) -> Iterator[tuple[list[str], Path]]:
     verify_server_prerequisites()
     chosen, chosen_ports = tuple(gpus), tuple(ports)
     need(len(chosen) == len(chosen_ports) and bool(chosen), "Q4 topology differs")
@@ -281,7 +288,7 @@ def q4_judge_servers(*, runtime_root: Path, label: str, gpus: Sequence[int], por
             "created_at": now(), "physical_gpus": list(chosen), "server_endpoints": endpoints,
             "server_pids": pids, "parallel_per_server": 4, "context_per_slot": 8192,
             "batch_size": 2048, "ubatch_size": 512,
-            "model_sha256": Q4_MODEL_SHA256, "judge_prompt_sha256": JUDGE_PROMPT_SHA256,
+            "model_sha256": Q4_MODEL_SHA256, "judge_prompt_sha256": judge_prompt_sha256,
             "llama_server_sha256": sha256_file(LLAMA_SERVER),
             "llama_revision": LLAMA_REVISION, "llama_tag": LLAMA_TAG,
             "server_process_environment_verified": True,

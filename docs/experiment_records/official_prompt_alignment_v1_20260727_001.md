@@ -487,3 +487,31 @@ The one bundle failure was not overwritten or silently imputed.
   fitting;
 - human/reference scores included in an official judge request;
 - exact Q4/model/runtime provenance mismatch.
+
+## Separated user prompt routing and exact-prompt RL continuation
+
+On 2026-07-28 the user supplied `evaluation.txt` (SHA256
+`1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145`)
+and explicitly required score prediction, score-conditioned rationale
+generation, and rationale judging to remain separate.  The frozen routing
+contract is `configs/official_prompt_routing.v1.json`:
+
+- score prediction parses the text between `[시스템 프롬프트]` and
+  `[유저 프롬프트]` into separate model messages, substitutes only the two
+  declared prompt/essay placeholders, and optionally appends three already
+  generated rationales as encoder input;
+- rationale generation retains its separate score-conditioned,
+  rationale-only JSON contract and does not emit a score;
+- rationale judging uses the exact whole `llm_as_judge.txt` as its system
+  message and appends only prompt text, essay text, and the candidate's own
+  predicted score plus rationale as the user message.  No human/reference
+  score is supplied.
+
+The same user instruction explicitly authorizes DPO and GRPO with the exact
+`llm_as_judge.txt` reward prompt on GPUs 0--3.  The prior failed proxy-prompt
+injection gate remains preserved at its original path and SHA256
+`2520dff85d2d32dc33bc9140e651c412a005f6a823b73f674c0d856af76f3627`;
+it is not reclassified as passing.  Authorization and immutable bindings are
+recorded in
+`configs/official_rationale_rl_authorization.llm_as_judge_txt.v1.json`.
+Validation rows remain unavailable to preference construction and reward.

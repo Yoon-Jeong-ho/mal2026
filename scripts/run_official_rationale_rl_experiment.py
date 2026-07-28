@@ -25,7 +25,6 @@ sys.path.insert(0, str(ROOT / "src"))
 from mal2026.api_rationale_data import sha256_file  # noqa: E402
 from mal2026.official_rationale_rl import (  # noqa: E402
     AXES,
-    JUDGE_PROMPT_SHA256,
     RLSettings,
     TASKS,
     legacy_ablation,
@@ -78,7 +77,16 @@ def atomic_json(path: Path, value: Mapping[str, Any]) -> None:
 
 
 class DurableRun:
-    def __init__(self, run_id: str, scope: str, grpo_tasks: Sequence[str], grpo_phases: Sequence[str], legacy_grpo_arms: Sequence[str]):
+    def __init__(
+        self,
+        run_id: str,
+        scope: str,
+        grpo_tasks: Sequence[str],
+        grpo_phases: Sequence[str],
+        legacy_grpo_arms: Sequence[str],
+        dpo_config: Path = DPO_CONFIG,
+        grpo_config: Path = GRPO_CONFIG,
+    ):
         need(re.fullmatch(r"official-rationale-rl-experiment-v1-[a-z0-9][a-z0-9-]{5,100}", run_id) is not None, "run ID differs")
         self.run_id = run_id
         self.root = OUTPUT_BASE / run_id
@@ -89,8 +97,13 @@ class DurableRun:
         self.grpo_tasks = tuple(grpo_tasks)
         self.grpo_phases = tuple(grpo_phases)
         self.legacy_grpo_arms = tuple(legacy_grpo_arms)
-        self.dpo = RLSettings.from_json(DPO_CONFIG)
-        self.grpo = RLSettings.from_json(GRPO_CONFIG)
+        self.dpo_config = dpo_config.resolve()
+        self.grpo_config = grpo_config.resolve()
+        self.dpo = RLSettings.from_json(self.dpo_config)
+        self.grpo = RLSettings.from_json(self.grpo_config)
+        need(self.dpo.judge["prompt_sha256"] == self.grpo.judge["prompt_sha256"], "DPO/GRPO judge prompt bindings differ")
+        need(self.dpo.gate == self.grpo.gate, "DPO/GRPO gate declarations differ")
+        self.judge_prompt_sha256 = str(self.dpo.judge["prompt_sha256"])
         self.gates = self.dpo.gate_evidence()
         validate_runtime_versions()
 
@@ -102,8 +115,8 @@ class DurableRun:
             "git_sha": git_sha,
             "command": [str(Path(sys.executable).resolve()), str(Path(__file__).resolve()), *sys.argv[1:]],
             "config_sha256": {
-                "dpo": sha256_file(DPO_CONFIG),
-                "grpo": sha256_file(GRPO_CONFIG),
+                "dpo": sha256_file(self.dpo_config),
+                "grpo": sha256_file(self.grpo_config),
             },
             "runtime_versions": validate_runtime_versions(),
             "scope": self.scope,
@@ -113,7 +126,7 @@ class DurableRun:
             "gpu_scope": [0, 1, 2, 3],
             "contrastive_gate_sha256": self.gates["directional"]["sha256"],
             "rl_safety_gate_sha256": self.gates["combined_safety"]["sha256"],
-            "judge_prompt_sha256": JUDGE_PROMPT_SHA256,
+            "judge_prompt_sha256": self.judge_prompt_sha256,
             "validation_used_for_preferences_or_reward": False,
         }
         if self.manifest_path.is_file():
@@ -179,7 +192,7 @@ class DurableRun:
                 "stage": stage, "attempt": attempt, "completed_at": now(),
                 "contrastive_gate_sha256": self.gates["directional"]["sha256"],
                 "rl_safety_gate_sha256": self.gates["combined_safety"]["sha256"],
-                "judge_prompt_sha256": JUDGE_PROMPT_SHA256,
+                "judge_prompt_sha256": self.judge_prompt_sha256,
                 "evidence": evidence,
             }
             atomic_json(report_path, report)
@@ -276,7 +289,7 @@ class DurableRun:
             "completed_stages": sorted(stage_reports),
             "contrastive_gate_sha256": self.gates["directional"]["sha256"],
             "rl_safety_gate_sha256": self.gates["combined_safety"]["sha256"],
-            "judge_prompt_sha256": JUDGE_PROMPT_SHA256,
+            "judge_prompt_sha256": self.judge_prompt_sha256,
             "model_summaries": model_summaries,
             "preference_summaries": preference_summaries,
             "validation_used_for_preferences_or_reward": False,
@@ -313,7 +326,7 @@ def preference_command(
     endpoint: str | None = None, attestation: Path | None = None,
     aliases: Mapping[str, str] | None = None, judge_endpoints: Sequence[str] = (), limit: int | None = None,
 ) -> list[str]:
-    command = [str(PYTHON), str(PREFERENCE), "--config", str(DPO_CONFIG), "--stage", phase, "--arm", arm, "--output", str(output), "--aggregate-output", str(aggregate), "--max-inflight", "128"]
+    command = [str(PYTHON), str(PREFERENCE), "--config", str(run.dpo_config), "--stage", phase, "--arm", arm, "--output", str(output), "--aggregate-output", str(aggregate), "--max-inflight", "128"]
     if input_path is not None:
         command += ["--input", str(input_path)]
     if phase == "rollout":
@@ -352,7 +365,7 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
         wait_idle((0,))
         raw = run.restricted / f"dpo-smoke-judge-attempt-{attempt:03d}.jsonl"
         aggregate = run.root / "aggregates" / f"dpo-smoke-judge-attempt-{attempt:03d}.json"
-        with q4_judge_servers(runtime_root=run.root, label=f"dpo-smoke-a{attempt:03d}", gpus=(0,), ports=(19420,)) as (endpoints, attestation):
+        with q4_judge_servers(runtime_root=run.root, label=f"dpo-smoke-a{attempt:03d}", gpus=(0,), ports=(19420,), judge_prompt_sha256=run.judge_prompt_sha256) as (endpoints, attestation):
             run.command("dpo-smoke-judge", attempt, preference_command(run, "dpo-smoke-judge", attempt, phase="judge", arm="bundle", output=raw, aggregate=aggregate,
                                                                input_path=smoke_rollout_raw, attestation=attestation, judge_endpoints=endpoints))
         return {"raw": str(raw), "raw_sha256": sha256_file(raw), "aggregate": str(aggregate), "judgments": 4}
@@ -373,7 +386,7 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
     def smoke_train(attempt: int) -> Mapping[str, Any]:
         wait_idle((0,))
         output = run.root / "models" / f"dpo-bundle-smoke-attempt-{attempt:03d}"
-        command = [str(PYTHON), str(DPO_TRAINER), "--config", str(DPO_CONFIG), "--task", "bundle",
+        command = [str(PYTHON), str(DPO_TRAINER), "--config", str(run.dpo_config), "--task", "bundle",
                    "--preferences", str(smoke_preferences), "--preference-report", str(smoke_preference_report),
                    "--output-dir", str(output), "--max-steps", "1", "--train-limit", "1"]
         run.command("dpo-smoke-train", attempt, command, gpus=(0,))
@@ -402,7 +415,7 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
 
     def full_judge(attempt: int) -> Mapping[str, Any]:
         wait_idle((0, 1, 2, 3))
-        with q4_judge_servers(runtime_root=run.root, label=f"dpo-full-a{attempt:03d}", gpus=(0, 1, 2, 3), ports=(19420, 19421, 19422, 19423)) as (endpoints, attestation):
+        with q4_judge_servers(runtime_root=run.root, label=f"dpo-full-a{attempt:03d}", gpus=(0, 1, 2, 3), ports=(19420, 19421, 19422, 19423), judge_prompt_sha256=run.judge_prompt_sha256) as (endpoints, attestation):
             result: dict[str, Any] = {}
             for arm in ("bundle", "axis_triplet"):
                 source = Path(reports["dpo-full-rollout"]["evidence"][arm]["raw"])
@@ -439,7 +452,7 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
             source = bundle if task == "bundle" else axis
             output = run.root / "models" / f"dpo-official-{task}-attempt-{attempt:03d}"
             log = run.root / "logs" / f"dpo-official-{task}-attempt-{attempt:03d}.log"
-            command = [str(PYTHON), str(DPO_TRAINER), "--config", str(DPO_CONFIG), "--task", task,
+            command = [str(PYTHON), str(DPO_TRAINER), "--config", str(run.dpo_config), "--task", task,
                        "--preferences", source["preferences"], "--preference-report", source["aggregate"], "--output-dir", str(output)]
             environment = {**os.environ, "PYTHONPATH": str(ROOT / "src"), "CUDA_VISIBLE_DEVICES": str(gpu), "MAL2026_RESERVED_PHYSICAL_GPUS": str(gpu)}
             handle = log.open("x", encoding="utf-8")
@@ -465,7 +478,7 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
         def legacy_smoke(attempt: int, legacy_name: str = name) -> Mapping[str, Any]:
             wait_idle((0,))
             output = run.root / "models" / f"dpo-legacy-{legacy_name}-smoke-attempt-{attempt:03d}"
-            command = [str(PYTHON), str(DPO_TRAINER), "--config", str(DPO_CONFIG), "--legacy-arm", legacy_name,
+            command = [str(PYTHON), str(DPO_TRAINER), "--config", str(run.dpo_config), "--legacy-arm", legacy_name,
                        "--preferences", bundle["preferences"], "--preference-report", bundle["aggregate"],
                        "--output-dir", str(output), "--max-steps", "1", "--train-limit", "2"]
             run.command(f"dpo-legacy-{legacy_name}-smoke", attempt, command, gpus=(0,))
@@ -480,7 +493,7 @@ def dpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
         def legacy_full(attempt: int, legacy_name: str = name) -> Mapping[str, Any]:
             wait_idle((0,))
             output = run.root / "models" / f"dpo-legacy-{legacy_name}-full-attempt-{attempt:03d}"
-            command = [str(PYTHON), str(DPO_TRAINER), "--config", str(DPO_CONFIG), "--legacy-arm", legacy_name,
+            command = [str(PYTHON), str(DPO_TRAINER), "--config", str(run.dpo_config), "--legacy-arm", legacy_name,
                        "--preferences", bundle["preferences"], "--preference-report", bundle["aggregate"], "--output-dir", str(output)]
             run.command(f"dpo-legacy-{legacy_name}-full", attempt, command, gpus=(0,))
             complete = output / "training_complete.json"
@@ -565,10 +578,10 @@ def grpo_one(
             with vllm_policy_server(runtime_root=run.root, label=f"{output_name}-rollout-a{attempt:03d}", gpus=(0, 1), port=19330,
                                       adapters={task: adapter}, aliases={task: alias}, max_num_seqs=192, max_num_batched_tokens=65536,
                                       dynamic_updates=True, **server_kwargs) as (rollout_endpoint, rollout_attestation):
-                with q4_judge_servers(runtime_root=run.root, label=f"{output_name}-reward-a{attempt:03d}", gpus=(3,), ports=(19430,)) as (judge_endpoints, judge_attestation):
+                with q4_judge_servers(runtime_root=run.root, label=f"{output_name}-reward-a{attempt:03d}", gpus=(3,), ports=(19430,), judge_prompt_sha256=run.judge_prompt_sha256) as (judge_endpoints, judge_attestation):
                     assert_gpus_idle((2,))
                     selector = ["--legacy-arm", legacy_name] if legacy_name is not None else ["--task", task]
-                    command = [str(PYTHON), str(GRPO_TRAINER), "--config", str(GRPO_CONFIG), *selector,
+                    command = [str(PYTHON), str(GRPO_TRAINER), "--config", str(run.grpo_config), *selector,
                                "--output-dir", str(output), "--rollout-endpoint", rollout_endpoint, "--rollout-model", alias,
                                "--rollout-attestation", str(rollout_attestation), "--judge-attestation", str(judge_attestation),
                                "--judge-endpoint", judge_endpoints[0], "--train-limit", str(train_limit), "--max-steps", str(max_steps)]
@@ -624,8 +637,15 @@ def grpo_pipeline(run: DurableRun) -> dict[str, dict[str, Any]]:
 
 
 def dry_plan(args: argparse.Namespace) -> dict[str, Any]:
-    dpo, grpo = RLSettings.from_json(DPO_CONFIG), RLSettings.from_json(GRPO_CONFIG)
-    gate_paths = [ROOT / str(dpo.gate[key]) for key in ("path", "safety_path")]
+    dpo_config = Path(args.dpo_config).resolve()
+    grpo_config = Path(args.grpo_config).resolve()
+    dpo, grpo = RLSettings.from_json(dpo_config), RLSettings.from_json(grpo_config)
+    need(dpo.judge["prompt_sha256"] == grpo.judge["prompt_sha256"], "DPO/GRPO judge prompt bindings differ")
+    gate_paths = (
+        [ROOT / str(dpo.gate[key]) for key in ("authorization_path", "legacy_directional_path", "legacy_failed_safety_path")]
+        if dpo.gate.get("mode") == "explicit_user_authorization_after_preserved_v1_failure"
+        else [ROOT / str(dpo.gate[key]) for key in ("path", "safety_path")]
+    )
     requested_legacy = list(getattr(args, "legacy_grpo_arm", None) or LEGACY_GRPO_ARMS)
     legacy_producers = [legacy_grpo_producer_spec(grpo, name) for name in requested_legacy]
     sequence = ["smoke", *args.grpo_phase]
@@ -636,6 +656,10 @@ def dry_plan(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema_version": "mal2026-official-rationale-rl-experiment-plan-v1",
         "run_id": args.run_id, "scope": args.scope,
+        "config_sha256": {"dpo": sha256_file(dpo_config), "grpo": sha256_file(grpo_config)},
+        "judge_prompt_sha256": dpo.judge["prompt_sha256"],
+        "judge_prompt_kind": dpo.judge["prompt_kind"],
+        "gate_mode": dpo.gate.get("mode", "legacy_combined_safety_gate"),
         "gate_files_present": all(path.is_file() for path in gate_paths),
         "gpu_scope": [0, 1, 2, 3], "gpu_queries_in_dry_run": False,
         "dpo_stages": [
@@ -669,6 +693,8 @@ def dry_plan(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-id", required=True)
+    parser.add_argument("--dpo-config", type=Path, default=DPO_CONFIG)
+    parser.add_argument("--grpo-config", type=Path, default=GRPO_CONFIG)
     parser.add_argument("--scope", choices=("dpo", "grpo", "all"), default="all")
     parser.add_argument("--grpo-task", action="append", choices=TASKS)
     parser.add_argument("--grpo-phase", action="append", choices=("pilot", "full"))
@@ -688,7 +714,15 @@ def main() -> None:
         print(json.dumps(dry_plan(args), ensure_ascii=False, indent=2, sort_keys=True))
         return
     verify_server_prerequisites()
-    run = DurableRun(args.run_id, args.scope, args.grpo_task, args.grpo_phase, args.legacy_grpo_arm)
+    run = DurableRun(
+        args.run_id,
+        args.scope,
+        args.grpo_task,
+        args.grpo_phase,
+        args.legacy_grpo_arm,
+        args.dpo_config,
+        args.grpo_config,
+    )
     reports: dict[str, dict[str, Any]] = {}
     try:
         run.initialize()

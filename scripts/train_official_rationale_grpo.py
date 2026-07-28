@@ -92,7 +92,7 @@ def main() -> None:
         args.rollout_attestation, args.rollout_endpoint, {task: args.rollout_model},
         expected_model_id=model_id, expected_model_revision=model_revision,
     )
-    validate_q4_attestation(args.judge_attestation, args.judge_endpoint)
+    validate_q4_attestation(args.judge_attestation, args.judge_endpoint, settings.judge["prompt_sha256"])
     output = output_fresh(args.output_dir)
     rows, input_provenance = official_train_rows(task, args.train_limit)
 

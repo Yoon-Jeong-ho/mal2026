@@ -1,0 +1,23 @@
+{
+  "schema_version": "mal2026-user-authorized-exact-judge-rl-v1",
+  "status": "authorized",
+  "rl_allowed": true,
+  "judge_prompt_path": "llm_as_judge.txt",
+  "judge_prompt_sha256": "91cd2f94fa78cc1a07d1bb63a1c5faf07fa25d77d5c60bf6952081c8f047cb6d",
+  "gpu_scope": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "algorithms": [
+    "dpo",
+    "grpo"
+  ],
+  "validation_used_for_preferences_or_reward": false,
+  "legacy_failed_gate_preserved": true,
+  "legacy_failed_gate_path": "outputs/official-prompt-alignment-v1/judge-prompt-injection/official-judge-prompt-injection-train32-001/aggregate_rl_safety_gate.json",
+  "legacy_failed_gate_sha256": "2520dff85d2d32dc33bc9140e651c412a005f6a823b73f674c0d856af76f3627",
+  "authorization_basis": "explicit_user_instruction_in_thread_2026-07-28",
+  "authorization_summary": "Use the exact user-supplied llm_as_judge.txt prompt for rationale RL training and evaluation; retain the earlier failed proxy-prompt gate as a negative result without reclassification."
+}

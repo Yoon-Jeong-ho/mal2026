@@ -27,6 +27,7 @@ from mal2026.official_writing_contract import (  # noqa: E402
     JUDGE_DIMENSIONS,
     judge_json_schema,
     judge_messages,
+    judge_messages_with_system,
     parse_judge_output,
     parse_participant_output,
 )
@@ -84,18 +85,7 @@ def request_body(
     if system_prompt is None:
         messages = judge_messages(prompt, essay, participant)
     else:
-        parsed = parse_participant_output(participant)
-        candidate_text = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": (
-                    f"[prompt_text]\n{prompt}\n\n[essay_text]\n{essay}\n\n"
-                    f"[candidate_predicted_score_and_rationale]\n{candidate_text}"
-                ),
-            },
-        ]
+        messages = judge_messages_with_system(system_prompt, prompt, essay, participant)
     return {
         "model": model,
         "temperature": 0.0,

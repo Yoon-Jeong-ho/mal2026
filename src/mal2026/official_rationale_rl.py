@@ -34,7 +34,14 @@ from .official_rationale_data import (
     rationale_schema,
 )
 from .official_rationale_sft import MODEL_ID, MODEL_PATH, MODEL_REVISION
-from .official_writing_contract import FROZEN_PROXY_JUDGE_SYSTEM_PROMPT, JUDGE_DIMENSIONS, judge_json_schema, judge_messages, parse_judge_output
+from .official_writing_contract import (
+    FROZEN_PROXY_JUDGE_SYSTEM_PROMPT,
+    JUDGE_DIMENSIONS,
+    judge_json_schema,
+    judge_messages,
+    judge_messages_with_system,
+    parse_judge_output,
+)
 
 
 RESTRICTED_ROOT = (ROOT / "data/processed/restricted").resolve()
@@ -53,6 +60,10 @@ LLAMA_TAG = "b10068"
 TRL_VERSION = "0.29.1"
 VLLM_VERSION = "0.25.1"
 JUDGE_PROMPT_SHA256 = sha256(FROZEN_PROXY_JUDGE_SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+EXACT_JUDGE_PROMPT_PATH = ROOT / "llm_as_judge.txt"
+EXACT_JUDGE_PROMPT_SHA256 = "91cd2f94fa78cc1a07d1bb63a1c5faf07fa25d77d5c60bf6952081c8f047cb6d"
+EXACT_JUDGE_PROMPT_KIND = "user_supplied_llm_as_judge_txt_exact"
+EXACT_JUDGE_AUTHORIZATION_SCHEMA = "mal2026-user-authorized-exact-judge-rl-v1"
 TASKS = ("bundle", *AXES)
 
 
@@ -128,11 +139,39 @@ def assert_rl_safety_gate(path: Path = RL_SAFETY_GATE) -> dict[str, Any]:
     return {"path": str(path.resolve()), "sha256": digest, "status": "passed", "rl_allowed": True}
 
 
-def validate_q4_attestation(path: Path, endpoints: Sequence[str]) -> dict[str, Any]:
+def assert_exact_judge_user_authorization(path: Path, prompt_sha256: str) -> dict[str, Any]:
+    """Bind an explicit user authorization without reclassifying the failed v1 gate."""
+    digest = file_sha(path)
+    value = json.loads(path.read_text(encoding="utf-8"))
+    need(isinstance(value, dict), "exact-judge RL authorization is not an object")
+    need(value.get("schema_version") == EXACT_JUDGE_AUTHORIZATION_SCHEMA, "exact-judge authorization schema differs")
+    need(value.get("status") == "authorized" and value.get("rl_allowed") is True, "exact-judge RL was not authorized")
+    need(value.get("judge_prompt_path") == str(EXACT_JUDGE_PROMPT_PATH.relative_to(ROOT)), "authorized judge prompt path differs")
+    need(value.get("judge_prompt_sha256") == prompt_sha256 == EXACT_JUDGE_PROMPT_SHA256, "authorized judge prompt digest differs")
+    need(value.get("gpu_scope") == [0, 1, 2, 3], "authorized exact-judge GPU scope differs")
+    need(value.get("algorithms") == ["dpo", "grpo"], "authorized RL algorithms differ")
+    need(value.get("validation_used_for_preferences_or_reward") is False, "authorization permits validation reward leakage")
+    need(value.get("legacy_failed_gate_preserved") is True, "authorization does not preserve the v1 failure")
+    legacy_path = ROOT / str(value.get("legacy_failed_gate_path"))
+    need(legacy_path == RL_SAFETY_GATE and file_sha(legacy_path) == value.get("legacy_failed_gate_sha256"), "preserved legacy gate binding differs")
+    need(value.get("authorization_basis") == "explicit_user_instruction_in_thread_2026-07-28", "authorization basis differs")
+    return {
+        "path": str(path.resolve()),
+        "sha256": digest,
+        "status": "user_authorized_exact_prompt",
+        "rl_allowed": True,
+        "legacy_failed_gate_path": str(legacy_path.resolve()),
+        "legacy_failed_gate_sha256": value["legacy_failed_gate_sha256"],
+        "legacy_failed_gate_preserved": True,
+    }
+
+
+def validate_q4_attestation(path: Path, endpoints: Sequence[str], prompt_sha256: str = JUDGE_PROMPT_SHA256) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     expected = [local_endpoint(item) for item in endpoints]
     need(value.get("schema_version") == "mal2026-official-q4-judge-server-attestation-v1", "Q4 attestation schema differs")
     need(value.get("model_sha256") == Q4_MODEL_SHA256, "Q4 model digest differs")
+    need(value.get("judge_prompt_sha256") == prompt_sha256, "Q4 judge prompt attestation differs")
     need(value.get("llama_revision") == LLAMA_REVISION and value.get("llama_tag") == LLAMA_TAG, "llama.cpp provenance differs")
     need(value.get("server_endpoints") == expected, "Q4 endpoints differ from attestation")
     return value
@@ -296,7 +335,7 @@ class RLSettings:
         expected_schema = f"mal2026-official-rationale-{self.algorithm}-v1"
         need(self.algorithm in {"dpo", "grpo"} and self.schema_version == expected_schema, "RL algorithm/schema differs")
         need(self.run_id_prefix == f"official-rationale-{self.algorithm}-v1-", "RL run prefix differs")
-        need(self.gate == {
+        legacy_gate = {
             "path": str(CONTRASTIVE_GATE.relative_to(ROOT)),
             "safety_path": str(RL_SAFETY_GATE.relative_to(ROOT)),
             "required_schema_version": "mal2026-official-proxy-judge-contrastive-gate-v1",
@@ -306,10 +345,25 @@ class RLSettings:
             "required_safety_status": "passed",
             "required_combined_rl_allowed": True,
             "bind_sha256_in_every_artifact": True,
-        }, "RL contrastive-gate declaration differs")
+        }
+        exact_authorized_gate = {
+            "mode": "explicit_user_authorization_after_preserved_v1_failure",
+            "authorization_path": "configs/official_rationale_rl_authorization.llm_as_judge_txt.v1.json",
+            "legacy_directional_path": str(CONTRASTIVE_GATE.relative_to(ROOT)),
+            "legacy_failed_safety_path": str(RL_SAFETY_GATE.relative_to(ROOT)),
+            "required_authorization_schema_version": EXACT_JUDGE_AUTHORIZATION_SCHEMA,
+            "bind_sha256_in_every_artifact": True,
+        }
+        need(self.gate in (legacy_gate, exact_authorized_gate), "RL gate declaration differs")
         need(self.judge.get("model_sha256") == Q4_MODEL_SHA256 and self.judge.get("llama_revision") == LLAMA_REVISION and self.judge.get("llama_tag") == LLAMA_TAG, "RL judge pin differs")
-        need(self.judge.get("prompt_kind") == "single_frozen_public-spec-aligned_proxy_not_verbatim_organizer_prompt", "RL judge prompt provenance differs")
-        need(self.judge.get("prompt_sha256") == JUDGE_PROMPT_SHA256, "RL judge prompt digest differs")
+        if self.gate == legacy_gate:
+            need(self.judge.get("prompt_kind") == "single_frozen_public-spec-aligned_proxy_not_verbatim_organizer_prompt", "RL judge prompt provenance differs")
+            need(self.judge.get("prompt_sha256") == JUDGE_PROMPT_SHA256 and "prompt_file" not in self.judge, "RL judge prompt digest differs")
+        else:
+            need(self.judge.get("prompt_kind") == EXACT_JUDGE_PROMPT_KIND, "exact RL judge prompt provenance differs")
+            need(self.judge.get("prompt_file") == str(EXACT_JUDGE_PROMPT_PATH.relative_to(ROOT)), "exact RL judge prompt file differs")
+            need(self.judge.get("prompt_sha256") == EXACT_JUDGE_PROMPT_SHA256, "exact RL judge prompt digest differs")
+            need(file_sha(EXACT_JUDGE_PROMPT_PATH) == EXACT_JUDGE_PROMPT_SHA256, "exact RL judge prompt file changed")
         need(self.judge.get("score_projection") == "bundle_12_cell_sum_axis_4_cell_sum", "RL judge projection differs")
         need(set(self.warm_starts) == set(TASKS), "RL warm-start tasks differ")
         for task, raw_path in self.warm_starts.items():
@@ -360,10 +414,25 @@ class RLSettings:
             need((self.runtime.get("rollout_tensor_parallel_size"), self.runtime.get("rollout_max_model_len"), self.runtime.get("rollout_max_num_seqs"), self.runtime.get("rollout_max_num_batched_tokens"), self.runtime.get("gpu_memory_utilization")) == (2, 4096, 192, 65536, 0.9), "GRPO rollout topology/batching differs")
 
     def gate_evidence(self) -> dict[str, Any]:
+        if self.gate.get("mode") == "explicit_user_authorization_after_preserved_v1_failure":
+            legacy_directional = assert_contrastive_gate(ROOT / str(self.gate["legacy_directional_path"]))
+            legacy_directional["classification"] = "historical_old_prompt_directional_diagnostic_not_the_authorization_basis"
+            authorization = assert_exact_judge_user_authorization(
+                ROOT / str(self.gate["authorization_path"]),
+                str(self.judge["prompt_sha256"]),
+            )
+            return {"directional": legacy_directional, "combined_safety": authorization}
         return {
             "directional": assert_contrastive_gate(ROOT / str(self.gate["path"])),
             "combined_safety": assert_rl_safety_gate(ROOT / str(self.gate["safety_path"])),
         }
+
+    def judge_system_prompt(self) -> str:
+        if self.judge.get("prompt_kind") == EXACT_JUDGE_PROMPT_KIND:
+            path = ROOT / str(self.judge["prompt_file"])
+            need(file_sha(path) == self.judge["prompt_sha256"], "exact judge prompt changed after config validation")
+            return path.read_text(encoding="utf-8")
+        return FROZEN_PROXY_JUDGE_SYSTEM_PROMPT
 
 
 def load_preferences(path: Path, task: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -407,7 +476,7 @@ def validate_preference_report(path: Path, preference_path: Path, task: str, set
     need(value.get("contrastive_gate_sha256") == gate["directional"]["sha256"], "preference directional gate binding differs")
     need(value.get("rl_safety_gate_sha256") == gate["combined_safety"]["sha256"], "preference safety gate binding differs")
     need(value.get("judge_model_sha256") == Q4_MODEL_SHA256, "preference judge model binding differs")
-    need(value.get("judge_prompt_sha256") == JUDGE_PROMPT_SHA256, "preference judge prompt binding differs")
+    need(value.get("judge_prompt_sha256") == settings.judge["prompt_sha256"], "preference judge prompt binding differs")
     need(value.get("reward_variance_gate_passed") is True, "preference reward-variance gate failed")
     per_task = value.get("per_task_reward_variance")
     need(isinstance(per_task, dict) and task in per_task, "preference per-task variance report differs")
@@ -490,7 +559,26 @@ def http_json(endpoint: str, body: Mapping[str, Any], *, timeout: int = 600, att
     raise OfficialRationaleRLError("local model HTTP request failed") from error
 
 
-def q4_score(endpoint: str, model: str, prompt_text: str, essay_text: str, candidate: Mapping[str, Any]) -> dict[str, Any]:
+def q4_score(
+    endpoint: str,
+    model: str,
+    prompt_text: str,
+    essay_text: str,
+    candidate: Mapping[str, Any],
+    *,
+    system_prompt: str | None = None,
+) -> dict[str, Any]:
+    request_messages = (
+        judge_messages(prompt_text, essay_text, candidate)
+        if system_prompt is None
+        else judge_messages_with_system(
+            system_prompt,
+            prompt_text,
+            essay_text,
+            candidate,
+            include_leading_instruction=False,
+        )
+    )
     body = {
         "model": model,
         "temperature": 0.0,
@@ -498,7 +586,7 @@ def q4_score(endpoint: str, model: str, prompt_text: str, essay_text: str, candi
         "seed": 42,
         "max_tokens": 1800,
         "chat_template_kwargs": {"enable_thinking": False},
-        "messages": judge_messages(prompt_text, essay_text, candidate),
+        "messages": request_messages,
         "response_format": {"type": "json_object", "schema": judge_json_schema()},
     }
     outer = http_json(endpoint, body)
@@ -537,7 +625,14 @@ class ExactQ4Reward:
                 self.counts["parse_invalid"] += 1
                 continue
             candidate = participant(scores[index], parsed, frozen_rationales[index] if self.task != "bundle" else None)
-            judged = q4_score(self.endpoints[index % len(self.endpoints)], self.model_alias, prompt_text[index], essay_text[index], candidate)
+            judged = q4_score(
+                self.endpoints[index % len(self.endpoints)],
+                self.model_alias,
+                prompt_text[index],
+                essay_text[index],
+                candidate,
+                system_prompt=self.settings.judge_system_prompt(),
+            )
             if self.task == "bundle":
                 reward = judge_total(judged) / 12.0
             else:

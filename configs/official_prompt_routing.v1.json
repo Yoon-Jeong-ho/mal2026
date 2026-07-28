@@ -1,0 +1,59 @@
+{
+  "schema_version": "mal2026-separated-prompt-routing-v1",
+  "score_prediction": {
+    "source_file": "evaluation.txt",
+    "source_file_sha256": "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145",
+    "system_message": {
+      "source_section": "[시스템 프롬프트]",
+      "sha256": "d72fb0e90c7039a858bffa17a526da2aa244b4cf1a0e2cd257cfbb84e4f3640e"
+    },
+    "user_message": {
+      "source_section": "[유저 프롬프트]",
+      "sha256": "af5b89e26bd2a5aa5ee05bd928b41ac1c3ff47d2f600317dc49f73f520db874a",
+      "placeholders": {
+        "{주제 지문}": "prompt_text",
+        "{논증적 글 본문}": "essay_text"
+      },
+      "optional_appended_input": "[evaluation_rationales] with content/organization/expression; never a target or reference score"
+    },
+    "supervision": {
+      "targets": [
+        "content",
+        "organization",
+        "expression"
+      ],
+      "integer_range": [
+        1,
+        5
+      ],
+      "average_target_used": false
+    },
+    "generative_output": "three score+rationale objects exactly as declared in evaluation.txt",
+    "encoder_output": "three score heads only; rationale may be input in the rationale arm"
+  },
+  "rationale_generation": {
+    "source": "src/mal2026/official_rationale_data.py:RATIONALE_SYSTEM_PROMPT",
+    "system_message_sha256": "170f5719514f899de25c6799575169a8391dce3d8f02eaba40cb803a73868c9e",
+    "user_inputs": [
+      "requested_axes",
+      "predicted_score",
+      "prompt_text",
+      "essay_text"
+    ],
+    "output": "requested rationale fields only; no score emitted",
+    "score_semantics": "predicted_score is a condition supplied by the separate score model, not a label emitted by the rationale model"
+  },
+  "rationale_judge_reward": {
+    "source_file": "llm_as_judge.txt",
+    "source_file_sha256": "91cd2f94fa78cc1a07d1bb63a1c5faf07fa25d77d5c60bf6952081c8f047cb6d",
+    "system_message": "entire source file exactly; file has no separate user marker and ends by requesting the following information",
+    "user_inputs": [
+      "prompt_text",
+      "essay_text",
+      "candidate_predicted_score_and_rationale"
+    ],
+    "output": "12 integer judge cells: 3 axes x 4 rationale-quality dimensions",
+    "reference_or_human_score_in_prompt": false
+  },
+  "cross_role_rule": "Score prediction, score-conditioned rationale generation, and rationale judging are separate message contracts and must never reuse one another's output schema."
+}

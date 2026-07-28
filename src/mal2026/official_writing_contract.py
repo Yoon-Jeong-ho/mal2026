@@ -243,13 +243,38 @@ def inference_messages(prompt_text: str, essay_text: str) -> list[dict[str, str]
 
 
 def judge_messages(prompt_text: str, essay_text: str, candidate: str | Mapping[str, Any]) -> list[dict[str, str]]:
+    return judge_messages_with_system(
+        OFFICIAL_JUDGE_SYSTEM_PROMPT,
+        prompt_text,
+        essay_text,
+        candidate,
+        include_leading_instruction=True,
+    )
+
+
+def judge_messages_with_system(
+    system_prompt: str,
+    prompt_text: str,
+    essay_text: str,
+    candidate: str | Mapping[str, Any],
+    *,
+    include_leading_instruction: bool = False,
+) -> list[dict[str, str]]:
+    """Build a judge request with an explicitly supplied, provenance-bound system prompt."""
     parsed = parse_participant_output(candidate)
-    if not isinstance(prompt_text, str) or not prompt_text.strip() or not isinstance(essay_text, str) or not essay_text.strip():
-        raise OfficialContractError("prompt_text and essay_text must be nonblank")
+    if (
+        not isinstance(system_prompt, str)
+        or not system_prompt.strip()
+        or not isinstance(prompt_text, str)
+        or not prompt_text.strip()
+        or not isinstance(essay_text, str)
+        or not essay_text.strip()
+    ):
+        raise OfficialContractError("system_prompt, prompt_text, and essay_text must be nonblank")
     candidate_text = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
-    user = (
-        "이제 아래 정보를 바탕으로 세 영역 모두를 평가하라.\n\n"
+    prefix = "이제 아래 정보를 바탕으로 세 영역 모두를 평가하라.\n\n" if include_leading_instruction else ""
+    user = prefix + (
         f"[prompt_text]\n{prompt_text}\n\n[essay_text]\n{essay_text}\n\n"
         f"[candidate_predicted_score_and_rationale]\n{candidate_text}"
     )
-    return [{"role": "system", "content": OFFICIAL_JUDGE_SYSTEM_PROMPT}, {"role": "user", "content": user}]
+    return [{"role": "system", "content": system_prompt}, {"role": "user", "content": user}]

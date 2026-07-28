@@ -168,7 +168,7 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
 
 
 def judge(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, Any]) -> dict[str, Any]:
-    validate_q4_attestation(args.judge_attestation, args.judge_endpoint)
+    validate_q4_attestation(args.judge_attestation, args.judge_endpoint, settings.judge["prompt_sha256"])
     raw = read_jsonl(args.input)
     need(bool(raw) and all(row.get("schema_version") == "mal2026-official-rationale-rollout-group-v1" and row.get("split") == "train" and row.get("arm") == args.arm for row in raw), "rollout input contract differs")
     canonical, _ = official_train_rows("bundle", len(raw))
@@ -181,7 +181,14 @@ def judge(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, Any
         judged: list[dict[str, Any]] = []
         for candidate_index, rationales in enumerate(row["generations"]):
             candidate = participant(row["scores"], rationales)
-            output = q4_score(args.judge_endpoint[row_index % len(args.judge_endpoint)], settings.judge["model_alias"], source["prompt_text"], source["essay_text"], candidate)
+            output = q4_score(
+                args.judge_endpoint[row_index % len(args.judge_endpoint)],
+                settings.judge["model_alias"],
+                source["prompt_text"],
+                source["essay_text"],
+                candidate,
+                system_prompt=settings.judge_system_prompt(),
+            )
             judged.append({"rationales": rationales, "judge_output": output, "judge_total": judge_total(output), "candidate_index": candidate_index})
         return {**row, "schema_version": "mal2026-official-rationale-judged-group-v1", "judged_generations": judged, "generations": None}
 

@@ -9,11 +9,14 @@ from mal2026.official_decoder_aihub_pretrain import DecoderAIHubConfig
 from mal2026.official_decoder_score import DecoderScoreConfig
 from mal2026.official_score_matrix import MatrixConfig
 from mal2026.official_score_prompt import (
+    EVALUATION_PROMPT_SHA256,
     LEGACY_COMPACT,
     PUBLIC_SPEC_SCORE_ONLY,
+    USER_SUPPLIED_EVALUATION,
     instruction,
     prompt_sha256,
     provenance,
+    query_text,
     system_prompt,
 )
 
@@ -45,6 +48,27 @@ class OfficialScorePromptTests(unittest.TestCase):
         self.assertIn(instruction(PUBLIC_SPEC_SCORE_ONLY), text)
         self.assertIn("<student_essay>\n학생 글\n</student_essay>", text)
         self.assertNotIn("(1, 3, 5)", text)
+
+    def test_user_evaluation_prompt_routes_system_and_user_sections_exactly(self) -> None:
+        system = system_prompt(USER_SUPPLIED_EVALUATION)
+        user = query_text("주제 지문 실제값", "학생 글 실제값", kind=USER_SUPPLIED_EVALUATION)
+        self.assertTrue(system.startswith("[역할]"))
+        self.assertNotIn("[시스템 프롬프트]", system)
+        self.assertNotIn("[유저 프롬프트]", system)
+        self.assertTrue(user.startswith("[prompt_text]"))
+        self.assertIn("주제 지문 실제값", user)
+        self.assertIn("학생 글 실제값", user)
+        self.assertNotIn("{주제 지문}", user)
+        self.assertNotIn("{논증적 글 본문}", user)
+        self.assertEqual(prompt_sha256(USER_SUPPLIED_EVALUATION), EVALUATION_PROMPT_SHA256)
+
+    def test_user_evaluation_rationale_arm_appends_only_rationale_input(self) -> None:
+        rationales = {axis: f"{axis} 설명" for axis in ("content", "organization", "expression")}
+        user = query_text("주제", "학생 글", rationales, USER_SUPPLIED_EVALUATION)
+        self.assertIn("[evaluation_rationales]", user)
+        self.assertIn("<content>content 설명</content>", user)
+        self.assertNotIn("reference_score", user)
+        self.assertNotIn("average", user)
 
     def test_new_configs_bind_the_public_score_prompt(self) -> None:
         embedding = PretrainConfig.from_json(
