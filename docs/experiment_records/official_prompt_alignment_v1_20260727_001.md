@@ -416,6 +416,44 @@ That handoff remains downstream of the DPO/GRPO comparison, which remains
 fail-closed until a scientifically authorized replacement safety protocol is
 predeclared and passes.  Existing failed gate artifacts are not reclassified.
 
+## User-supplied `llm_as_judge.txt` exact-prompt rerun
+
+At pre-run Git SHA `042b657`, the user supplied repository-local
+`llm_as_judge.txt` with SHA256
+`91cd2f94fa78cc1a07d1bb63a1c5faf07fa25d77d5c60bf6952081c8f047cb6d`.
+It is not byte-identical to the previously frozen proxy prompt, whose SHA256 is
+`1a93a3a4c18d34318d6926871fa0a527bbaf422fe78dac8c4efb66345b222e34`.
+The exact UTF-8 file contents were sent as the system message; the user message
+contained only the canonical prompt text, essay text, and the unchanged
+`candidate_predicted_score_and_rationale` JSON.  Human/reference scores were
+not read or prompted.  The model/runtime remained the same exact
+Qwen3.6-35B-A3B Q4_K_M and pinned llama.cpp build, with temperature `0`, seed
+`42`, reasoning disabled, and the same strict 12-cell JSON schema.
+
+After a one-row GPU0 smoke, the two pre-existing SFT validation participant
+files were evaluated on GPUs 0--3 with:
+
+```text
+scripts/run_official_q4_judge.sh full <run-id> validation <participant-file> 400 llm_as_judge.txt
+```
+
+The axis-triplet run completed 400/400 with macro `4.9845833333`, worst cell
+`4.9375`, 5-score cell rate `98.6667%`, and 359/400 essays perfect in all 12
+cells.  The bundle run preserved one `schema_or_finish` negative and therefore
+has 399/400 valid, macro `4.9803675856`, worst valid-cell mean `4.9473684211`,
+5-score cell rate `98.3083%`, and 348/399 valid essays perfect in all 12 cells.
+On the 399 paired valid essays, axis-triplet was higher for 49, bundle higher
+for 35, and 315 tied; its mean advantage was `0.0041771094`.
+
+Relative to the old abbreviated proxy prompt, the exact-file prompt lowered
+the axis-triplet macro by `0.0045833333` and the bundle macro by `0.0058479532`
+on paired valid essays.  Thus the more explicit prompt is slightly stricter
+but remains strongly ceiling-saturated.  The aggregate-only comparison is
+`outputs/official-prompt-alignment-v1/llm-as-judge-txt-comparison/llm-as-judge-txt-comparison-20260728-001/aggregate_prompt_comparison.json`
+with SHA256
+`61f0d83047b835fed6e794ff5f60c03195c507d03109921124954951a92e07da`.
+The one bundle failure was not overwritten or silently imputed.
+
 ## Execution task card
 
 - Run ID: `official-prompt-alignment-v1-20260727-001`.

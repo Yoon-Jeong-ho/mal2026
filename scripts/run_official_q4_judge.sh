@@ -2,8 +2,9 @@
 # Launch exact Q4_K_M judge replicas on GPU0 (smoke) or GPUs 0--3 (full).
 set -Eeuo pipefail
 
-[[ $# -eq 5 ]] || { echo "usage: $0 MODE(smoke|audit|full) RUN_ID SPLIT PARTICIPANT_FILE EXPECTED" >&2; exit 2; }
+[[ $# -eq 5 || $# -eq 6 ]] || { echo "usage: $0 MODE(smoke|audit|full) RUN_ID SPLIT PARTICIPANT_FILE EXPECTED [SYSTEM_PROMPT_FILE]" >&2; exit 2; }
 MODE="$1"; RUN_ID="$2"; SPLIT="$3"; PARTICIPANT_FILE="$4"; EXPECTED="$5"
+SYSTEM_PROMPT_FILE="${6:-}"
 [[ "$MODE" == smoke || "$MODE" == audit || "$MODE" == full ]] || { echo "mode must be smoke, audit, or full" >&2; exit 2; }
 [[ "$SPLIT" == train || "$SPLIT" == validation ]] || { echo "split differs" >&2; exit 2; }
 if [[ "$MODE" == smoke ]]; then GPUS=(0); PORTS=(19100); [[ "$SPLIT" == train && "$EXPECTED" -le 4 ]] || { echo "smoke must be train-only and at most four rows" >&2; exit 2; }
@@ -76,6 +77,10 @@ PY
 
 ARGS=()
 for port in "${PORTS[@]}"; do ARGS+=(--endpoint "http://127.0.0.1:$port"); done
+if [[ -n "$SYSTEM_PROMPT_FILE" ]]; then
+  [[ -r "$SYSTEM_PROMPT_FILE" ]] || { echo "system prompt file is unavailable" >&2; exit 1; }
+  ARGS+=(--system-prompt-file "$SYSTEM_PROMPT_FILE")
+fi
 PYTHONPATH="$ROOT/src" "$PY" "$ROOT/scripts/evaluate_official_q4_judge.py" \
   --run-id "$RUN_ID" --split "$SPLIT" --participant-file "$PARTICIPANT_FILE" --expected "$EXPECTED" \
   --max-inflight "$((4 * ${#GPUS[@]}))" --server-attestation "$ATTESTATION" "${ARGS[@]}"

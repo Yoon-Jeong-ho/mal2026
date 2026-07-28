@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from mal2026.api_rationale_data import EXPECTED_ESSAYS, SOURCE_SHA256, load_writing_rows, sha256_file  # noqa: E402
 from mal2026.official_writing_contract import (  # noqa: E402
     AXES,
+    FROZEN_PROXY_JUDGE_SYSTEM_PROMPT,
     JUDGE_DIMENSIONS,
     judge_json_schema,
     judge_messages,
@@ -72,7 +73,29 @@ def load_participants(path: Path, expected: int) -> list[dict[str, Any]]:
     return rows
 
 
-def request_body(model: str, prompt: str, essay: str, participant: Mapping[str, Any]) -> dict[str, Any]:
+def request_body(
+    model: str,
+    prompt: str,
+    essay: str,
+    participant: Mapping[str, Any],
+    *,
+    system_prompt: str | None = None,
+) -> dict[str, Any]:
+    if system_prompt is None:
+        messages = judge_messages(prompt, essay, participant)
+    else:
+        parsed = parse_participant_output(participant)
+        candidate_text = json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": (
+                    f"[prompt_text]\n{prompt}\n\n[essay_text]\n{essay}\n\n"
+                    f"[candidate_predicted_score_and_rationale]\n{candidate_text}"
+                ),
+            },
+        ]
     return {
         "model": model,
         "temperature": 0.0,
@@ -80,7 +103,7 @@ def request_body(model: str, prompt: str, essay: str, participant: Mapping[str, 
         "seed": 42,
         "max_tokens": 1800,
         "chat_template_kwargs": {"enable_thinking": False},
-        "messages": judge_messages(prompt, essay, participant),
+        "messages": messages,
         "response_format": {"type": "json_object", "schema": judge_json_schema()},
     }
 
@@ -108,7 +131,14 @@ def call(endpoint: str, body: Mapping[str, Any]) -> tuple[dict[str, Any] | None,
     return None, category, attempt
 
 
-def tasks(participants: Sequence[Mapping[str, Any]], model: str, endpoints: Sequence[str], split: str) -> Iterator[dict[str, Any]]:
+def tasks(
+    participants: Sequence[Mapping[str, Any]],
+    model: str,
+    endpoints: Sequence[str],
+    split: str,
+    *,
+    system_prompt: str | None = None,
+) -> Iterator[dict[str, Any]]:
     writings = {row.identifier: row for row in load_writing_rows(split, include_scores=False)}
     participant_ids = {str(row["source_id"]) for row in participants}
     need(participant_ids <= set(writings), "participant IDs differ from the canonical source")
@@ -117,7 +147,13 @@ def tasks(participants: Sequence[Mapping[str, Any]], model: str, endpoints: Sequ
         yield {
             "source_id": row["source_id"],
             "endpoint": endpoints[index % len(endpoints)],
-            "body": request_body(model, writing.prompt, writing.essay, row["participant_output"]),
+            "body": request_body(
+                model,
+                writing.prompt,
+                writing.essay,
+                row["participant_output"],
+                system_prompt=system_prompt,
+            ),
         }
 
 
@@ -175,6 +211,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", choices=("train", "validation"), default="validation")
     parser.add_argument("--max-inflight", type=int, default=16)
     parser.add_argument("--server-attestation", type=Path, required=True)
+    parser.add_argument(
+        "--system-prompt-file",
+        type=Path,
+        help="Use the exact UTF-8 contents of this repository-local file as the system prompt.",
+    )
     return parser.parse_args()
 
 
@@ -187,6 +228,22 @@ def main() -> None:
     need(attestation.get("model_sha256") == MODEL_SHA256 and attestation.get("llama_revision") == LLAMA_REVISION and attestation.get("llama_tag") == LLAMA_TAG, "official judge runtime provenance differs")
     need(attestation.get("server_endpoints") == args.endpoint, "official judge endpoints differ from attestation")
     participants = load_participants(args.participant_file, args.expected)
+    if args.system_prompt_file is None:
+        system_prompt = None
+        system_prompt_sha256 = sha256(FROZEN_PROXY_JUDGE_SYSTEM_PROMPT.encode("utf-8")).hexdigest()
+        system_prompt_kind = "frozen_proxy_v1"
+    else:
+        prompt_path = args.system_prompt_file.resolve()
+        need(prompt_path.is_file() and not prompt_path.is_symlink(), "system prompt file is unavailable")
+        need(prompt_path.is_relative_to(ROOT.resolve()), "system prompt file must be repository-local")
+        prompt_bytes = prompt_path.read_bytes()
+        try:
+            system_prompt = prompt_bytes.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("system prompt file must be UTF-8") from exc
+        need(bool(system_prompt.strip()), "system prompt file is blank")
+        system_prompt_sha256 = sha256(prompt_bytes).hexdigest()
+        system_prompt_kind = "repository_file_exact_bytes"
     output = RESTRICTED_ROOT / args.run_id
     aggregate_output = AGGREGATE_ROOT / args.run_id
     need(not output.exists() and not aggregate_output.exists(), "official judge output must be fresh")
@@ -209,10 +266,12 @@ def main() -> None:
         "seed": 42,
         "candidate_score_kind": "actual_emitted_integer_prediction",
         "human_or_reference_score_read_or_prompted": False,
+        "judge_system_prompt_kind": system_prompt_kind,
+        "judge_system_prompt_sha256": system_prompt_sha256,
         "server_attestation_sha256": sha256_file(args.server_attestation),
     }
     atomic_json(output / "manifest.json", manifest)
-    work = list(tasks(participants, args.model, args.endpoint, args.split))
+    work = list(tasks(participants, args.model, args.endpoint, args.split, system_prompt=system_prompt))
     records: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=args.max_inflight) as pool:
         pending: dict[Any, dict[str, Any]] = {}
@@ -251,6 +310,8 @@ def main() -> None:
         "seed": 42,
         "candidate_score_kind": "actual_emitted_integer_prediction",
         "human_or_reference_score_read_or_prompted": False,
+        "judge_system_prompt_kind": system_prompt_kind,
+        "judge_system_prompt_sha256": system_prompt_sha256,
         "privacy": "aggregate_only_no_rows_prompts_essays_rationales_ids_or_evidence_in_this_report",
     })
     atomic_json(aggregate_output / "aggregate_judge_report.json", report)

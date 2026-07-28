@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from mal2026.official_writing_contract import (
@@ -10,6 +11,7 @@ from mal2026.official_writing_contract import (
     parse_judge_output,
     parse_participant_output,
 )
+from scripts.evaluate_official_q4_judge import request_body
 
 
 def _candidate():
@@ -40,6 +42,17 @@ class OfficialWritingContractTests(unittest.TestCase):
         self.assertIn('"score":2', messages[1]["content"])
         self.assertNotIn("human_score", messages[1]["content"])
         self.assertNotIn("reference_score", messages[1]["content"])
+
+    def test_custom_system_prompt_preserves_exact_text_and_candidate_scores(self):
+        custom = "사용자 제공 judge system prompt\n"
+        body = request_body("judge", "주제", "학생 글", _candidate(), system_prompt=custom)
+        self.assertEqual(body["messages"][0]["content"], custom)
+        user = body["messages"][1]["content"]
+        marker = "[candidate_predicted_score_and_rationale]\n"
+        self.assertIn(marker, user)
+        candidate = json.loads(user.split(marker, 1)[1])
+        self.assertEqual(candidate, _candidate())
+        self.assertNotIn("reference_score", user)
 
     def test_judge_parser_requires_all_twelve_cells(self):
         output = {
