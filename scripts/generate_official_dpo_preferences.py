@@ -81,8 +81,9 @@ def policy_request(
     candidates: int,
     settings: RLSettings,
     seed: int,
-) -> tuple[list[dict[str, str]], int, int]:
+) -> tuple[list[dict[str, str]], int, int, int, int]:
     axes = axes_for_task(task)
+    initial_max_tokens = 900 if task == "bundle" else 350
     body = {
         "model": alias,
         "messages": prompt,
@@ -90,39 +91,75 @@ def policy_request(
         "temperature": settings.policy["sampling_temperature"],
         "top_p": settings.policy["sampling_top_p"],
         "seed": seed,
-        "max_tokens": 900 if task == "bundle" else 350,
+        "max_tokens": initial_max_tokens,
         "response_format": {"type": "json_schema", "json_schema": {"name": f"official_dpo_{task}", "strict": True, "schema": rationale_schema(axes)}},
     }
-    outer = http_json(endpoint, body)
-    choices = outer.get("choices")
-    need(isinstance(choices, list) and len(choices) == candidates, "policy rollout choice count differs")
-    parsed: list[dict[str, str]] = []
-    relaxed_control_character_parses = 0
-    schema_complete_length_finishes = 0
-    for choice in choices:
-        need(isinstance(choice, dict), "policy rollout choice differs")
-        finish_reason = choice.get("finish_reason")
-        need(finish_reason in {"stop", "length"}, "policy rollout finish reason differs")
-        content = choice["message"]["content"]
-        try:
-            parsed.append(parse_rationale_output(content, axes))
-        except OfficialRationaleDataError:
-            # vLLM's JSON-schema decoder can occasionally serialize a literal
-            # control character inside a JSON string.  Python's strict parser
-            # rejects that wire representation even though the schema and
-            # semantic string are otherwise valid.  ``strict=False`` changes
-            # only control-character acceptance; the normal strict rationale
-            # shape validator still runs on the decoded object.
-            decoded = json.loads(content, strict=False)
-            parsed.append(parse_rationale_output(decoded, axes))
-            relaxed_control_character_parses += 1
-        if finish_reason == "length":
-            # A schema-constrained completion may end exactly on the configured
-            # token boundary after emitting a complete JSON object.  Accept it
-            # only after the unchanged rationale parser has validated the full
-            # object; truncated or malformed length finishes still fail closed.
-            schema_complete_length_finishes += 1
-    return parsed, relaxed_control_character_parses, schema_complete_length_finishes
+    def response_choices(request: Mapping[str, Any]) -> list[dict[str, Any]]:
+        outer = http_json(endpoint, request)
+        values = outer.get("choices")
+        need(isinstance(values, list) and len(values) == candidates, "policy rollout choice count differs")
+        need(all(isinstance(choice, dict) for choice in values), "policy rollout choice differs")
+        return values
+
+    def parse_choices(choices: list[dict[str, Any]]) -> tuple[list[dict[str, str]] | None, int, int, int]:
+        parsed: list[dict[str, str]] = []
+        relaxed_control_character_parses = 0
+        schema_complete_length_finishes = 0
+        truncated_length_finishes = 0
+        for choice in choices:
+            finish_reason = choice.get("finish_reason")
+            need(finish_reason in {"stop", "length"}, "policy rollout finish reason differs")
+            content = choice["message"]["content"]
+            try:
+                parsed.append(parse_rationale_output(content, axes))
+            except OfficialRationaleDataError as strict_error:
+                # vLLM's JSON-schema decoder can occasionally serialize a
+                # literal control character inside a JSON string.  Relax only
+                # that wire-level JSON rule and then re-run the unchanged
+                # rationale shape validator.
+                try:
+                    decoded = json.loads(content, strict=False)
+                except json.JSONDecodeError:
+                    if finish_reason == "length":
+                        truncated_length_finishes += 1
+                        continue
+                    raise strict_error
+                parsed.append(parse_rationale_output(decoded, axes))
+                relaxed_control_character_parses += 1
+            if finish_reason == "length":
+                # Complete JSON ending exactly on the token boundary is valid;
+                # malformed length finishes are handled by the bounded retry.
+                schema_complete_length_finishes += 1
+        if truncated_length_finishes:
+            return None, relaxed_control_character_parses, schema_complete_length_finishes, truncated_length_finishes
+        return parsed, relaxed_control_character_parses, schema_complete_length_finishes, 0
+
+    choices = response_choices(body)
+    parsed, relaxed, complete_length, truncated = parse_choices(choices)
+    length_retry_requests = 0
+    length_retry_candidates = 0
+    if parsed is None:
+        # Retry only the transport-truncated request with the same prompt,
+        # sampling parameters, and seed.  The larger ceiling must preserve
+        # every completed candidate byte-for-byte and extend every truncated
+        # candidate from its exact original prefix, otherwise fail closed.
+        retry_body = {**body, "max_tokens": initial_max_tokens + (300 if task == "bundle" else 150)}
+        retry_choices = response_choices(retry_body)
+        for original, retried in zip(choices, retry_choices, strict=True):
+            original_content = original["message"]["content"]
+            retried_content = retried["message"]["content"]
+            if original.get("finish_reason") == "length":
+                need(retried_content.startswith(original_content), "length retry did not preserve the original generated prefix")
+            else:
+                need(retried_content == original_content, "length retry changed a completed candidate")
+        parsed, retry_relaxed, retry_complete_length, retry_truncated = parse_choices(retry_choices)
+        need(parsed is not None and retry_truncated == 0, "policy rollout remained truncated after bounded length retry")
+        relaxed = retry_relaxed
+        complete_length = retry_complete_length
+        length_retry_requests = 1
+        length_retry_candidates = truncated
+    need(parsed is not None, "policy rollout parse state differs")
+    return parsed, relaxed, complete_length, length_retry_requests, length_retry_candidates
 
 
 def write_jsonl(path: Path, rows: list[Mapping[str, Any]]) -> None:
@@ -161,9 +198,11 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         generations: list[dict[str, str]] = [dict() for _ in range(candidate_count)]
         relaxed_control_character_parses = 0
         schema_complete_length_finishes = 0
+        length_retry_requests = 0
+        length_retry_candidates = 0
         for task in sorted(required):
             task_prompt = prompts_by_task[task][index]
-            outputs, relaxed, complete_length = policy_request(
+            outputs, relaxed, complete_length, retry_requests, retry_candidates = policy_request(
                 args.policy_endpoint,
                 aliases[task],
                 task,
@@ -174,6 +213,8 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
             )
             relaxed_control_character_parses += relaxed
             schema_complete_length_finishes += complete_length
+            length_retry_requests += retry_requests
+            length_retry_candidates += retry_candidates
             for candidate_index, parsed in enumerate(outputs):
                 generations[candidate_index].update(parsed)
         need(all(set(value) == set(AXES) for value in generations), "rollout did not produce all axes")
@@ -188,6 +229,8 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
             "generations": generations,
             "relaxed_control_character_json_parses": relaxed_control_character_parses,
             "schema_complete_length_finishes": schema_complete_length_finishes,
+            "length_retry_requests": length_retry_requests,
+            "length_retry_candidates": length_retry_candidates,
         }
 
     results: list[dict[str, Any]] = []
@@ -209,6 +252,9 @@ def rollout(args: argparse.Namespace, settings: RLSettings, gate: Mapping[str, A
         "relaxed_parse_semantics": "json.loads(strict=False) only after strict parse failure; strict rationale schema validation still required",
         "schema_complete_length_finishes": sum(int(row["schema_complete_length_finishes"]) for row in results),
         "length_finish_semantics": "accepted only when the unchanged strict rationale schema parser validates the complete JSON object",
+        "length_retry_requests": sum(int(row["length_retry_requests"]) for row in results),
+        "length_retry_candidates": sum(int(row["length_retry_candidates"]) for row in results),
+        "length_retry_semantics": "same seed and sampling; completed candidates byte-identical; truncated candidates must preserve exact original prefix; one bounded +300 bundle/+150 axis token ceiling retry",
         "raw_sha256": sha256_file(output),
         "input_provenance": provenance,
         "contrastive_gate_sha256": gate["directional"]["sha256"],

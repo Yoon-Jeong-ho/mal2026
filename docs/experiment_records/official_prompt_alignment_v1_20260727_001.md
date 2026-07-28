@@ -601,3 +601,15 @@ passes that parser; malformed or truncated JSON still fails closed.  No token
 limit, prompt, sampling parameter, seed, data row, reward, or optimizer setting
 is changed.  Because the repair changes executable code, the next attempt uses
 a fresh run ID and Git lineage rather than resuming the failed run in place.
+
+The sixth launch reproduced the same failure more precisely after all 6,000
+bundle requests: one `length` completion was genuinely truncated at character
+2,901 and failed JSON parsing (`Expecting ',' delimiter`), so the fail-closed
+behavior was correct and no full rollout rows were written.  The next bounded
+transport recovery retries only a request containing a malformed `length`
+candidate with the same prompt, temperature, top-p, and seed at a +300-token
+bundle (+150-token single-axis) ceiling.  It accepts the retry only when every
+already completed candidate is byte-identical and every truncated candidate
+preserves its entire original generated prefix; it then applies the unchanged
+strict rationale parser.  A divergent retry or a second truncation still stops
+the run.  Aggregate reports count both retry requests and affected candidates.
