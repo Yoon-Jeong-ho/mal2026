@@ -25,6 +25,17 @@ ATTESTATION="$RUN_ROOT/server_attestation.json"
 [[ ! -e "$RUN_ROOT" ]] || { echo "official judge runtime output exists" >&2; exit 1; }
 [[ "$(sha256sum "$MODEL" | awk '{print $1}')" == "$MODEL_SHA" ]] || { echo "official GGUF checksum differs" >&2; exit 1; }
 [[ "$(git -C "$REPO" rev-parse HEAD)" == "$REVISION" && "$(git -C "$REPO" describe --tags --exact-match)" == "$TAG" ]] || { echo "official llama.cpp revision differs" >&2; exit 1; }
+if [[ -n "$SYSTEM_PROMPT_FILE" ]]; then
+  [[ -r "$SYSTEM_PROMPT_FILE" ]] || { echo "system prompt file is unavailable" >&2; exit 1; }
+  JUDGE_PROMPT_SHA="$(sha256sum "$SYSTEM_PROMPT_FILE" | awk '{print $1}')"
+else
+  JUDGE_PROMPT_SHA="$(PYTHONPATH="$ROOT/src" "$PY" - <<'PY'
+from hashlib import sha256
+from mal2026.official_writing_contract import FROZEN_PROXY_JUDGE_SYSTEM_PROMPT
+print(sha256(FROZEN_PROXY_JUDGE_SYSTEM_PROMPT.encode('utf-8')).hexdigest())
+PY
+)"
+fi
 for gpu in "${GPUS[@]}"; do
   line="$(nvidia-smi --id="$gpu" --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader,nounits)"
   IFS=, read -r index used util <<<"$line"
@@ -57,12 +68,12 @@ for port in "${PORTS[@]}"; do
   [[ "$healthy" == 1 ]] || { echo "official judge server health timeout on $port" >&2; exit 1; }
 done
 
-"$PY" - "$ATTESTATION" "$MODEL" "$SERVER" "$REPO" "$MODEL_SHA" "$REVISION" "$TAG" "${GPUS[*]}" "${PORTS[*]}" "${PIDS[*]}" <<'PY'
+"$PY" - "$ATTESTATION" "$MODEL" "$SERVER" "$REPO" "$MODEL_SHA" "$REVISION" "$TAG" "$JUDGE_PROMPT_SHA" "${GPUS[*]}" "${PORTS[*]}" "${PIDS[*]}" <<'PY'
 import hashlib,json,subprocess,sys
 from datetime import datetime,timezone
 from pathlib import Path
 from urllib.request import urlopen
-out,model,server,repo,model_sha,revision,tag,gpus,ports,pids=sys.argv[1:]
+out,model,server,repo,model_sha,revision,tag,judge_prompt_sha,gpus,ports,pids=sys.argv[1:]
 gs=[int(x) for x in gpus.split()]; ps=[int(x) for x in ports.split()]; ids=[int(x) for x in pids.split()]
 assert hashlib.sha256(Path(model).read_bytes()).hexdigest()==model_sha
 for gpu,port,pid in zip(gs,ps,ids,strict=True):
@@ -71,14 +82,13 @@ for gpu,port,pid in zip(gs,ps,ids,strict=True):
     props=json.loads(urlopen(f'http://127.0.0.1:{port}/props',timeout=5).read().decode())
     assert visible==str(gpu) and props.get('total_slots')==4
     assert props.get('default_generation_settings',{}).get('n_ctx')==8192
-value={'schema_version':'mal2026-official-q4-judge-server-attestation-v1','created_at':datetime.now(timezone.utc).replace(microsecond=0).isoformat(),'physical_gpus':gs,'server_endpoints':[f'http://127.0.0.1:{p}' for p in ps],'server_pids':ids,'parallel_per_server':4,'context_per_slot':8192,'model_sha256':model_sha,'llama_server_sha256':hashlib.sha256(Path(server).read_bytes()).hexdigest(),'llama_revision':subprocess.check_output(['git','-C',repo,'rev-parse','HEAD'],text=True).strip(),'llama_tag':subprocess.check_output(['git','-C',repo,'describe','--tags','--exact-match'],text=True).strip()}
+value={'schema_version':'mal2026-official-q4-judge-server-attestation-v1','created_at':datetime.now(timezone.utc).replace(microsecond=0).isoformat(),'physical_gpus':gs,'server_endpoints':[f'http://127.0.0.1:{p}' for p in ps],'server_pids':ids,'parallel_per_server':4,'context_per_slot':8192,'model_sha256':model_sha,'llama_server_sha256':hashlib.sha256(Path(server).read_bytes()).hexdigest(),'llama_revision':subprocess.check_output(['git','-C',repo,'rev-parse','HEAD'],text=True).strip(),'llama_tag':subprocess.check_output(['git','-C',repo,'describe','--tags','--exact-match'],text=True).strip(),'judge_prompt_sha256':judge_prompt_sha}
 Path(out).write_text(json.dumps(value,indent=2,sort_keys=True)+'\n',encoding='utf-8')
 PY
 
 ARGS=()
 for port in "${PORTS[@]}"; do ARGS+=(--endpoint "http://127.0.0.1:$port"); done
 if [[ -n "$SYSTEM_PROMPT_FILE" ]]; then
-  [[ -r "$SYSTEM_PROMPT_FILE" ]] || { echo "system prompt file is unavailable" >&2; exit 1; }
   ARGS+=(--system-prompt-file "$SYSTEM_PROMPT_FILE")
 fi
 PYTHONPATH="$ROOT/src" "$PY" "$ROOT/scripts/evaluate_official_q4_judge.py" \

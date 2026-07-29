@@ -1,0 +1,16 @@
+{
+  "schema_version": "mal2026-evaluation-prompt-rationale-sft-v1",
+  "run_id": "evaluation-prompt-rationale-sft-v1-ax4-score-conditioned-20260729-001",
+  "prompt_kind": "evaluation_txt_rationale_score_conditioned_v1",
+  "output_root": "/dataset/aa007878/mal2026/outputs/evaluation-prompt-rationale-sft-v1",
+  "seed": 2026072904,
+  "max_length": 3072,
+  "learning_rate": 0.00002,
+  "num_train_epochs": 2.0,
+  "per_device_train_batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "logging_steps": 10,
+  "lora_r": 32,
+  "lora_alpha": 64,
+  "lora_dropout": 0.05
+}

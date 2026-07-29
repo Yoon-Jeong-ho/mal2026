@@ -11,6 +11,31 @@ RLAIF/GRPO continuation uses maintained TRL `GRPOTrainer`, a local vLLM policy
 rollout server, and a local Qwen judge; its reproducibility record is
 `docs/experiment_records/rlaif_grpo_prompt_ensemble_v8_20260722_022.md`.
 
+## `evaluation.txt` end-to-end re-audit (completed)
+
+The current prompt-alignment rerun separates four contracts: score-blind
+rationale generation, emitted-score-conditioned rationale generation, direct
+three-axis score prediction, and rationale-aware three-axis score prediction.
+All retain the exact `evaluation.txt` rubric prefix; no path trains or predicts
+an `average` target.  Rationale generation used A.X-4.0-Light with a
+four-GPU tensor-parallel vLLM engine, while score prediction compared actual
+embedding models `Qwen/Qwen3-Embedding-8B` and `nlpai-lab/KURE-v1`.
+
+On the frozen 400-row validation split, the best arm is Qwen3-Embedding-8B
+with matched score-blind rationales: content / organization / expression RMSE
+is `0.516236 / 0.706146 / 0.528646`, and the three-axis macro RMSE is
+`0.583676` (macro Spearman `0.619365`).  Score-conditioned rationales worsen
+both Qwen and KURE relative to their direct baselines.  The byte-exact
+`llm_as_judge.txt` Qwen3.6-35B-A3B Q4_K_M evaluation completed seven 400-row
+arms with no failures, but is saturated: arm means are `4.9646--4.9796` and
+`97.02%--98.38%` of judge cells are 5.  It evaluates rationale plausibility
+conditional on the predicted score rather than re-grading score correctness,
+so it must not be interpreted as RMSE or used alone to select these arms.
+See
+`docs/experiment_records/evaluation_prompt_end_to_end_reaudit_20260729_001.md`
+for prompt hashes, negative results, commands, complete metrics, and the
+paired judge analysis.
+
 ## RLAIF/GRPO prompt-ensemble snapshot (aggregate-only, completed)
 
 The study compares two fixed reward estimators for Korean rationale decoders:
