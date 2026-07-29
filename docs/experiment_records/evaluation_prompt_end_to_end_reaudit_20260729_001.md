@@ -11,8 +11,9 @@ download occurred.
 
 Execution-base Git SHA: `6a1f889`.  The experiment was executed from an
 intentionally dirty working tree; the implementation and aggregate record are
-committed after the terminal audit.  Restricted inputs, generated rationales,
-predictions, checkpoints, judge records, and logs remain ignored.
+committed after the terminal audit as
+`91e6fdf45520537f6631252bc03dde4332f530e5`.  Restricted inputs, generated
+rationales, predictions, checkpoints, judge records, and logs remain ignored.
 
 All declared arms completed.  The best frozen 400-row validation score result
 was **Qwen3-Embedding-8B with matched score-blind rationales**, at three-axis
