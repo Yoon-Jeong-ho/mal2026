@@ -37,9 +37,11 @@ from mal2026.solar_axis_augmentation import (  # noqa: E402
 )
 
 
-RUN_ID = "solar-open2-axis-degradation-train-v1-20260729-003"
+RUN_ID = "solar-open2-axis-degradation-train-v1-20260729-004"
 RUNTIME_MODEL = Path("/dataset/large-models/nota-ai/Solar-Open2-250B-Nota-INT4")
 BASE_MODEL = Path("/dataset/large-models/upstage/Solar-Open2-250B")
+DOCKER_IMAGE = "upstage/vllm-solar-open2:latest"
+CONTAINER_MODEL = "/models/Solar-Open2-250B-Nota-INT4"
 OUTPUT_ROOT = ROOT / "outputs/solar-axis-degradation-v1"
 RESTRICTED_ROOT = ROOT / "data/processed/restricted/solar_axis_degradation_v1"
 QWEN_RESULT = ROOT / "outputs/rationale-aware-encoder-v1/rationale-aware-qwen3-embedding-8b-aihub-mal-v1-20260729-002/result.json"
@@ -111,14 +113,35 @@ def verify_model() -> dict[str, Any]:
     return {**MODEL_BINDINGS, "runtime_shards": len(shards), "runtime_weight_bytes": sum(path.stat().st_size for path in shards)}
 
 
+def docker_image_binding() -> dict[str, str]:
+    try:
+        image_id = subprocess.check_output(
+            ["docker", "image", "inspect", "--format", "{{.Id}}", DOCKER_IMAGE],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        raise SolarRunError(
+            f"approved official Solar Docker image is not local: {DOCKER_IMAGE}"
+        ) from exc
+    need(image_id.startswith("sha256:") and len(image_id) == 71, "Solar Docker image ID differs")
+    return {"docker_image": DOCKER_IMAGE, "docker_image_id": image_id}
+
+
 def server_command(port: int) -> list[str]:
     return [
-        str(ROOT / ".venv-standard/bin/vllm"), "serve", str(RUNTIME_MODEL),
+        "docker", "run", "--rm", "--gpus", '"device=0,1,2,3"', "--ipc=host", "--network=host",
+        "--mount", f"type=bind,src={RUNTIME_MODEL},dst={CONTAINER_MODEL},readonly",
+        DOCKER_IMAGE, CONTAINER_MODEL,
         "--served-model-name", MODEL_ALIAS,
         "--host", "127.0.0.1", "--port", str(port),
         "--tensor-parallel-size", "4",
         "--trust-remote-code",
-        "--model-impl", "transformers",
+        "--enable-expert-parallel",
+        "--moe-backend", "triton",
+        "--default-chat-template-kwargs", '{"think_render_option":"preserved"}',
+        "--reasoning-parser", "solar_open2",
+        "--logits-processors", "vllm.v1.sample.logits_processor.solar_open2:SolarOpen2TemplateLogitsProcessor",
         "--max-model-len", "4096",
         "--gpu-memory-utilization", "0.90",
         "--max-num-seqs", "64",
@@ -209,6 +232,7 @@ def main() -> None:
 
     gate = check_gate()
     model_binding = verify_model()
+    model_binding.update(docker_image_binding())
     rows = load_train_rows()
     need(task_count(rows) == 6000, "Solar task population differs")
     output = OUTPUT_ROOT / args.run_id

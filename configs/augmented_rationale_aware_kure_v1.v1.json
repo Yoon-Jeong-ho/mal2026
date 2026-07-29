@@ -1,0 +1,27 @@
+{
+  "schema_version": "mal2026-augmented-rationale-aware-encoder-v1",
+  "run_id": "augmented-rationale-aware-kure-v1-v1-20260729-001",
+  "model_key": "kure_v1",
+  "base_config_path": "/dataset/aa007878/mal2026/configs/rationale_aware_kure_v1_aihub_mal.v1.json",
+  "base_config_sha256": "cc2e5f85b68efb028e5144fbe32236f5f475abf91d71030710d1cc5a886075d4",
+  "solar_result_path": "/dataset/aa007878/mal2026/outputs/solar-axis-degradation-v1/solar-open2-axis-degradation-train-v1-20260729-004/result.json",
+  "augmented_rationale_result_path": "/dataset/aa007878/mal2026/outputs/solar-augmented-bundle-rationale-v1/official-dpo-bundle-solar-augmented-rationales-v1-20260729-001/result.json",
+  "output_root": "/dataset/aa007878/mal2026/outputs/augmented-rationale-aware-encoder-v1",
+  "score_fields": [
+    "content",
+    "organization",
+    "expression"
+  ],
+  "average_target_used": false,
+  "target_projection": "none_preserve_raw_continuous",
+  "seed": 2026072903,
+  "selection_epochs": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "training_data_contract": "original_one_plus_three_axis_degraded_per_source",
+  "selection_dev_contract": "original_only_source_disjoint_from_all_training_augmentations",
+  "validation_contract": "frozen_original_validation_once_after_selected_epoch_refit"
+}

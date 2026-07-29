@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 from pathlib import Path
 import unittest
 
@@ -28,6 +29,23 @@ class SolarAxisAugmentationTests(unittest.TestCase):
         messages = render_messages(self.rows[0], "content")
         self.assertNotIn('"average"', messages[1]["content"])
         self.assertIn('"target_axis":"content"', messages[1]["content"])
+
+    def test_runner_uses_official_docker_without_implicit_pull(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        path = root / "scripts/run_solar_axis_augmentation.py"
+        spec = importlib.util.spec_from_file_location("solar_runner_contract", path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        command = module.server_command(19420)
+        self.assertEqual(command[:2], ["docker", "run"])
+        self.assertNotIn("pull", command)
+        self.assertEqual(command[command.index("--gpus") + 1], '"device=0,1,2,3"')
+        self.assertIn("upstage/vllm-solar-open2:latest", command)
+        self.assertEqual(command[command.index("--tensor-parallel-size") + 1], "4")
+        self.assertIn("--enable-expert-parallel", command)
+        self.assertIn("--logits-processors", command)
 
     def test_parser_enforces_target_drop_and_non_target_preservation(self) -> None:
         row = self.rows[0]

@@ -110,3 +110,19 @@ The next valid action is to authorize one of those official runtime paths,
 then rerun the same one-row TP4 smoke and continue directly to all 6,000
 train-only generations on success. Replacing Solar with a different generator
 would be a scientific-protocol change and has not been done.
+
+## Prepared official-Docker recovery
+
+The runner now has a fresh run-004 path that uses only the official
+`upstage/vllm-solar-open2:latest` image, mounts the already-local Nota INT4
+weights read-only, exposes exactly physical GPUs 0--3, and retains TP=4,
+expert parallelism, the Solar logits processor, and the official chat-template
+settings. It verifies and records the local Docker image ID before creating a
+run artifact. The runner never invokes `docker pull`.
+
+The image remains absent locally, so the read-only gate currently fails with
+`approved official Solar Docker image is not local`. No GPU context is created.
+An external pull still requires explicit authorization. Once the image is
+present, `scripts/run_remaining_solar_encoder_pipeline.py` executes the
+one-row Solar smoke and all remaining approved stages without another routine
+phase confirmation.

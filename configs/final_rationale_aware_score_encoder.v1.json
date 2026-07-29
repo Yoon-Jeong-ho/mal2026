@@ -1,0 +1,41 @@
+{
+  "schema_version": "mal2026-final-rationale-aware-score-encoder-v1",
+  "run_id": "final-rationale-aware-score-encoder-v1-20260729-001",
+  "candidates": [
+    {
+      "method": "original_bundle_rationale",
+      "model_key": "qwen3_embedding_8b",
+      "result_path": "/dataset/aa007878/mal2026/outputs/rationale-aware-encoder-v1/rationale-aware-qwen3-embedding-8b-aihub-mal-v1-20260729-002/result.json",
+      "expected_sha256": "a5ccc689cd3888a6181b73e8ff4339f3494370ea51410081c769ac6b0febdfbc"
+    },
+    {
+      "method": "original_bundle_rationale",
+      "model_key": "kure_v1",
+      "result_path": "/dataset/aa007878/mal2026/outputs/rationale-aware-encoder-v1/rationale-aware-kure-v1-aihub-mal-v1-20260729-002/result.json",
+      "expected_sha256": "7761f1942cbef2245575ddbc17e23855bce40103d2ac7d7193abbf529f28a7cc"
+    },
+    {
+      "method": "original_plus_solar_augmented_bundle_rationale",
+      "model_key": "qwen3_embedding_8b",
+      "result_path": "/dataset/aa007878/mal2026/outputs/augmented-rationale-aware-encoder-v1/augmented-rationale-aware-qwen3-embedding-8b-v1-20260729-001/result.json",
+      "expected_sha256": null
+    },
+    {
+      "method": "original_plus_solar_augmented_bundle_rationale",
+      "model_key": "kure_v1",
+      "result_path": "/dataset/aa007878/mal2026/outputs/augmented-rationale-aware-encoder-v1/augmented-rationale-aware-kure-v1-v1-20260729-001/result.json",
+      "expected_sha256": null
+    }
+  ],
+  "selection_rule": "lowest frozen-validation macro continuous RMSE, then highest macro continuous Spearman, then fixed candidate order",
+  "output_root": "/dataset/aa007878/mal2026/outputs/final-rationale-aware-score-encoder-v1",
+  "score_fields": [
+    "content",
+    "organization",
+    "expression"
+  ],
+  "average_target_used": false,
+  "target_projection": "none_preserve_raw_continuous",
+  "train_plus_validation": true,
+  "final_evaluation_performed": false
+}
