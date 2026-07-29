@@ -99,26 +99,44 @@ def request_body(
 
 
 def call(endpoint: str, body: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str | None, int]:
-    wire = json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    for attempt in range(1, 3):
-        request = Request(endpoint.rstrip("/") + "/v1/chat/completions", data=wire, headers={"Content-Type": "application/json"}, method="POST")
-        try:
-            with urlopen(request, timeout=300) as response:
-                outer = json.loads(response.read().decode("utf-8"))
-            choice = outer["choices"][0]
-            if choice.get("finish_reason") != "stop":
-                raise ValueError("finish_reason")
-            parsed = parse_judge_output(choice["message"]["content"])
-            return parsed, None, attempt
-        except HTTPError as exc:
-            category = "http_429" if exc.code == 429 else ("http_5xx" if exc.code >= 500 else "http_4xx")
-        except (URLError, TimeoutError):
-            category = "transport"
-        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
-            category = "schema_or_finish"
-        if category not in {"http_429", "http_5xx", "transport"}:
-            break
-    return None, category, attempt
+    attempts = 0
+
+    def fetch(payload: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+        nonlocal attempts
+        wire = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        category = "transport"
+        for _ in range(2):
+            attempts += 1
+            request = Request(endpoint.rstrip("/") + "/v1/chat/completions", data=wire, headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                with urlopen(request, timeout=300) as response:
+                    return json.loads(response.read().decode("utf-8"))["choices"][0], None
+            except HTTPError as exc:
+                category = "http_429" if exc.code == 429 else ("http_5xx" if exc.code >= 500 else "http_4xx")
+            except (URLError, TimeoutError):
+                category = "transport"
+            except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+                category = "schema_or_finish"
+            if category not in {"http_429", "http_5xx", "transport"}:
+                break
+        return None, category
+
+    choice, failure = fetch(body)
+    if choice is None:
+        return None, failure, attempts
+    # The exact user prompt can rarely fill 1,800 tokens despite reasoning
+    # being disabled. Retry only an explicitly length-truncated response;
+    # malformed stop completions remain hard failures.
+    if choice.get("finish_reason") == "length" and int(body.get("max_tokens", 0)) == 1800:
+        choice, failure = fetch({**body, "max_tokens": 3600})
+        if choice is None:
+            return None, failure, attempts
+    try:
+        if choice.get("finish_reason") != "stop":
+            raise ValueError("finish_reason")
+        return parse_judge_output(choice["message"]["content"]), None, attempts
+    except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError):
+        return None, "schema_or_finish", attempts
 
 
 def tasks(
@@ -234,6 +252,10 @@ def main() -> None:
         need(bool(system_prompt.strip()), "system prompt file is blank")
         system_prompt_sha256 = sha256(prompt_bytes).hexdigest()
         system_prompt_kind = "repository_file_exact_bytes"
+    need(
+        attestation.get("judge_prompt_sha256") == system_prompt_sha256,
+        "official judge prompt differs from the server attestation",
+    )
     output = RESTRICTED_ROOT / args.run_id
     aggregate_output = AGGREGATE_ROOT / args.run_id
     need(not output.exists() and not aggregate_output.exists(), "official judge output must be fresh")

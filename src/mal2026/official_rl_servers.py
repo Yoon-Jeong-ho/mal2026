@@ -85,14 +85,23 @@ def assert_ports_free(ports: Sequence[int]) -> None:
                 raise OfficialRLServerError(f"server port is occupied: {port}") from exc
 
 
-def verify_server_prerequisites() -> None:
+def verify_policy_prerequisites() -> None:
     need(PYTHON.is_file() and VLLM.is_file() and MODEL_PATH.is_dir(), "vLLM/model prerequisite is unavailable")
     need(importlib.metadata.version("vllm") == VLLM_VERSION, "vLLM version differs")
+
+
+def verify_q4_prerequisites() -> None:
     need(LLAMA_SERVER.is_file() and os.access(LLAMA_SERVER, os.X_OK) and Q4_MODEL.is_file(), "Q4 runtime prerequisite is unavailable")
     need(sha256_file(Q4_MODEL) == Q4_MODEL_SHA256, "Q4 model digest differs")
     revision = subprocess.check_output(["git", "-C", str(LLAMA_REPO), "rev-parse", "HEAD"], text=True).strip()
     tag = subprocess.check_output(["git", "-C", str(LLAMA_REPO), "describe", "--tags", "--exact-match"], text=True).strip()
     need(revision == LLAMA_REVISION and tag == LLAMA_TAG, "llama.cpp revision differs")
+
+
+def verify_server_prerequisites() -> None:
+    """Backward-compatible combined preflight used by older orchestration."""
+    verify_policy_prerequisites()
+    verify_q4_prerequisites()
 
 
 class OwnedProcesses:
@@ -186,8 +195,10 @@ def vllm_policy_server(
     model_path: Path = MODEL_PATH,
     model_id: str = MODEL_ID,
     model_revision: str = MODEL_REVISION,
+    data_split: str = "train",
 ) -> Iterator[tuple[str, Path]]:
-    verify_server_prerequisites()
+    verify_policy_prerequisites()
+    need(data_split in {"train", "validation", "train_and_validation"}, "policy server data split differs")
     chosen = tuple(gpus)
     need(set(adapters) == set(aliases) and 1 <= len(adapters) <= 4, "policy adapter declarations differ")
     need(model_path.is_dir() and not model_path.is_symlink() and (model_path / "config.json").is_file(), "policy base model snapshot is unavailable")
@@ -238,7 +249,8 @@ def vllm_policy_server(
             "adapter_paths": {task: str(path.resolve()) for task, path in adapters.items()},
             "adapter_config_sha256": {task: sha256_file(path / "adapter_config.json") for task, path in adapters.items()},
             "dynamic_lora": True, "dynamic_runtime_updates": dynamic_updates,
-            "structured_outputs_json_schema": True, "train_split_only": True,
+            "structured_outputs_json_schema": True, "data_split": data_split,
+            "train_split_only": data_split == "train",
             "judge_prompt_sha256": JUDGE_PROMPT_SHA256,
             "server_pid": process.pid, "server_process_environment_verified": True,
         })
@@ -256,7 +268,7 @@ def q4_judge_servers(
     ports: Sequence[int],
     judge_prompt_sha256: str = JUDGE_PROMPT_SHA256,
 ) -> Iterator[tuple[list[str], Path]]:
-    verify_server_prerequisites()
+    verify_q4_prerequisites()
     chosen, chosen_ports = tuple(gpus), tuple(ports)
     need(len(chosen) == len(chosen_ports) and bool(chosen), "Q4 topology differs")
     assert_gpus_idle(chosen)

@@ -10,6 +10,7 @@ to reproduce already completed historical runs.
 from __future__ import annotations
 
 from hashlib import sha256
+import json
 from pathlib import Path
 from typing import Mapping
 
@@ -17,10 +18,18 @@ from typing import Mapping
 LEGACY_COMPACT = "legacy_compact_v1"
 PUBLIC_SPEC_SCORE_ONLY = "public_spec_score_only_v1"
 USER_SUPPLIED_EVALUATION = "user_supplied_evaluation_txt_v1"
-SCORE_PROMPT_KINDS = (LEGACY_COMPACT, PUBLIC_SPEC_SCORE_ONLY, USER_SUPPLIED_EVALUATION)
+RATIONALE_AWARE_ENCODER = "rationale_aware_encoder_score_v1"
+SCORE_PROMPT_KINDS = (
+    LEGACY_COMPACT,
+    PUBLIC_SPEC_SCORE_ONLY,
+    USER_SUPPLIED_EVALUATION,
+    RATIONALE_AWARE_ENCODER,
+)
 ROOT = Path(__file__).resolve().parents[2]
 EVALUATION_PROMPT_PATH = ROOT / "evaluation.txt"
 EVALUATION_PROMPT_SHA256 = "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145"
+RATIONALE_AWARE_PROMPT_PATH = ROOT / "configs/official_rationale_aware_score_prompt.v1.json"
+RATIONALE_AWARE_PROMPT_SHA256 = "692da6e051ba9864d5699f5e8e11c143ce30784415c5050b89d63a3aedccc60c"
 
 
 LEGACY_COMPACT_INSTRUCTION = (
@@ -69,6 +78,36 @@ def _evaluation_sections() -> tuple[str, str]:
     return system, user
 
 
+def _rationale_aware_contract() -> dict[str, object]:
+    if not RATIONALE_AWARE_PROMPT_PATH.is_file() or RATIONALE_AWARE_PROMPT_PATH.is_symlink():
+        raise ValueError("rationale-aware score prompt is unavailable")
+    payload = RATIONALE_AWARE_PROMPT_PATH.read_bytes()
+    if sha256(payload).hexdigest() != RATIONALE_AWARE_PROMPT_SHA256:
+        raise ValueError("rationale-aware score prompt digest differs")
+    try:
+        value = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("rationale-aware score prompt is invalid UTF-8 JSON") from exc
+    if not isinstance(value, dict) or value.get("schema_version") != "mal2026-rationale-aware-encoder-score-prompt-v1":
+        raise ValueError("rationale-aware score prompt schema differs")
+    provenance = value.get("provenance")
+    messages = value.get("messages")
+    input_contract = value.get("input_contract")
+    output_contract = value.get("model_output_contract")
+    supervision = value.get("supervision")
+    if not isinstance(provenance, dict) or provenance.get("source_file_sha256") != EVALUATION_PROMPT_SHA256 or provenance.get("verbatim_source_prompt") is not False:
+        raise ValueError("rationale-aware score prompt provenance differs")
+    if not isinstance(messages, dict) or not all(isinstance(messages.get(key), str) and messages[key].strip() for key in ("system", "user_preamble")):
+        raise ValueError("rationale-aware score prompt messages differ")
+    if not isinstance(input_contract, dict) or input_contract.get("required_rationale_structure") != "bundle" or input_contract.get("required_rationale_axes") != ["content", "organization", "expression"] or input_contract.get("gold_or_reference_score_allowed") is not False or input_contract.get("average_allowed") is not False:
+        raise ValueError("rationale-aware score input contract differs")
+    if not isinstance(output_contract, dict) or output_contract.get("head_order") != ["content", "organization", "expression"] or output_contract.get("value_type") != "continuous_number" or output_contract.get("range") != [1.0, 5.0] or output_contract.get("average_allowed") is not False or output_contract.get("rationale_output_allowed") is not False:
+        raise ValueError("rationale-aware score output contract differs")
+    if not isinstance(supervision, dict) or supervision.get("target_projection") != "none_preserve_raw_continuous" or supervision.get("score_average_read") is not False or supervision.get("score_average_target_used") is not False:
+        raise ValueError("rationale-aware score supervision differs")
+    return value
+
+
 def instruction(kind: str) -> str:
     if kind == LEGACY_COMPACT:
         return LEGACY_COMPACT_INSTRUCTION
@@ -76,6 +115,8 @@ def instruction(kind: str) -> str:
         return PUBLIC_SPEC_SCORE_ONLY_INSTRUCTION
     if kind == USER_SUPPLIED_EVALUATION:
         return _evaluation_sections()[0]
+    if kind == RATIONALE_AWARE_ENCODER:
+        return str(_rationale_aware_contract()["messages"]["system"])  # type: ignore[index]
     raise ValueError("unknown score prompt kind")
 
 
@@ -84,6 +125,8 @@ def system_prompt(kind: str) -> str:
         return "당신은 한국어 글쓰기 평가자입니다. 과제와 학생 글만 근거로 세 정수 점수만 출력하십시오."
     if kind == USER_SUPPLIED_EVALUATION:
         return _evaluation_sections()[0]
+    if kind == RATIONALE_AWARE_ENCODER:
+        return instruction(kind)
     return instruction(kind) + "\n" + DECODER_OUTPUT_RULE
 
 
@@ -93,6 +136,28 @@ def query_text(
     rationales: Mapping[str, str] | None = None,
     kind: str = LEGACY_COMPACT,
 ) -> str:
+    axes = ("content", "organization", "expression")
+    if rationales is not None and (
+        set(rationales) != set(axes)
+        or not all(isinstance(rationales[axis], str) and rationales[axis].strip() for axis in axes)
+    ):
+        raise ValueError("three nonblank rationale axes are required")
+    if kind == RATIONALE_AWARE_ENCODER:
+        if rationales is None:
+            raise ValueError("rationale-aware score prompt requires bundle rationales")
+        contract = _rationale_aware_contract()
+        messages = contract["messages"]
+        input_contract = contract["input_contract"]
+        payload = {
+            str(input_contract["payload_key"]): {  # type: ignore[index]
+                "prompt_text": prompt_text,
+                "essay_text": essay_text,
+                "evaluation_rationales": {axis: rationales[axis] for axis in axes},
+            }
+        }
+        return str(messages["user_preamble"]) + "\n" + json.dumps(  # type: ignore[index]
+            payload, ensure_ascii=False, separators=(",", ":")
+        )
     if kind == USER_SUPPLIED_EVALUATION:
         template = _evaluation_sections()[1]
         text = template.replace("{주제 지문}", prompt_text).replace("{논증적 글 본문}", essay_text)
@@ -104,11 +169,6 @@ def query_text(
     else:
         raise ValueError("unknown score prompt kind")
     if rationales is not None:
-        axes = ("content", "organization", "expression")
-        if set(rationales) != set(axes) or not all(
-            isinstance(rationales[axis], str) and rationales[axis].strip() for axis in axes
-        ):
-            raise ValueError("three nonblank rationale axes are required")
         rendered = "\n".join(f"<{axis}>{rationales[axis]}</{axis}>" for axis in axes)
         text += (
             f"\n\n[evaluation_rationales]\n{rendered}"
@@ -131,6 +191,9 @@ def prompt_sha256(kind: str) -> str:
     if kind == USER_SUPPLIED_EVALUATION:
         _evaluation_sections()
         return EVALUATION_PROMPT_SHA256
+    if kind == RATIONALE_AWARE_ENCODER:
+        _rationale_aware_contract()
+        return RATIONALE_AWARE_PROMPT_SHA256
     payload = system_prompt(kind) + "\n" + DECODER_OUTPUT_RULE + "\n" + instruction(kind)
     return sha256(payload.encode("utf-8")).hexdigest()
 
@@ -143,5 +206,6 @@ def provenance(kind: str) -> dict[str, str]:
             LEGACY_COMPACT: "legacy_compact_reproduction",
             PUBLIC_SPEC_SCORE_ONLY: "public_spec_aligned_score_only_reconstruction_not_verbatim_organizer_prompt",
             USER_SUPPLIED_EVALUATION: "user_supplied_evaluation_txt_exact_section_routing",
+            RATIONALE_AWARE_ENCODER: "derived_evaluation_txt_rationale_aware_continuous_three_axis_encoder_contract",
         }[kind],
     }

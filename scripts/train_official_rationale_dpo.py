@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 from typing import Any, Mapping
 
 
@@ -54,6 +55,35 @@ def atomic_json(path: Path, value: Mapping[str, Any]) -> None:
     temporary.replace(path)
 
 
+def distributed_output_dir(path: Path) -> tuple[Path, int, int]:
+    """Reserve one fresh output directory for a torchrun/Accelerate launch."""
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    rank = int(os.environ.get("RANK", "0"))
+    need(world_size > 0 and 0 <= rank < world_size, "distributed rank metadata differs")
+    resolved = path.resolve()
+    need(resolved.is_relative_to(ROOT / "outputs"), "RL aggregate/model output root differs")
+    if world_size == 1:
+        output_fresh(resolved)
+        resolved.mkdir(mode=0o700, parents=True)
+        return resolved, rank, world_size
+    if rank == 0:
+        output_fresh(resolved)
+        resolved.mkdir(mode=0o700, parents=True)
+    else:
+        deadline = time.monotonic() + 120.0
+        while not resolved.is_dir() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        need(resolved.is_dir(), "distributed output reservation timed out")
+    return resolved, rank, world_size
+
+
+def per_rank_gradient_accumulation(configured: int, world_size: int) -> int:
+    """Keep the configured global effective batch invariant under DDP."""
+    need(configured > 0 and world_size > 0, "gradient accumulation metadata differs")
+    need(configured % world_size == 0, "configured gradient accumulation is not divisible by world size")
+    return configured // world_size
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=ROOT / "configs/official_rationale_dpo.v1.json")
@@ -76,7 +106,7 @@ def main() -> None:
     task = "bundle" if args.legacy_arm is not None else args.task
     need(task in TASKS and args.preferences is not None and args.preference_report is not None and args.output_dir is not None, "DPO arguments are incomplete")
     gate = settings.gate_evidence()
-    output = output_fresh(args.output_dir)
+    output, rank, world_size = distributed_output_dir(args.output_dir)
     rows, preference_provenance = load_preferences(args.preferences, task)
     preference_report = validate_preference_report(args.preference_report, args.preferences, task, settings, gate)
     if args.train_limit is not None:
@@ -92,7 +122,6 @@ def main() -> None:
     except ImportError as exc:
         raise RuntimeError("official DPO requires .venv-standard") from exc
 
-    output.mkdir(mode=0o700, parents=True)
     seed = int(settings.policy["seed"])
     set_seed(seed)
     legacy = legacy_ablation(settings, args.legacy_arm) if args.legacy_arm is not None else None
@@ -126,7 +155,9 @@ def main() -> None:
         num_train_epochs=float(settings.policy["num_train_epochs"]),
         max_steps=args.max_steps,
         per_device_train_batch_size=int(settings.policy["per_device_train_batch_size"]),
-        gradient_accumulation_steps=int(settings.policy["gradient_accumulation_steps"]),
+        gradient_accumulation_steps=per_rank_gradient_accumulation(
+            int(settings.policy["gradient_accumulation_steps"]), world_size
+        ),
         bf16=False,
         tf32=True,
         gradient_checkpointing=True,
@@ -171,6 +202,11 @@ def main() -> None:
             "model_path": str(model_path.resolve()),
             "global_step": int(trainer.state.global_step),
             "train_rows": len(rows),
+            "distributed_world_size": world_size,
+            "configured_global_gradient_accumulation_steps": int(settings.policy["gradient_accumulation_steps"]),
+            "per_rank_gradient_accumulation_steps": per_rank_gradient_accumulation(
+                int(settings.policy["gradient_accumulation_steps"]), world_size
+            ),
             "preference_provenance": preference_provenance,
             "preference_report": preference_report,
             "warm_start_adapter": str(warm_start.resolve()),

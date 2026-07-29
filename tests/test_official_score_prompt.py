@@ -12,7 +12,10 @@ from mal2026.official_score_prompt import (
     EVALUATION_PROMPT_SHA256,
     LEGACY_COMPACT,
     PUBLIC_SPEC_SCORE_ONLY,
+    RATIONALE_AWARE_ENCODER,
+    RATIONALE_AWARE_PROMPT_SHA256,
     USER_SUPPLIED_EVALUATION,
+    embedding_input,
     instruction,
     prompt_sha256,
     provenance,
@@ -69,6 +72,29 @@ class OfficialScorePromptTests(unittest.TestCase):
         self.assertIn("<content>content 설명</content>", user)
         self.assertNotIn("reference_score", user)
         self.assertNotIn("average", user)
+
+    def test_rationale_aware_encoder_prompt_renders_exact_bundle_contract(self) -> None:
+        rationales = {axis: f"{axis} 설명" for axis in ("content", "organization", "expression")}
+        text = embedding_input("주제", "학생 글", RATIONALE_AWARE_ENCODER, rationales)
+        self.assertIn(instruction(RATIONALE_AWARE_ENCODER), text)
+        self.assertIn('"prompt_text":"주제"', text)
+        self.assertIn('"essay_text":"학생 글"', text)
+        for axis in rationales:
+            self.assertIn(f'"{axis}":"{axis} 설명"', text)
+        self.assertNotIn('"score"', text)
+        self.assertNotIn('"average"', text)
+        self.assertEqual(prompt_sha256(RATIONALE_AWARE_ENCODER), RATIONALE_AWARE_PROMPT_SHA256)
+
+    def test_rationale_aware_encoder_prompt_rejects_missing_or_partial_bundle(self) -> None:
+        with self.assertRaises(ValueError):
+            embedding_input("주제", "학생 글", RATIONALE_AWARE_ENCODER)
+        with self.assertRaises(ValueError):
+            embedding_input(
+                "주제",
+                "학생 글",
+                RATIONALE_AWARE_ENCODER,
+                {"content": "설명", "organization": "설명"},
+            )
 
     def test_new_configs_bind_the_public_score_prompt(self) -> None:
         embedding = PretrainConfig.from_json(
