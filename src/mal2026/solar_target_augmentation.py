@@ -506,6 +506,8 @@ def parse_editor_output(
     source: SourceRow,
     axis: str | None = None,
     target_score: int | None = None,
+    *,
+    enforce_score_specific_edit_count: bool = True,
 ) -> str:
     try:
         raw = json.loads(content)
@@ -554,8 +556,19 @@ def parse_editor_output(
         actions = raw["sentence_actions"]
         _need(isinstance(actions, list) and len(actions) == len(source_sentences),
               "editor sentence action population differs")
-        score = 3 if target_score is None else target_score
-        minimum_edits, maximum_edits = _sentence_edit_bounds(axis, score, len(source_sentences))
+        if enforce_score_specific_edit_count:
+            score = 3 if target_score is None else target_score
+            minimum_edits, maximum_edits = _sentence_edit_bounds(
+                axis, score, len(source_sentences)
+            )
+        else:
+            # In the actual-label protocol, the requested score is generation
+            # metadata rather than a label or an acceptance target.  Requiring
+            # a score-specific edit fraction would therefore discard otherwise
+            # valid source-grounded examples based on that non-label.  Keep the
+            # typed edit, non-no-op, lexical, numeric, length, and fidelity
+            # gates, but allow any non-empty subset of sentences to be edited.
+            minimum_edits, maximum_edits = 1, len(source_sentences)
         normalized_edits: dict[int, str] = {}
         for index, item in enumerate(actions):
             _need(isinstance(item, dict) and set(item) == {"apply", "replacement"} and
@@ -699,6 +712,37 @@ def validate_candidate(
     _need(parsed_fidelity["new_external_facts_added"] is False, "new external facts were added")
     return {"task_id": task.task_id, "source_id": task.source.identifier, "target_axis": task.target_axis,
             "target_score": task.target_score, "augmented_essay": essay, "score": scores}
+
+
+def validate_actual_label_candidate(
+    task: AugmentationTask,
+    augmented_essay: str,
+    verifier: Mapping[str, Mapping[str, Any]],
+    fidelity: Mapping[str, bool],
+) -> dict[str, Any]:
+    """Validate source grounding while retaining the verifier's actual score triplet.
+
+    The requested target remains generation metadata only.  It is deliberately
+    not used as a label or an acceptance gate in this protocol.
+    """
+    essay = _validate_augmented_essay(
+        task.source, augmented_essay, task.target_axis, task.target_score
+    )
+    parsed_verifier = parse_verifier_output(json.dumps(verifier, ensure_ascii=False))
+    parsed_fidelity = parse_fidelity_output(json.dumps(fidelity, ensure_ascii=False))
+    _need(all(parsed_fidelity[key] is True for key in ("source_based", "topic", "stance", "genre")),
+          "source fidelity failed")
+    _need(parsed_fidelity["new_external_facts_added"] is False, "new external facts were added")
+    scores = {axis: parsed_verifier[axis]["score"] for axis in AXES}
+    return {
+        "task_id": task.task_id,
+        "source_id": task.source.identifier,
+        "requested_target_axis": task.target_axis,
+        "requested_target_score": task.target_score,
+        "augmented_essay": essay,
+        "score": scores,
+        "score_provenance": "target_blind_solar_actual_triplet",
+    }
 
 
 def select_smoke_sources(

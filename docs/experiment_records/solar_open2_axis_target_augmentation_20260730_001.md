@@ -1,6 +1,6 @@
 # Solar-Open2 axis-target augmentation — run series 001
 
-Status: **negative feasibility checkpoint; full not ready and not authorized**
+Status: **strict and actual-label smokes remain negative; full not ready and not authorized**
 
 ## Scope and immutable bindings
 
@@ -202,3 +202,139 @@ counts alone. These dormant gaps cannot currently reach full execution. The
 external runtime binding has already been hardened to require host network and
 IPC, auto-remove, the offline environment, the writable vLLM cache mount, the
 read-only model mount, the exact inner command, and physical GPUs 0--3.
+
+## Target-blind actual-triplet-label extension
+
+The user authorized a second protocol test after the strict Cartesian result.
+The requested axis and score remained editor metadata only.  They were never
+used as a pseudo-label or candidate-ranking signal.  Every mechanically valid,
+source-grounded candidate retained the official target-blind Solar judge's
+actual `(content, organization, expression)` triplet.  A predeclared SHA-256
+family rank selected at most one candidate per task without inspecting scores,
+rationales, requested-score distance, or movement.  Full execution stayed
+disabled.
+
+Both smokes used seed `20260730`, the same five train-only sources, four
+independent families for each of 75 requested cells, the already-running
+official Solar INT4 TP4/expert-parallel server on physical GPUs 0--3, and the
+following command shape:
+
+```bash
+PYTHONPATH=src .venv-standard/bin/python \
+  scripts/run_solar_actual_label_smoke.py \
+  --run-id <fresh-run-id> \
+  --port 19420 --max-inflight 64 \
+  --external-endpoint http://127.0.0.1:19420 \
+  --external-container-name mal2026-solar-target-shared-20260730-001
+```
+
+The launch Git SHA was
+`f801181d0f84332cd28dd461a1dde1add22a9135`; both manifests record the dirty
+worktree and bind the exact runner, core, prompt, model, image, train, rubric,
+and validation checksums.  The validation checksum is lineage metadata only;
+validation was not used for generation, selection, labeling, or review.
+
+### Actual-label smoke v1
+
+Run `solar-open2-axis-actual-label-smoke-20260730-001` accounted for all 300
+attempts.  It retained **138/300 (46.0%)** candidates, covered **60/75** tasks,
+and produced 60 score-independent diagnostic selections.  There were no exact
+essay duplicates.  Actual score 5 appeared zero times on every axis; all-valid
+score counts were:
+
+- content: `1:1, 2:42, 3:80, 4:15, 5:0`;
+- organization: `1:2, 2:54, 3:69, 4:13, 5:0`;
+- expression: `1:2, 2:30, 3:88, 4:18, 5:0`.
+
+The result failed task coverage, 85% overall yield, per-cell 60% yield, and the
+original one-repeat exact-agreement gate.  Its aggregate SHA-256 is
+`ef337ccdf65bda933661634c3fc2045ce266929a1e8158337b4f5e99105a85ef`.
+
+A fixed, score-independent 30-candidate stability control was judged five
+times.  Twenty-one candidates had the same triplet on all five draws; all 30
+had a unique majority triplet with support at least three, and the original
+draw was one of the modal triplets for 29/30.  All disagreements had range one
+on every axis.  This justified testing a joint modal triplet as a *labeling*
+stabilizer, not using judge scores for candidate selection.  Aggregate SHA-256:
+`d3176b1b53f629b0839f0f9cb15e0fda180afef8539ffdd3046a44c27fa20f56`.
+
+The 74 score-specific sentence-count failures divided into 23 too-few edits,
+29 too-many edits, and 22 cases whose applied actions contained normalized
+no-ops.  The aggregate SHA-256 is
+`ed3f6620702ad42b75fae08c7535524d6924a32cb90bf32e3c25a91dc3c4524b`.
+
+### Independent blind agent review of v1
+
+Three independent agents reviewed the same fixed 80-row package.  Each fixed
+its blind source-grounding, factuality, stance, overedit, duplication,
+artifact/privacy, and Korean-quality decision before opening requested
+axis/score/family metadata.  They never saw Solar scores or the ID mapping.
+The package deliberately contained 60 base selections and 20 risk-enriched
+rows, so unstratified issue rates are not an unbiased production estimate.
+
+Post-hoc reconciliation joined scores only after all reviews were fixed:
+
+- majority hard-fail vote: **47/80**; unanimous: **10/80**;
+- base stratum majority hard-fail: **32/60**; risk stratum: **15/20**;
+- all-three exact agreement: overedit **31/80**, new duplication **65/80**,
+  and overall instruction adherence **29/80**;
+- target-axis reviewer-versus-single-draw-Solar RMSE was **0.894**, **1.285**,
+  and **1.151** for the three reviewers, with correlations **0.603**, **0.619**,
+  and **0.600**;
+- reviewer-to-reviewer target-axis RMSE ranged from **0.725** to **0.949**.
+
+These are independent agent audits rather than human gold annotations.  They
+show both substantial candidate-quality concerns and material reviewer/judge
+uncertainty; they do not establish which scorer is correct.  The privacy-safe
+reconciliation SHA-256 is
+`d2102990e033b98b7bd27af2c928514020985b25a9b2de035878f74a677bbc8f`.
+
+### Actual-label smoke v2: relaxed requested-score edit fraction
+
+The second smoke changed one mechanical condition: content/expression edits
+could touch any non-empty sentence subset.  The strict parser default stayed
+unchanged.  Typed-axis, non-no-op, numeric, lexical, length, source-fidelity,
+stance, genre, and external-fact gates all remained active.  This was tested
+because the requested score is not a label under the actual-triplet protocol.
+
+Run `solar-open2-axis-actual-label-smoke-v2-20260730-001` completed in about 16
+minutes and retained **184/300 (61.3%)** candidates, covering **72/75** tasks.
+This improved v1 by 46 valid candidates and 12 covered tasks but still missed
+the 85% yield gate and several per-cell yield gates.  Of the 184 rows, 143 also
+passed the original strict count bound and 41 were relaxation-only; the latter
+included 18 too-many, 9 too-few, and 14 normalized-no-op-reduced edit plans.
+Because v1/v2 generation was not bit-deterministic, the 46-row yield change is
+not asserted to be a purely causal estimate.
+
+Five judge draws were collected for every one of the 72 score-independent
+selections.  A unique majority triplet existed for **67/72**: support 5 for 39,
+support 4 for 16, support 3 for 12, and no majority for 5.  Thus modal labeling
+reduced one-draw jitter but did not make every label stable.  Actual score 5
+again appeared zero times on all axes.  Despite this compression, the requested
+score versus modal actual cell-mean correlation was positive on every axis:
+content `0.960`, organization `0.962`, expression `0.960`.
+
+All automatic gates remained false overall: 72/75 task coverage, 61.3% yield,
+incomplete per-cell yield, and only 67 stable modal labels.  The full train run
+and score-model retraining were therefore not launched.  Result SHA-256:
+`6fab9c7b8e21ec6223f1e5157159406e2227db3d35ce51423adbb25722edec18`;
+relaxation diagnostic SHA-256:
+`b27c0c8b55c1fdc357c26683b6a475eab12656de485271c99594b84dd412d33c`.
+
+The focused contract suite now passes **38/38 tests**.  The current core,
+actual-label runner, and manual-review analyzer SHA-256 values are respectively
+`cea5661887919f43d6bd3a281560c0743af2822ee6a1f75539a0643939366c3c`,
+`8fe6302fd282d64095c3efd66e6ddfaab6bfa728cefa57f783e1d4a1ed5789b6`,
+and `ae1f21ae01ebe8f996a39ac3465cafcd8319ec4dabbbf73622f673f65a98e7d7`.
+
+### Current decision
+
+The actual-label design has a useful *ordinal direction signal* but does not
+yet provide balanced 1--5 augmentation: labels remain concentrated at 2--4,
+score 5 is absent, five modal labels are unstable, mechanical yield is low,
+and the blind review found frequent quality problems.  Treating the requested
+score as the label would hide these failures and remains forbidden.  Relaxing
+all score-specific edit-count bounds is retained as a diagnostic, not adopted
+for full generation.  A later scientific revision must address low/high-score
+coverage and quality without judge-based family selection before another full
+approval can be considered.

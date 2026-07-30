@@ -25,6 +25,7 @@ from mal2026.solar_target_augmentation import (
     source_row_from_mapping,
     task_count,
     validate_candidate,
+    validate_actual_label_candidate,
     validate_train_validation_disjoint,
 )
 from mal2026.evaluation_prompt_matrix import evaluation_sections
@@ -184,6 +185,83 @@ class SolarTargetAugmentationTests(unittest.TestCase):
         ]}
         with self.assertRaises(SolarTargetAugmentationError):
             parse_editor_output(json.dumps(changed_number), numbered, "expression")
+
+    def test_actual_label_protocol_keeps_blind_triplet_not_requested_target(self) -> None:
+        source = SourceRow(
+            identifier="actual-source", document_id="actual-document", prompt="논제",
+            essay="입장을 제시한다. 근거를 구체적으로 설명한다. 결론을 분명히 정리한다.",
+            score=(3.0, 3.0, 3.0),
+        )
+        task = make_task(source, "content", 1)
+        output = {"sentence_actions": [
+            {"apply": True, "replacement": "입장은 필요하다는 점을 제시한다."},
+            {"apply": True, "replacement": "근거는 필요하기 때문에 필요하다고 설명한다."},
+            {"apply": False, "replacement": ""},
+        ]}
+        essay = parse_editor_output(json.dumps(output), source, "content", 1)
+        verifier = {
+            "content": {"score": 2, "rationale": "내용 근거가 약하다."},
+            "organization": {"score": 2, "rationale": "전개도 일부 약해졌다."},
+            "expression": {"score": 3, "rationale": "표현은 대체로 자연스럽다."},
+        }
+        fidelity = {
+            "source_based": True, "topic": True, "stance": True, "genre": True,
+            "new_external_facts_added": False,
+        }
+        record = validate_actual_label_candidate(task, essay, verifier, fidelity)
+        self.assertEqual(record["score"], {"content": 2, "organization": 2, "expression": 3})
+        self.assertEqual(record["requested_target_score"], 1)
+        self.assertNotEqual(record["score"]["content"], record["requested_target_score"])
+        self.assertEqual(record["score_provenance"], "target_blind_solar_actual_triplet")
+        fidelity["new_external_facts_added"] = True
+        with self.assertRaises(SolarTargetAugmentationError):
+            validate_actual_label_candidate(task, essay, verifier, fidelity)
+
+    def test_actual_label_edit_count_can_ignore_requested_score_fraction(self) -> None:
+        source = SourceRow(
+            identifier="actual-edit-count-source",
+            document_id="actual-edit-count-document",
+            prompt="논제",
+            essay=(
+                "입장을 제시한다. 첫 번째 근거를 설명한다. 두 번째 근거를 설명한다. "
+                "세 번째 근거를 설명한다. 결론을 정리한다."
+            ),
+            score=(3.0, 3.0, 3.0),
+        )
+        output = {"sentence_actions": [
+            {"apply": True, "replacement": "입장은 필요하다고 제시한다."},
+            {"apply": False, "replacement": ""},
+            {"apply": False, "replacement": ""},
+            {"apply": False, "replacement": ""},
+            {"apply": False, "replacement": ""},
+        ]}
+        raw = json.dumps(output, ensure_ascii=False)
+        with self.assertRaisesRegex(
+            SolarTargetAugmentationError, "substantive sentence edit count"
+        ):
+            parse_editor_output(raw, source, "content", 1)
+        essay = parse_editor_output(
+            raw,
+            source,
+            "content",
+            1,
+            enforce_score_specific_edit_count=False,
+        )
+        self.assertIn("입장은 필요하다고", essay)
+
+        no_op = {"sentence_actions": [
+            {"apply": False, "replacement": ""} for _ in range(5)
+        ]}
+        with self.assertRaisesRegex(
+            SolarTargetAugmentationError, "substantive sentence edit count"
+        ):
+            parse_editor_output(
+                json.dumps(no_op),
+                source,
+                "content",
+                1,
+                enforce_score_specific_edit_count=False,
+            )
 
     def test_content5_uses_source_grounded_evidence_ledger(self) -> None:
         source = SourceRow(
