@@ -36,6 +36,26 @@ See
 for prompt hashes, negative results, commands, complete metrics, and the
 paired judge analysis.
 
+## Solar synthetic-score consensus pilot (completed, fail-closed)
+
+The train-only Solar pilot generated 2,400 score-directed essay variants and
+then discarded the requested score as a label. Exact `evaluation.txt` blind
+scoring produced 1,229 stable 3→5-draw modal candidates after hard filtering.
+However, content and organization produced no stable score-5 candidates and
+all axes remained concentrated at scores 2--3. Five-fold real-train OOF
+scorers reached macro RMSE `0.598753` (Qwen3-Embedding-8B) and `0.632588`
+(KURE-v1); their OOF-calibrated agreement retained only 328 candidates.
+
+A score-independent 10% control was rescored by the pinned
+Qwen3.6-35B-A3B Q4_K_M judge with the same exact prompt. The supposed
+consensus core did not generalize to this independent judge: macro RMSE versus
+the Solar pseudo-label was `0.714144` in the core versus `0.671976` in the
+disagreement stratum, and exact triplet agreement was `9.09%` versus `23.08%`.
+The core expression RMSE was `0.937437`. The predeclared fail-closed gate
+therefore blocks synthetic-score mixture training; no validation result was
+produced from this augmentation. See
+`docs/experiment_records/solar_consensus_filtering_pilot_20260730_001.md`.
+
 ## RLAIF/GRPO prompt-ensemble snapshot (aggregate-only, completed)
 
 The study compares two fixed reward estimators for Korean rationale decoders:
