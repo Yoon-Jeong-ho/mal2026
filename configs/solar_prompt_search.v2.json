@@ -1,0 +1,31 @@
+{
+  "schema_version": "mal2026-solar-prompt-search-config-v2",
+  "run_id": "solar-prompt-search-v2-20260801-002",
+  "seed": 2026080106,
+  "split_seed": 2026080105,
+  "discovery_rows": 160,
+  "confirmation_rows": 400,
+  "target_raw_rmse": 0.4,
+  "endpoint": "http://127.0.0.1:19430",
+  "model_alias": "solar-open2-250b-nota-int4",
+  "model_id": "nota-ai/Solar-Open2-250B-Nota-INT4",
+  "model_path": "/dataset/large-models/nota-ai/Solar-Open2-250B-Nota-INT4",
+  "docker_image": "upstage/vllm-solar-open2@sha256:b34b7dd42d986bafb8dcfb285758de2fbfd55e7cf28a1b5ba6b858e6b2b7c8c3",
+  "gpu_scope": [0, 1, 2, 3],
+  "max_model_len": 12288,
+  "max_tokens": 256,
+  "retry_max_tokens": 768,
+  "max_inflight": 64,
+  "temperature": 0.0,
+  "embedding_rows_path": "/dataset/aa007878/mal2026/data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/rows.jsonl",
+  "embedding_rows_sha256": "949451b690ea12df126bc6aa9b1cf7f2f016e3c60f69d67b1d460719b6404f16",
+  "retrieval_pool_policy": "exclude_discovery_and_confirmation_queries",
+  "candidates": [
+    "retrieval8_joint_continuous",
+    "retrieval12_joint_continuous",
+    "retrieval8_joint_integer",
+    "retrieval8_axis_continuous",
+    "retrieval8_joint_reflect"
+  ],
+  "canonical_train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737"
+}
