@@ -178,6 +178,25 @@ folds' BA gains smaller than V10's plain ridge, freezing further threshold/L2
 retuning of this family. See
 `docs/experiment_records/iterative_official_balanced_boundary_20260802_001.md`.
 
+### Terra + Luna rationale-semantic falsification (v12, terminal)
+
+V12 embedded 36,000 score-blind Terra/Luna axis rationales with the frozen
+public Qwen3-Embedding-8B revision and reduced them to a fixed 201-dimensional
+target-blind semantic view. It compared semantic-only residual ridge, fusion
+with V10's structured 96 features, and the same fusion with a balanced 3/4
+head under the unchanged sealed 5-outer x 4-inner protocol.
+
+All three candidates failed the inner conjunction in all five populations.
+Mean macro gains were `-0.040285`, `-0.024304`, and `-0.025000`; mean 3/4-BA
+gains were also negative. Although fusion improved score-5 RMSE, it degraded
+center accuracy and rank correlation. Every outer fold therefore fell back to
+exact R0 and final RMSE remained `0.568780`. This triggers the preregistered
+terminal same-train adaptive stop: further tuning now requires independent new
+labels or an untouched evaluation population. See
+`docs/experiment_records/iterative_official_rationale_semantic_20260802_001.md`.
+The full chronology and final selection audit are in
+`docs/experiment_records/iterative_program_final_audit_20260802_001.md`.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
