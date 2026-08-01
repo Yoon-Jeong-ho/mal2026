@@ -1,0 +1,345 @@
+{
+  "schema_version": "mal2026-iterative-tail-refinement-v1",
+  "run_id": "iterative-tail-refinement-v1-20260801-001",
+  "bindings": {
+    "canonical_train_path": "eval/train.jsonl",
+    "canonical_train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "r0_oof_prediction_path": "data/processed/restricted/r0_exact_oof_v1/r0-exact-oof-20260731-002/merged/oof_predictions.jsonl",
+    "r0_oof_prediction_sha256": "823b0c0b2114d9442e1d4e65ff7fd310e529b82d1283c78b2466b7a0141eec04",
+    "embedding_manifest_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/manifest.json",
+    "embedding_provenance_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/provenance.json",
+    "embedding_rows_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/rows.jsonl",
+    "embedding_rows_sha256": "949451b690ea12df126bc6aa9b1cf7f2f016e3c60f69d67b1d460719b6404f16",
+    "fold_assignment_fingerprint": "8c6eed86944f3f75666da746bb5f43d5e4d435fc781a923a349fd58a88a2c6db",
+    "embedding_model_id": "Qwen/Qwen3-Embedding-8B",
+    "embedding_model_revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af",
+    "score_blind_rationale_train_path": "data/processed/restricted/evaluation_prompt_rationale_v2/evaluation-prompt-rationale-generation-v2-score-blind-20260729-004/rationales.train.jsonl",
+    "score_blind_rationale_train_sha256": "d4a2be9a070c786728fde6f64f066ac9d462bc5f83305a2d9161b380abd88e55",
+    "score_blind_rationale_manifest_path": "data/processed/restricted/evaluation_prompt_rationale_v2/evaluation-prompt-rationale-generation-v2-score-blind-20260729-004/aggregate_handoff_manifest.json",
+    "score_blind_rationale_manifest_sha256": "9b5ca18dd9a993cf8cb7d24fcc0c19a8d3ceff05f17abafe1a58e8841df0a41f",
+    "score_blind_agent_a_train_path": "data/processed/restricted/evaluation_prompt_rationale_v1/evaluation-prompt-rationale-generation-v1-score-blind-20260729-001/rationales.train.jsonl",
+    "score_blind_agent_a_train_sha256": "1a10524f79823e097e6f56f8c7ac3a499baf2d79b81cbb5b69184ddc88610223",
+    "score_blind_agent_b_train_path": "data/processed/restricted/evaluation_prompt_rationale_v1/evaluation-prompt-rationale-generation-v1-score-blind-20260729-002/rationales.train.jsonl",
+    "score_blind_agent_b_train_sha256": "f5cce4058f56ea7dedc7de07bfb20b343345676054dd29bf541adeed3d594e3c",
+    "score_blind_agent_d_train_path": "data/processed/restricted/official_prompt_alignment_v1/final_rationale_handoff/official-rationale-dpo-selected-handoff-exact-bundle-20260729-021/rationales.train.jsonl",
+    "score_blind_agent_d_train_sha256": "45dc9bfd05d60c75214221e34149ed7bff6dae0d571a90fde287ab193bb6f347"
+  },
+  "data_contract": {
+    "split_role": "train",
+    "base_prediction_origin": "oof",
+    "records": 2000,
+    "folds": 5,
+    "records_per_fold": 400,
+    "contains_average_target": false,
+    "validation_loaded": false,
+    "validation_selection": false
+  },
+  "execution": {
+    "authorized_gpus": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "smoke_gpu": 0,
+    "fresh_initialization_per_round": true,
+    "reuse_round_checkpoints": false
+  },
+  "optional_api": {
+    "enabled": false,
+    "required": false,
+    "external_calls_allowed": false
+  },
+  "rounds": [
+    {
+      "number": 1,
+      "name": "baseline",
+      "method_family": "frozen_r0",
+      "hyperparameters": {
+        "prediction_source": "bound_r0_oof",
+        "trainable_parameters": 0
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 2,
+      "name": "ridge",
+      "method_family": "linear_residual",
+      "hyperparameters": {
+        "alpha_grid": [
+          0.01,
+          0.1,
+          1.0,
+          10.0,
+          100.0
+        ],
+        "fit_intercept": true
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 3,
+      "name": "MLP",
+      "method_family": "nonlinear_residual",
+      "hyperparameters": {
+        "hidden_dims": [
+          256,
+          128
+        ],
+        "dropout": 0.1,
+        "learning_rate": 0.001,
+        "max_epochs": 100
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 4,
+      "name": "CORAL",
+      "method_family": "ordinal_coral",
+      "hyperparameters": {
+        "classes": 5,
+        "shared_thresholds": true,
+        "learning_rate": 0.001
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 5,
+      "name": "Huber+ordinal",
+      "method_family": "joint_continuous_ordinal",
+      "hyperparameters": {
+        "huber_delta": 1.0,
+        "ordinal_loss_weight": 0.5
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 6,
+      "name": "uncertainty gate",
+      "method_family": "selective_residual",
+      "hyperparameters": {
+        "uncertainty": "predictive_entropy",
+        "coverage_grid": [
+          0.25,
+          0.5,
+          0.75,
+          1.0
+        ]
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 7,
+      "name": "low-tail weighting",
+      "method_family": "tail_weighted_loss",
+      "hyperparameters": {
+        "gold_classes": [
+          1,
+          2
+        ],
+        "weight_grid": [
+          1.5,
+          2.0,
+          3.0
+        ]
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 8,
+      "name": "high-tail weighting",
+      "method_family": "tail_weighted_loss",
+      "hyperparameters": {
+        "gold_classes": [
+          4,
+          5
+        ],
+        "weight_grid": [
+          1.5,
+          2.0,
+          3.0
+        ]
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 9,
+      "name": "equal-band replay",
+      "method_family": "balanced_replay",
+      "hyperparameters": {
+        "bands": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "sampling": "equal_per_gold_band"
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 10,
+      "name": "grouped loss",
+      "method_family": "group_robust_loss",
+      "hyperparameters": {
+        "group_key": "prompt_num",
+        "aggregation": "equal_group_mean"
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 11,
+      "name": "3vs4 head",
+      "method_family": "adjacent_binary_head",
+      "hyperparameters": {
+        "gold_classes": [
+          3,
+          4
+        ],
+        "loss": "binary_cross_entropy"
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 12,
+      "name": "thresholds",
+      "method_family": "bounded_threshold_calibration",
+      "hyperparameters": {
+        "thresholds": 4,
+        "fit_source": "train_oof_only",
+        "monotonic": true
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 13,
+      "name": "adjacent contrastive",
+      "method_family": "contrastive_ordinal",
+      "hyperparameters": {
+        "adjacent_margin": 0.25,
+        "contrastive_loss_weight": 0.25
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 14,
+      "name": "score-blind content evidence",
+      "method_family": "rationale_evidence",
+      "hyperparameters": {
+        "axes": [
+          "content"
+        ],
+        "rationale_artifact": "score_blind_rationale_v2",
+        "score_blind": true
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 15,
+      "name": "org/expression evidence",
+      "method_family": "rationale_evidence",
+      "hyperparameters": {
+        "axes": [
+          "organization",
+          "expression"
+        ],
+        "rationale_artifact": "score_blind_rationale_v2",
+        "score_blind": true
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 16,
+      "name": "agent consensus/disagreement",
+      "method_family": "evidence_consensus",
+      "hyperparameters": {
+        "rationale_artifact": "score_blind_rationale_v2",
+        "features": [
+          "consensus",
+          "disagreement"
+        ],
+        "agent_count": 4
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 17,
+      "name": "evidence distillation",
+      "method_family": "evidence_distillation",
+      "hyperparameters": {
+        "rationale_artifact": "score_blind_rationale_v2",
+        "teacher": "round16_consensus",
+        "temperature": 2.0
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 18,
+      "name": "text-vs-structured fusion",
+      "method_family": "multiview_fusion",
+      "hyperparameters": {
+        "rationale_artifact": "score_blind_rationale_v2",
+        "views": [
+          "text",
+          "structured"
+        ],
+        "fusion": "gated"
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 19,
+      "name": "top structurally distinct ensemble",
+      "method_family": "diverse_ensemble",
+      "hyperparameters": {
+        "maximum_members": 3,
+        "diversity_key": "method_family",
+        "weighting": "nonnegative_oof"
+      },
+      "fresh_initialization": true
+    },
+    {
+      "number": 20,
+      "name": "bounded calibration/freeze",
+      "method_family": "bounded_calibration",
+      "hyperparameters": {
+        "calibration": "monotonic_bounded",
+        "lower_bound": 1.0,
+        "upper_bound": 5.0,
+        "freeze": true
+      },
+      "fresh_initialization": true
+    }
+  ],
+  "promotion_gate": {
+    "fixed": true,
+    "selection_split": "train_oof_only",
+    "primary_metric": "macro_axis_rmse",
+    "direction": "lower",
+    "macro_rmse_min_improvement": 0.005,
+    "equal_group_rmse_min_improvement": 0.01,
+    "low_tail_must_improve": true,
+    "high_tail_must_improve": true,
+    "gold_3_4_balanced_accuracy_min_improvement": 0.01,
+    "max_axis_rmse_worsening": 0.01,
+    "max_macro_spearman_fall": 0.005,
+    "score1_descriptive_only": true,
+    "require_all_five_folds": true,
+    "require_finite_metrics": true
+  },
+  "final_gate": {
+    "fixed": true,
+    "eligible_candidates": "promotion_pass_only",
+    "ranking_metric": "macro_axis_rmse",
+    "direction": "lower",
+    "macro_rmse_min_improvement": 0.01,
+    "paired_bootstrap_candidate_minus_baseline_ci_upper_below_zero": true,
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 2026080101,
+    "validation_selection": false,
+    "require_fresh_refit": true,
+    "require_baseline_fallback": true,
+    "freeze_after_round": 20
+  }
+}

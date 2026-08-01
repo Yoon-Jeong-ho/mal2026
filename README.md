@@ -11,6 +11,20 @@ RLAIF/GRPO continuation uses maintained TRL `GRPOTrainer`, a local vLLM policy
 rollout server, and a local Qwen judge; its reproducibility record is
 `docs/experiment_records/rlaif_grpo_prompt_ensemble_v8_20260722_022.md`.
 
+## Train-OOF tail refinement (20 rounds, fail-closed)
+
+A fixed 20-round study tested residual, ordinal, tail-weighted, 3-vs-4,
+score-blind rationale-evidence, ensemble, and bounded-calibration candidates
+on the exact 2,000-row train OOF population. No candidate passed every frozen
+promotion gate, so the exact R0 OOF baseline remains selected (macro continuous
+RMSE `0.568780`). The exploratory best, a regularized evidence projection,
+reached `0.564401` but missed the `0.005` improvement gate and worsened
+low-tail `{1,2}` RMSE from `0.923335` to `0.984277`. Validation was not loaded,
+and no validation or deployment improvement is claimed. See
+`docs/experiment_records/iterative_tail_refinement_20260801_001.md` for all
+20 aggregate results, tail/3-vs-4 metrics, deviations, and the fail-closed
+decision.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
