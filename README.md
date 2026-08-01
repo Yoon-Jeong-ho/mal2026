@@ -98,6 +98,24 @@ preclude a separately registered study using materially new evidence. See
 `docs/experiment_records/iterative_tail_directional_20260802_001.md` for the
 full gate matrix, diagnostics, checksums, and claim limits.
 
+### Official Terra agent-score stack (v7)
+
+V7 added a genuinely new score-blind feature source: three completed
+GPT-5.6-Terra official participant outputs per train essay. A disclosed
+adaptive prestudy found a promising fixed residual stack at RMSE `0.554928`,
+with both tails and 3/4 separation improved. The subsequent sealed 5-outer x
+4-inner run selected that stack in three folds and fell back to R0 in two.
+
+The nested development prediction improved R0 from `0.568780` to `0.563253`;
+its paired improvement CI excluded zero and all axes plus both tails improved.
+It was still not promoted because the frozen final requirements were a macro
+gain of at least `0.010` and 3/4 balanced-accuracy gain of at least `0.010`,
+whereas observed gains were `0.005528` and `0.003271`. Folds 2 and 3 failed
+their inner gates solely on 3/4 separation. Exact R0 therefore remains the
+protocol-valid model, while an independently registered boundary-head
+follow-up is scientifically motivated. See
+`docs/experiment_records/iterative_official_agent_stack_20260802_001.md`.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
