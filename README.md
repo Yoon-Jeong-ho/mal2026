@@ -116,6 +116,18 @@ protocol-valid model, while an independently registered boundary-head
 follow-up is scientifically motivated. See
 `docs/experiment_records/iterative_official_agent_stack_20260802_001.md`.
 
+### Official Terra 3/4 boundary heads (v8)
+
+V8 implemented fresh adjacent-3/4, cumulative-`>=4`, and dual logistic heads
+on top of the V7 official-agent residual. The adjacent head raised inner 3/4
+balanced-accuracy gains, but folds 2 and 3 still missed the frozen BA gate and
+fell back to R0. The resulting nested development RMSE was `0.565515`, with
+both tails and all axes improved but only `0.003265` macro and `0.003018` BA
+gain. Its bootstrap CI crossed zero, so exact R0 remains selected. Smooth
+nudges were less efficient than V7; any further boundary attempt must be a
+separately registered high-confidence selective flip, not a V8 retune. See
+`docs/experiment_records/iterative_official_boundary_20260802_001.md`.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
