@@ -25,6 +25,17 @@ and no validation or deployment improvement is claimed. See
 20 aggregate results, tail/3-vs-4 metrics, deviations, and the fail-closed
 decision.
 
+### Leakage-safe tail remediation (v2)
+
+A stricter 5x4 nested follow-up regenerated inner teachers without selection
+holdout leakage and evaluated conditional routing, exact monotone calibration,
+tail-boundary correction, direct evidence ridge, and a registered ensemble.
+All five outer folds failed closed to the exact R0 baseline. The main stable
+signal was a trade-off: rebuilt R17 improved score 5 and 3-vs-4 separation but
+materially worsened the combined `{1,2}` tail. See
+`docs/experiment_records/iterative_tail_remediation_20260801_001.md` for the
+protocol repairs, aggregate metrics, and negative result.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
