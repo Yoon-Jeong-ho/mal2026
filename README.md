@@ -80,6 +80,24 @@ a promotable learner. It is descriptive same-train evidence only. See
 `docs/experiment_records/iterative_tail_learner_20260802_001.md` for all 20
 candidate summaries, gate failures, execution evidence, and checksums.
 
+### Cross-fitted directional tail falsification (v6)
+
+V6 replaced the globally capped V5 corrections with identity-default low,
+high, and center experts whose high correction could cross the score-5
+boundary. Three fixed candidates were evaluated with sealed 5-outer x 4-inner
+cross-fitting: 15 candidate evaluations and 60 fresh inner fits, with folds
+0--3 initially running concurrently on GPUs 0--3. All five outer selections
+failed closed to exact R0, leaving final macro RMSE `0.568780`.
+
+The nonlinear variants improved score-5 continuous RMSE and 3/4 balanced
+accuracy in every inner-OOF population, but worsened the `{1,2}` tail in every
+one and never changed score-5 integer recall. The linear control produced only
+a `0.000183` mean macro gain and worsened 3/4 separation. V6 therefore freezes
+further tuning on the same train population and feature sources; it does not
+preclude a separately registered study using materially new evidence. See
+`docs/experiment_records/iterative_tail_directional_20260802_001.md` for the
+full gate matrix, diagnostics, checksums, and claim limits.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
