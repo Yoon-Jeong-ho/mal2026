@@ -1,0 +1,469 @@
+{
+  "schema_version": "mal2026-iterative-tail-router-v4",
+  "run_id": "iterative-tail-router-v4-20260801-001",
+  "lineage": {
+    "canonical_train_path": "eval/train.jsonl",
+    "canonical_train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "baseline_oof_path": "data/processed/restricted/r0_exact_oof_v1/r0-exact-oof-20260731-002/merged/oof_predictions.jsonl",
+    "baseline_oof_sha256": "823b0c0b2114d9442e1d4e65ff7fd310e529b82d1283c78b2466b7a0141eec04",
+    "embedding_manifest_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/manifest.json",
+    "embedding_rows_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/rows.jsonl",
+    "embedding_rows_sha256": "949451b690ea12df126bc6aa9b1cf7f2f016e3c60f69d67b1d460719b6404f16",
+    "fold_assignment_fingerprint": "8c6eed86944f3f75666da746bb5f43d5e4d435fc781a923a349fd58a88a2c6db",
+    "score_blind_feature_cache_path": "data/processed/restricted/iterative_tail_refinement_v1/iterative-tail-refinement-v1-20260801-001/score_blind_features.npz",
+    "score_blind_feature_cache_sha256": "c2770d2add3b08a46614ad4c56fddc2d6b06ba5784c39e80c95c9f419e46d7db",
+    "score_blind_feature_manifest_path": "data/processed/restricted/iterative_tail_refinement_v1/iterative-tail-refinement-v1-20260801-001/score_blind_features.manifest.json",
+    "score_blind_feature_manifest_sha256": "ae3e44270fdeb4d6d217fc82ebd7097ee4cd7031343221b855a6ac7207cf38b0",
+    "v2_aggregate_path": "outputs/iterative-tail-remediation-v2/iterative-tail-remediation-v2-20260801-001/aggregate.json",
+    "v2_aggregate_sha256": "bc64443aafc48c45f9a882cf861c11eba9b22d6d417b62d90c43a1fbf81af81f",
+    "v3_aggregate_path": "outputs/iterative-tail-cycle-v3/iterative-tail-cycle-v3-20260801-001/aggregate.json",
+    "v3_aggregate_sha256": "bc44123673b512ae20212a94f7a3e98b4d227823cd1d74d2fddf8f4a07e3667f",
+    "historical_aggregate_role": "preregistration_evidence_only_forbidden_as_model_feature"
+  },
+  "data_contract": {
+    "records": 2000,
+    "fold_count": 5,
+    "records_per_fold": 400,
+    "split_role": "train",
+    "baseline_origin": "exact_oof",
+    "evidence_view": "evidence_hash_score_blind",
+    "validation_loaded": false,
+    "validation_selection": false,
+    "average_target_used": false,
+    "optional_api_enabled": false,
+    "external_api_calls_allowed": false
+  },
+  "execution": {
+    "authorized_gpus": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "smoke_gpu": 0,
+    "initialization_seed": 2026080104,
+    "same_initialization_across_routes": true,
+    "fresh_initialization_each_component_and_fold": true,
+    "checkpoint_reuse": false,
+    "all_20_routes_required": true,
+    "early_stop_allowed": false
+  },
+  "nested_protocol": {
+    "outer_folds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "outer_holdout_use": "prediction_once_only_after_route_freeze",
+    "outer_metrics_locked_until_prediction_complete": true,
+    "inner_validation_rule": "for_outer_O_each_D_in_other_four_folds",
+    "inner_training_rule": "S_is_the_three_folds_excluding_O_and_D",
+    "inner_fold_count_per_outer": 4,
+    "inner_components": {
+      "r16_teacher": {
+        "fit_scope": "S_only",
+        "method": "fresh_2_of_3_crossfit_within_S",
+        "forbidden_folds": [
+          "D",
+          "O"
+        ]
+      },
+      "r17_challenger": {
+        "source": "fresh_inner_r16_teacher",
+        "ridge_alpha": 100.0,
+        "fit_scope": "S_only",
+        "predict_scope": "D_only"
+      },
+      "direct_evidence_ridge": {
+        "target": "raw_axis_gold",
+        "ridge_alpha": 100.0,
+        "fit_scope": "S_only",
+        "predict_scope": "D_only"
+      },
+      "hurdle_component": {
+        "source": "fresh_v3_hurdle-v1",
+        "fit_scope": "S_only",
+        "predict_scope": "D_only"
+      },
+      "soft_component": {
+        "source": "fresh_v3_soft-v4",
+        "fit_scope": "S_only",
+        "predict_scope": "D_only"
+      }
+    },
+    "inner_bank": {
+      "components": [
+        "r17_challenger",
+        "direct_evidence_ridge",
+        "hurdle-v1",
+        "soft-v4"
+      ],
+      "construction": "concatenate_four_inner_OOF_component_banks",
+      "coverage": "every_outer_train_row_exactly_once",
+      "route_fit_scope": "outer_train_only"
+    },
+    "inner_selection": {
+      "reference": "exact_r0_oof_baseline_on_outer_train",
+      "gate": "fixed_seven_gate",
+      "rule": "eligible_minimum_macro_rmse",
+      "tie_break": "lowest_route_number",
+      "no_eligible_fallback": "exact_r0_oof_baseline",
+      "require_all_four_inner_folds": true,
+      "require_finite_metrics": true
+    },
+    "outer_refit": {
+      "after_route_freeze": true,
+      "r16_teacher": "fresh_3_of_4_crossfit_over_all_outer_train",
+      "r17_challenger": "fresh_alpha_100_refit_on_all_outer_train",
+      "direct_evidence_ridge": "fresh_alpha_100_refit_on_all_outer_train",
+      "hurdle_component": "fresh_hurdle-v1_refit_on_all_outer_train",
+      "soft_component": "fresh_soft-v4_refit_on_all_outer_train",
+      "apply": "frozen_selected_route",
+      "predict_scope": "O_once"
+    },
+    "historical_v1_predictions_used_as_features": false,
+    "historical_v2_predictions_used_as_features": false,
+    "historical_v3_predictions_used_as_features": false
+  },
+  "routers": [
+    {
+      "cycle": 1,
+      "family": "low_protected_sigmoid_stack",
+      "variant_id": "low_protected_sigmoid_stack-v1",
+      "parameters": {
+        "temperature": 0.1,
+        "max_nonidentity": 0.15,
+        "step": 0.05
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 2,
+      "family": "low_protected_sigmoid_stack",
+      "variant_id": "low_protected_sigmoid_stack-v2",
+      "parameters": {
+        "temperature": 0.2,
+        "max_nonidentity": 0.2,
+        "step": 0.05
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 3,
+      "family": "low_protected_sigmoid_stack",
+      "variant_id": "low_protected_sigmoid_stack-v3",
+      "parameters": {
+        "temperature": 0.35,
+        "max_nonidentity": 0.25,
+        "step": 0.05
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 4,
+      "family": "low_protected_sigmoid_stack",
+      "variant_id": "low_protected_sigmoid_stack-v4",
+      "parameters": {
+        "temperature": 0.5,
+        "max_nonidentity": 0.3,
+        "step": 0.05
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 5,
+      "family": "four_zone_hard_stack",
+      "variant_id": "four_zone_hard_stack-v1",
+      "parameters": {
+        "identity_floors": [
+          0.9,
+          0.7,
+          0.7,
+          0.6
+        ],
+        "step": 0.1,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 6,
+      "family": "four_zone_hard_stack",
+      "variant_id": "four_zone_hard_stack-v2",
+      "parameters": {
+        "identity_floors": [
+          0.85,
+          0.6,
+          0.6,
+          0.5
+        ],
+        "step": 0.1,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 7,
+      "family": "four_zone_hard_stack",
+      "variant_id": "four_zone_hard_stack-v3",
+      "parameters": {
+        "identity_floors": [
+          0.8,
+          0.5,
+          0.5,
+          0.4
+        ],
+        "step": 0.1,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 8,
+      "family": "four_zone_hard_stack",
+      "variant_id": "four_zone_hard_stack-v4",
+      "parameters": {
+        "identity_floors": [
+          0.75,
+          0.4,
+          0.4,
+          0.3
+        ],
+        "step": 0.1,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 9,
+      "family": "boundary_hurdle_overlay",
+      "variant_id": "boundary_hurdle_overlay-v1",
+      "parameters": {
+        "window": 0.05,
+        "max_nonidentity": 0.15,
+        "step": 0.05
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 10,
+      "family": "boundary_hurdle_overlay",
+      "variant_id": "boundary_hurdle_overlay-v2",
+      "parameters": {
+        "window": 0.1,
+        "max_nonidentity": 0.2,
+        "step": 0.05
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 11,
+      "family": "boundary_hurdle_overlay",
+      "variant_id": "boundary_hurdle_overlay-v3",
+      "parameters": {
+        "window": 0.15,
+        "max_nonidentity": 0.25,
+        "step": 0.05
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 12,
+      "family": "boundary_hurdle_overlay",
+      "variant_id": "boundary_hurdle_overlay-v4",
+      "parameters": {
+        "window": 0.2,
+        "max_nonidentity": 0.3,
+        "step": 0.05
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 13,
+      "family": "sigmoid_four_expert_route",
+      "variant_id": "sigmoid_four_expert_route-v1",
+      "parameters": {
+        "temperature": 0.1,
+        "identity_floor": 0.8,
+        "pareto_margin": 0.0,
+        "step": 0.05,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 14,
+      "family": "sigmoid_four_expert_route",
+      "variant_id": "sigmoid_four_expert_route-v2",
+      "parameters": {
+        "temperature": 0.2,
+        "identity_floor": 0.7,
+        "pareto_margin": 0.0,
+        "step": 0.05,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 15,
+      "family": "sigmoid_four_expert_route",
+      "variant_id": "sigmoid_four_expert_route-v3",
+      "parameters": {
+        "temperature": 0.35,
+        "identity_floor": 0.6,
+        "pareto_margin": 0.0001,
+        "step": 0.05,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 16,
+      "family": "sigmoid_four_expert_route",
+      "variant_id": "sigmoid_four_expert_route-v4",
+      "parameters": {
+        "temperature": 0.5,
+        "identity_floor": 0.5,
+        "pareto_margin": 0.00025,
+        "step": 0.05,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 17,
+      "family": "formal_gate_lattice_stack",
+      "variant_id": "formal_gate_lattice_stack-v1",
+      "parameters": {
+        "temperature": 0.15,
+        "max_nonidentity": 0.2,
+        "correction_cap": 0.1,
+        "step": 0.1,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 18,
+      "family": "formal_gate_lattice_stack",
+      "variant_id": "formal_gate_lattice_stack-v2",
+      "parameters": {
+        "temperature": 0.25,
+        "max_nonidentity": 0.3,
+        "correction_cap": 0.15,
+        "step": 0.1,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 19,
+      "family": "formal_gate_lattice_stack",
+      "variant_id": "formal_gate_lattice_stack-v3",
+      "parameters": {
+        "temperature": 0.35,
+        "max_nonidentity": 0.25,
+        "correction_cap": 0.15,
+        "step": 0.05,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 20,
+      "family": "formal_gate_lattice_stack",
+      "variant_id": "formal_gate_lattice_stack-v4",
+      "parameters": {
+        "temperature": 0.5,
+        "max_nonidentity": 0.35,
+        "correction_cap": 0.2,
+        "step": 0.05,
+        "passes": 2
+      },
+      "initialization_seed": 2026080104,
+      "fresh_initialization": true
+    }
+  ],
+  "inner_promotion_gate": {
+    "operator": "AND",
+    "macro_rmse_min_improvement": 0.005,
+    "equal_group_rmse_min_improvement": 0.01,
+    "low_tail_must_improve": true,
+    "high_tail_must_improve": true,
+    "gold_3_4_balanced_accuracy_min_improvement": 0.01,
+    "max_axis_rmse_worsening": 0.01,
+    "max_macro_spearman_fall": 0.005,
+    "score1_descriptive_only": true,
+    "require_all_four_inner_folds": true,
+    "require_finite_metrics": true
+  },
+  "final_evaluation": {
+    "construction": "concatenate_five_outer_predictions_once",
+    "selection_after_concatenation": false,
+    "reference": "exact_r0_oof_baseline",
+    "operator": "AND",
+    "macro_rmse_min_improvement": 0.01,
+    "paired_bootstrap": {
+      "replicates": 10000,
+      "quantity": "candidate_minus_baseline_macro_rmse",
+      "confidence_interval": 0.95,
+      "required_upper_bound_lt": 0.0
+    },
+    "low_tail_must_improve": true,
+    "high_tail_must_improve": true,
+    "gold_3_4_balanced_accuracy_min_improvement": 0.01,
+    "max_axis_rmse_worsening": 0.01,
+    "max_macro_spearman_fall": 0.005,
+    "score1_descriptive_only": true,
+    "require_all_five_outer_folds": true,
+    "require_finite_metrics": true
+  },
+  "scientific_claims": {
+    "adaptive_after_v2_and_v3_observed": true,
+    "final_same_train_adaptive_nested_evidence": true,
+    "independent_confirmation_claim_allowed": false,
+    "generalization_claim_allowed": false,
+    "deployment_claim_allowed": false
+  },
+  "stop_rule": {
+    "when": "final_gate_fails",
+    "action": "freeze_all_same_train_model_search",
+    "retained_model": "exact_r0_oof_baseline"
+  },
+  "agent_evidence": {
+    "role": "preregistration_evidence_only",
+    "allowed_fields": [
+      "agent_role",
+      "timestamp",
+      "hypothesis",
+      "predicted_direction",
+      "falsification_condition",
+      "accepted_or_rejected_rationale",
+      "config_sha256"
+    ],
+    "model_feature_allowed": false,
+    "pseudo_target_allowed": false,
+    "reward_or_weight_allowed": false
+  }
+}
