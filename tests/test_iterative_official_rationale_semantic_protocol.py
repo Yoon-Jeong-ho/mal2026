@@ -125,8 +125,14 @@ def _bound_fixture(tmp_path: Path) -> OfficialRationaleSemanticProtocol:
 
 
 class OfficialRationaleSemanticProtocolTest(unittest.TestCase):
-    def test_preregistered_protocol_is_initially_unbound_and_fail_closed(self) -> None:
-        protocol = load_protocol()
+    def test_preregistered_unbound_state_is_fail_closed_after_binding_transition(self) -> None:
+        live = load_protocol()
+        raw = deepcopy(live.raw)
+        raw["binding_state"] = "awaiting_generated_feature_artifact"
+        raw["lineage"]["generated_feature_manifest_sha256"] = None
+        raw["lineage"]["generated_feature_rows_sha256"] = None
+        raw["lineage"]["generated_feature_public_manifest_sha256"] = None
+        protocol = validate_protocol_mapping(raw)
         self.assertEqual(protocol.raw["binding_state"], "awaiting_generated_feature_artifact")
         self.assertEqual(protocol.raw["semantic_feature_contract"]["semantic_dimensions"], 201)
         self.assertEqual([item["variant_id"] for item in protocol.raw["candidates"]], [
