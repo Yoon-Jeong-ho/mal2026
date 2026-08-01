@@ -1,7 +1,7 @@
 {
   "schema_version": "mal2026-iterative-official-rationale-semantic-v12",
   "run_id": "iterative-official-rationale-semantic-v12-20260802-001",
-  "binding_state": "awaiting_generated_feature_artifact",
+  "binding_state": "bound_generated_feature_artifact",
   "lineage": {
     "canonical_train_path": "eval/train.jsonl",
     "canonical_train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
@@ -32,11 +32,11 @@
     "qwen_model_config_path": "outputs/model-cache/Qwen--Qwen3-Embedding-8B-1d8ad4ca9b3dd8059ad90a75d4983776a23d44af/config.json",
     "qwen_model_config_sha256": "dcccf7c7890c8debc4af8dace8d6acd8dd50bd56d50d4d8b60529381ba3de3d7",
     "generated_feature_manifest_path": "data/processed/restricted/iterative_official_rationale_embeddings_v12/iterative-official-rationale-embeddings-v12-20260802-001/merged/manifest.json",
-    "generated_feature_manifest_sha256": null,
+    "generated_feature_manifest_sha256": "7a8dc097bde73ad8aa263d48a805cf8cdb24c35d35cc4820482669d59c8a6f1f",
     "generated_feature_rows_path": "data/processed/restricted/iterative_official_rationale_embeddings_v12/iterative-official-rationale-embeddings-v12-20260802-001/merged/rows.jsonl",
-    "generated_feature_rows_sha256": null,
+    "generated_feature_rows_sha256": "76a9329995d3e5352ddff5f42ff20e9d8bc0e0aba1670d968e61341714392c6d",
     "generated_feature_public_manifest_path": "outputs/iterative-official-rationale-embeddings-v12/iterative-official-rationale-embeddings-v12-20260802-001/manifest.json",
-    "generated_feature_public_manifest_sha256": null
+    "generated_feature_public_manifest_sha256": "7a8dc097bde73ad8aa263d48a805cf8cdb24c35d35cc4820482669d59c8a6f1f"
   },
   "data_contract": {
     "records": 2000,
