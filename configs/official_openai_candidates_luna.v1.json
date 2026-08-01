@@ -1,0 +1,40 @@
+{
+  "schema_version": "mal2026-official-openai-candidate-generation-plan-v1",
+  "run_id": "official-openai-candidates-luna-v1-train3-20260802-001",
+  "model": "gpt-5.6-luna",
+  "source": {
+    "path": "eval/train.jsonl",
+    "sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "split": "train",
+    "records": 2000,
+    "human_or_reference_score_read_or_prompted": false
+  },
+  "generation": {
+    "official_system_prompt_sha256": "ea0454665da8e13ffb606c1b0fc7f8323bd62dbad65a9a363e463df888bbe5e9",
+    "candidates_per_essay": 3,
+    "requests": 6000,
+    "reasoning_effort": "none",
+    "max_output_tokens": 1200,
+    "store": false,
+    "structured_output": "strict_participant_json_schema",
+    "batch_completion_window": "24h"
+  },
+  "candidate_instructions": {
+    "1": "세 평가 영역을 균형 있게 직접 채점하고, 각 rationale에 가장 결정적인 글의 자질을 제시하라.",
+    "2": "공식 기준은 그대로 적용하되, 주장·문단·표현에서 확인 가능한 구체적 증거와 결함을 특히 엄격히 밝혀라.",
+    "3": "공식 기준은 그대로 적용하되, 과도한 고득점을 피하고 각 정수 점수를 정당화하는 강점과 약점을 분명히 대비하라."
+  },
+  "execution": {
+    "existing_environment": ".venv-standard",
+    "smoke_before_batch": true,
+    "external_api_authorization": "user explicitly authorized GPT-5.6 Luna or Terra API use for the iterative improvement program",
+    "artifact_root": "data/processed/restricted/official_openai_candidates_v1/official-openai-candidates-luna-v1-train3-20260802-001",
+    "validation_loaded": false,
+    "average_target_used": false
+  },
+  "downstream_claim": {
+    "role": "new_score_blind_model_source_for_a_separately_preregistered_nested_train_only_study",
+    "independent_validation_claim_allowed": false,
+    "generalization_claim_allowed": false
+  }
+}

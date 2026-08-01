@@ -37,6 +37,7 @@ from mal2026.official_writing_contract import (  # noqa: E402
 
 API_ROOT = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-5.6-terra"
+ALLOWED_MODELS = frozenset({"gpt-5.6-terra", "gpt-5.6-luna"})
 SCHEMA_VERSION = "mal2026-official-openai-candidate-v1"
 EXPECTED_TRAIN_ROWS = 2000
 EXPECTED_CANDIDATES = 3
@@ -230,8 +231,8 @@ def validate_output(response: Mapping[str, Any]) -> tuple[dict[str, dict[str, An
 
 
 def prepare(args: argparse.Namespace) -> None:
-    if args.model != DEFAULT_MODEL or args.candidates != EXPECTED_CANDIDATES:
-        raise ValueError("official v1 is pinned to gpt-5.6-terra and exactly three candidates")
+    if args.model not in ALLOWED_MODELS or args.candidates != EXPECTED_CANDIDATES:
+        raise ValueError("official v1 requires an allowed GPT-5.6 model and exactly three candidates")
     destination = run_dir(args.run_id)
     if destination.exists():
         raise FileExistsError("run directory already exists")
@@ -277,7 +278,7 @@ def prepare(args: argparse.Namespace) -> None:
 
 
 def smoke(args: argparse.Namespace) -> None:
-    if args.model != DEFAULT_MODEL or args.candidate not in DIVERSITY:
+    if args.model not in ALLOWED_MODELS or args.candidate not in DIVERSITY:
         raise ValueError("official smoke identity differs")
     row = load_rows(1)[0]
     response = request_json("POST", "/responses", api_key(), response_body(row, args.candidate, args.model))
