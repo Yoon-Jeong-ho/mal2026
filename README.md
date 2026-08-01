@@ -162,6 +162,22 @@ Spearman, and the paired interval improved. Final macro and 3/4-BA gains were
 only `0.005063` and `0.004180`, so exact R0 remains selected. See
 `docs/experiment_records/iterative_official_dual_agent_20260802_001.md`.
 
+### Class-balanced Terra + Luna 3/4 boundary head (v11)
+
+V11 replaced V10's unweighted boundary correction with a dedicated gold-3
+versus gold-4 classifier whose two classes had equal total training weight.
+All three specifications were frozen before the sealed 5-outer x 4-inner run.
+The narrow-window head passed in two outer populations, while all candidates
+in the other three again missed only the 3/4 balanced-accuracy gate.
+
+Nested development RMSE was `0.563918` versus R0 `0.568780`; both tails, all
+axes, equal-band RMSE, Spearman, and the paired interval improved. Final macro
+and 3/4-BA gains were only `0.004862` and `0.002545`, below the required
+`0.010`, so exact R0 remains selected. Class balancing made the three failing
+folds' BA gains smaller than V10's plain ridge, freezing further threshold/L2
+retuning of this family. See
+`docs/experiment_records/iterative_official_balanced_boundary_20260802_001.md`.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
