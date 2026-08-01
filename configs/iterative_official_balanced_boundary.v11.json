@@ -1,0 +1,226 @@
+{
+  "schema_version": "mal2026-iterative-official-balanced-boundary-v11",
+  "run_id": "iterative-official-balanced-boundary-v11-20260802-001",
+  "lineage": {
+    "canonical_train_path": "eval/train.jsonl",
+    "canonical_train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "baseline_oof_path": "data/processed/restricted/r0_exact_oof_v1/r0-exact-oof-20260731-002/merged/oof_predictions.jsonl",
+    "baseline_oof_sha256": "823b0c0b2114d9442e1d4e65ff7fd310e529b82d1283c78b2466b7a0141eec04",
+    "fold_assignment_fingerprint": "8c6eed86944f3f75666da746bb5f43d5e4d435fc781a923a349fd58a88a2c6db",
+    "terra_candidate_manifest_path": "data/processed/restricted/official_openai_candidates_v1/official-openai-candidates-v1-train3-20260727-001/manifest.json",
+    "terra_candidate_manifest_sha256": "960ae42ac19e79bd8cff747844ee58a5c724abe30d46d6f3865cb92e22b9de53",
+    "terra_candidate_rows_path": "data/processed/restricted/official_openai_candidates_v1/official-openai-candidates-v1-train3-20260727-001/candidates.train.jsonl",
+    "terra_candidate_rows_sha256": "a1791c418c79c0b76399ddb993e862f34209c2da95b0c13f7cda87f403a24e4c",
+    "terra_model": "gpt-5.6-terra",
+    "luna_generation_plan_path": "configs/official_openai_candidates_luna.v1.json",
+    "luna_generation_plan_sha256": "3cb5c514c5ea1ed53400fc372849b198ec64f946980cc188c47b04943f0123b0",
+    "luna_request_sha256": "86a3f091be90775a7810161f657bbc307ff20ef3159eae5631c18de2021b0e07",
+    "luna_candidate_manifest_path": "data/processed/restricted/official_openai_candidates_v1/official-openai-candidates-luna-v1-train3-20260802-001/manifest.json",
+    "luna_candidate_manifest_sha256": "dbdb6265bd808c6d2e08cb3c05507fd015c2a561e29da495ad2961223ee04c47",
+    "luna_candidate_rows_path": "data/processed/restricted/official_openai_candidates_v1/official-openai-candidates-luna-v1-train3-20260802-001/candidates.train.jsonl",
+    "luna_candidate_rows_sha256": "1397e870cffdbb66a58d7e2732fadb4e7911bc97af0e7cde17ccf506b90486ac",
+    "luna_model": "gpt-5.6-luna",
+    "official_system_prompt_sha256": "ea0454665da8e13ffb606c1b0fc7f8323bd62dbad65a9a363e463df888bbe5e9",
+    "v10_aggregate_path": "outputs/iterative-official-dual-agent-v10/iterative-official-dual-agent-v10-20260802-001/aggregate.json",
+    "v10_aggregate_sha256": "6a15396f23f10fe75ff5fd6d88e2542bb5d2898ada04a6b4c79bb123e524df9d",
+    "v10_completion_path": "outputs/iterative-official-dual-agent-v10/iterative-official-dual-agent-v10-20260802-001/completion.json",
+    "v10_completion_sha256": "d2c2828719aadbed39646c618bcd3ab2c388e63a8384a044014f2c5f77f624f0",
+    "v10_result_role": "dual_source_residual_improved_all_core_metrics_but_only_two_outer_folds_passed_3_4_ba_gate"
+  },
+  "data_contract": {
+    "records": 2000,
+    "fold_count": 5,
+    "records_per_fold": 400,
+    "split_role": "train",
+    "baseline_origin": "exact_oof",
+    "terra_candidate_records": 6000,
+    "luna_candidate_records": 6000,
+    "candidates_per_model_per_essay": 3,
+    "total_model_candidates_per_essay": 6,
+    "feature_dimensions": 96,
+    "candidate_scores_are_model_predictions": true,
+    "human_or_reference_score_read_or_prompted_to_candidate_models": false,
+    "validation_loaded": false,
+    "validation_selection": false,
+    "average_target_used": false,
+    "upstream_luna_batch_requests": 6000,
+    "upstream_luna_smoke_requests": 1,
+    "rationale_text_used_as_v11_feature": false,
+    "external_api_calls_in_v11": 0
+  },
+  "feature_contract": {
+    "terra_within_model_dimensions": 39,
+    "luna_within_model_dimensions": 39,
+    "cross_model_dimensions": 18,
+    "cross_model_order": [
+      "terra_minus_luna_axis_mean",
+      "absolute_terra_minus_luna_axis_mean",
+      "pooled_six_candidate_axis_mean",
+      "pooled_six_candidate_axis_std",
+      "pooled_six_candidate_axis_min",
+      "pooled_six_candidate_axis_max"
+    ],
+    "target_blind_construction": true
+  },
+  "execution": {
+    "authorized_gpus": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "smoke_gpu": 0,
+    "smoke_required_before_full_run": true,
+    "checkpoint_reuse": false,
+    "all_3_candidates_required": true,
+    "early_stop_allowed": false,
+    "dtype": "torch.float64",
+    "fresh_residual_and_class_balanced_head_each_candidate_and_fold": true
+  },
+  "common_residual": {
+    "family": "terra_luna_score_residual_ridge",
+    "ridge_alpha": 10.0,
+    "max_correction": 0.5,
+    "fresh_per_candidate_and_fold": true
+  },
+  "common_boundary_classifier": {
+    "feature_dimensions": 96,
+    "optimizer": "torch.optim.LBFGS_strong_wolfe",
+    "max_iter": 80,
+    "class_weighting": "equal_total_weight_for_gold_3_and_gold_4",
+    "fresh_zero_initialization": true,
+    "application": "hard_flip_only_when_balanced_adjacent_head_disagrees_with_near_boundary_residual"
+  },
+  "candidates": [
+    {
+      "cycle": 1,
+      "variant_id": "terra-luna-balanced-adjacent-l2-001-c050-w025",
+      "confidence": 0.5,
+      "window": 0.25,
+      "l2": 0.01,
+      "ridge_alpha": 10.0,
+      "max_correction": 0.5,
+      "epsilon": 0.001,
+      "head_kind": "class_balanced_adjacent_3v4",
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 2,
+      "variant_id": "terra-luna-balanced-adjacent-l2-010-c050-w025",
+      "confidence": 0.5,
+      "window": 0.25,
+      "l2": 0.1,
+      "ridge_alpha": 10.0,
+      "max_correction": 0.5,
+      "epsilon": 0.001,
+      "head_kind": "class_balanced_adjacent_3v4",
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 3,
+      "variant_id": "terra-luna-balanced-adjacent-l2-001-c055-w020",
+      "confidence": 0.55,
+      "window": 0.2,
+      "l2": 0.01,
+      "ridge_alpha": 10.0,
+      "max_correction": 0.5,
+      "epsilon": 0.001,
+      "head_kind": "class_balanced_adjacent_3v4",
+      "fresh_initialization": true
+    }
+  ],
+  "nested_protocol": {
+    "outer_folds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "outer_holdout_use": "predict_once_after_selected_spec_freeze",
+    "outer_gold_locked_until_prediction_complete": true,
+    "inner_validation_rule": "D_each_of_the_other_four_folds",
+    "inner_training_rule": "S_is_the_other_three_original_folds_excluding_O_and_D",
+    "inner_fold_count_per_outer": 4,
+    "candidate_oof_coverage": "each_outer_train_row_exactly_once_per_candidate",
+    "selection_after_all_candidates_complete": true,
+    "inner_selection": {
+      "reference": "exact_r0_oof_baseline_on_outer_train",
+      "gate": "fixed_original_seven_gate",
+      "rule": "eligible_minimum_macro_rmse",
+      "tie_break": "lowest_cycle_number",
+      "no_eligible_fallback": "exact_r0_oof_baseline",
+      "require_all_four_inner_folds": true,
+      "require_finite_metrics": true
+    },
+    "outer_refit": {
+      "selected_spec_frozen_before_refit": true,
+      "selected_candidate_only": true,
+      "fit_scope": "all_four_outer_train_folds",
+      "initialization": "fresh_closed_form_residual_and_fresh_zero_class_balanced_logistic",
+      "checkpoint_reuse": false,
+      "predict_scope": "O_once"
+    },
+    "posthoc_selection_on_concatenated_outer_predictions": false
+  },
+  "inner_promotion_gate": {
+    "operator": "AND",
+    "macro_rmse_min_improvement": 0.005,
+    "equal_group_rmse_min_improvement": 0.01,
+    "low_tail_must_improve": true,
+    "high_tail_must_improve": true,
+    "gold_3_4_balanced_accuracy_min_improvement": 0.01,
+    "max_axis_rmse_worsening": 0.01,
+    "max_macro_spearman_fall": 0.005,
+    "score1_descriptive_only": true,
+    "require_all_four_inner_folds": true,
+    "require_finite_metrics": true
+  },
+  "final_evaluation": {
+    "construction": "concatenate_five_outer_predictions_once",
+    "selection_after_concatenation": false,
+    "reference": "exact_r0_oof_baseline",
+    "operator": "AND",
+    "macro_rmse_min_improvement": 0.01,
+    "paired_bootstrap": {
+      "replicates": 10000,
+      "quantity": "candidate_minus_baseline_macro_rmse",
+      "confidence_interval": 0.95,
+      "required_upper_bound_lt": 0.0
+    },
+    "low_tail_must_improve": true,
+    "high_tail_must_improve": true,
+    "gold_3_4_balanced_accuracy_min_improvement": 0.01,
+    "max_axis_rmse_worsening": 0.01,
+    "max_macro_spearman_fall": 0.005,
+    "score1_descriptive_only": true,
+    "require_all_five_outer_folds": true,
+    "require_finite_metrics": true
+  },
+  "authorization_and_freeze": {
+    "study_role": "preapproved_dedicated_3_vs_4_auxiliary_head_from_the_users_twenty_round_plan",
+    "v10_reopening": false,
+    "v10_inventory_and_artifacts_frozen": true,
+    "v10_gates_unchanged": true,
+    "materially_distinct_algorithm": "class_balanced_adjacent_3_4_objective_aligned_to_balanced_accuracy"
+  },
+  "failure_action": {
+    "when": "final_gate_fails",
+    "retained_model": "exact_r0_oof_baseline",
+    "v11_inventory_frozen": true
+  },
+  "success_action": {
+    "when": "final_gate_passes",
+    "retained_model": "nested_selected_balanced_boundary_stack",
+    "independent_hidden_evaluation_still_required": true,
+    "v11_inventory_frozen": true
+  },
+  "scientific_claims": {
+    "adaptive_after_v10_observed": true,
+    "no_v11_full_oof_prestudy_before_preregistration": true,
+    "same_train_nested_development_evidence_only": true,
+    "independent_confirmation_claim_allowed": false,
+    "generalization_claim_allowed": false,
+    "deployment_claim_allowed": false
+  }
+}
