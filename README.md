@@ -36,6 +36,17 @@ materially worsened the combined `{1,2}` tail. See
 `docs/experiment_records/iterative_tail_remediation_20260801_001.md` for the
 protocol repairs, aggregate metrics, and negative result.
 
+### Twenty-cycle routed-tail discovery (v3)
+
+A second fixed 20-cycle train-only program evaluated soft routing, Pareto
+stacks, five-band Group-DRO, selective hurdle heads, and final-output ordinal
+stacks. All 100 fold-cycle predictions completed before metrics were opened.
+No candidate passed the strict gate; R0 remains selected. The best exploratory
+cycle improved RMSE only from `0.568780` to `0.568611`, although both `{1,2}`
+and score-5 continuous RMSE moved slightly in the correct direction. V3 is
+adaptive after observing v2 and is not confirmatory. See
+`docs/experiment_records/iterative_tail_cycle_20260801_001.md`.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
