@@ -1,0 +1,174 @@
+{
+  "schema_version": "mal2026-iterative-official-agent-stack-v7",
+  "run_id": "iterative-official-agent-stack-v7-20260802-001",
+  "lineage": {
+    "canonical_train_path": "eval/train.jsonl",
+    "canonical_train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "baseline_oof_path": "data/processed/restricted/r0_exact_oof_v1/r0-exact-oof-20260731-002/merged/oof_predictions.jsonl",
+    "baseline_oof_sha256": "823b0c0b2114d9442e1d4e65ff7fd310e529b82d1283c78b2466b7a0141eec04",
+    "fold_assignment_fingerprint": "8c6eed86944f3f75666da746bb5f43d5e4d435fc781a923a349fd58a88a2c6db",
+    "official_candidate_manifest_path": "data/processed/restricted/official_openai_candidates_v1/official-openai-candidates-v1-train3-20260727-001/manifest.json",
+    "official_candidate_manifest_sha256": "960ae42ac19e79bd8cff747844ee58a5c724abe30d46d6f3865cb92e22b9de53",
+    "official_candidate_rows_path": "data/processed/restricted/official_openai_candidates_v1/official-openai-candidates-v1-train3-20260727-001/candidates.train.jsonl",
+    "official_candidate_rows_sha256": "a1791c418c79c0b76399ddb993e862f34209c2da95b0c13f7cda87f403a24e4c",
+    "official_candidate_model": "gpt-5.6-terra",
+    "official_system_prompt_sha256": "ea0454665da8e13ffb606c1b0fc7f8323bd62dbad65a9a363e463df888bbe5e9",
+    "v6_aggregate_path": "outputs/iterative-tail-directional-v6/iterative-tail-directional-v6-20260802-001/aggregate.json",
+    "v6_aggregate_sha256": "39d31011a4a27564f9501ee6f94c41e0b5dba490774583a3859369298b15042d",
+    "v6_completion_path": "outputs/iterative-tail-directional-v6/iterative-tail-directional-v6-20260802-001/completion.json",
+    "v6_completion_sha256": "3585df5a2ada491af57e8997dc277c719feda9ccefb01d50d225a7841fff075e",
+    "prestudy_path": "outputs/iterative-official-agent-stack-v7-prestudy/iterative-official-agent-stack-v7-prestudy-20260802-001/aggregate.json",
+    "prestudy_sha256": "4b66a91344195a5b1e8f40d4816052ea8b6fbc032780dbaa3f0721efac1083eb",
+    "prestudy_role": "adaptive_candidate_design_evidence_only_not_outer_confirmation"
+  },
+  "data_contract": {
+    "records": 2000,
+    "fold_count": 5,
+    "records_per_fold": 400,
+    "split_role": "train",
+    "baseline_origin": "exact_oof",
+    "official_candidate_records": 6000,
+    "official_candidates_per_essay": 3,
+    "official_candidate_scores_are_model_predictions": true,
+    "human_or_reference_score_read_or_prompted_to_official_candidate_model": false,
+    "feature_dimensions": 39,
+    "feature_order": [
+      "candidate_scores_3x3",
+      "axis_mean",
+      "axis_std",
+      "axis_min",
+      "axis_max",
+      "pairwise_equal_3x3",
+      "candidate_minus_r0_3x3"
+    ],
+    "rationale_text_used_as_v7_feature": false,
+    "validation_loaded": false,
+    "validation_selection": false,
+    "average_target_used": false,
+    "external_api_calls_in_v7": 0
+  },
+  "execution": {
+    "authorized_gpus": [0, 1, 2, 3],
+    "smoke_gpu": 0,
+    "smoke_required_before_full_run": true,
+    "fresh_closed_form_solve_each_candidate_and_fold": true,
+    "checkpoint_reuse": false,
+    "all_3_candidates_required": true,
+    "early_stop_allowed": false,
+    "ridge_dtype": "torch.float64"
+  },
+  "authorization_and_freeze": {
+    "study_role": "materially_new_score_blind_official_terra_feature_source_under_users_ongoing_goal",
+    "v4_v5_v6_reopening": false,
+    "v4_v5_v6_artifacts_permanently_frozen": true,
+    "v6_same_train_same_feature_source_stop_rule_respected": true,
+    "new_feature_source": "three_score_blind_gpt_5_6_terra_official_participant_outputs"
+  },
+  "nested_protocol": {
+    "outer_folds": [0, 1, 2, 3, 4],
+    "outer_holdout_symbol": "O",
+    "outer_holdout_use": "predict_once_after_selected_spec_freeze",
+    "outer_gold_locked_until_prediction_complete": true,
+    "inner_validation_rule": "D_each_of_the_other_four_folds",
+    "inner_training_rule": "S_is_the_other_three_original_folds_excluding_O_and_D",
+    "inner_fold_count_per_outer": 4,
+    "candidate_oof_coverage": "each_outer_train_row_exactly_once_per_candidate",
+    "selection_after_all_candidates_complete": true,
+    "inner_selection": {
+      "reference": "exact_r0_oof_baseline_on_outer_train",
+      "gate": "fixed_original_seven_gate",
+      "rule": "eligible_minimum_macro_rmse",
+      "tie_break": "lowest_cycle_number",
+      "no_eligible_fallback": "exact_r0_oof_baseline",
+      "require_all_four_inner_folds": true,
+      "require_finite_metrics": true
+    },
+    "outer_refit": {
+      "selected_spec_frozen_before_refit": true,
+      "selected_candidate_only": true,
+      "fit_scope": "all_four_outer_train_folds",
+      "initialization": "fresh_closed_form_solve",
+      "checkpoint_reuse": false,
+      "predict_scope": "O_once"
+    },
+    "posthoc_selection_on_concatenated_outer_predictions": false
+  },
+  "candidates": [
+    {
+      "cycle": 1,
+      "variant_id": "official-terra-ridge-a10-cap050-primary",
+      "family": "official_terra_score_residual_ridge",
+      "ridge_alpha": 10.0,
+      "max_correction": 0.5,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 2,
+      "variant_id": "official-terra-ridge-a010-cap030-diverse",
+      "family": "official_terra_score_residual_ridge",
+      "ridge_alpha": 0.1,
+      "max_correction": 0.3,
+      "fresh_initialization": true
+    },
+    {
+      "cycle": 3,
+      "variant_id": "official-terra-ridge-a10-cap010-conservative",
+      "family": "official_terra_score_residual_ridge",
+      "ridge_alpha": 10.0,
+      "max_correction": 0.1,
+      "fresh_initialization": true
+    }
+  ],
+  "inner_promotion_gate": {
+    "operator": "AND",
+    "macro_rmse_min_improvement": 0.005,
+    "equal_group_rmse_min_improvement": 0.01,
+    "low_tail_must_improve": true,
+    "high_tail_must_improve": true,
+    "gold_3_4_balanced_accuracy_min_improvement": 0.01,
+    "max_axis_rmse_worsening": 0.01,
+    "max_macro_spearman_fall": 0.005,
+    "score1_descriptive_only": true,
+    "require_all_four_inner_folds": true,
+    "require_finite_metrics": true
+  },
+  "final_evaluation": {
+    "construction": "concatenate_five_outer_predictions_once",
+    "selection_after_concatenation": false,
+    "reference": "exact_r0_oof_baseline",
+    "operator": "AND",
+    "macro_rmse_min_improvement": 0.01,
+    "paired_bootstrap": {
+      "replicates": 10000,
+      "quantity": "candidate_minus_baseline_macro_rmse",
+      "confidence_interval": 0.95,
+      "required_upper_bound_lt": 0.0
+    },
+    "low_tail_must_improve": true,
+    "high_tail_must_improve": true,
+    "gold_3_4_balanced_accuracy_min_improvement": 0.01,
+    "max_axis_rmse_worsening": 0.01,
+    "max_macro_spearman_fall": 0.005,
+    "score1_descriptive_only": true,
+    "require_all_five_outer_folds": true,
+    "require_finite_metrics": true
+  },
+  "failure_action": {
+    "when": "final_gate_fails",
+    "retained_model": "exact_r0_oof_baseline",
+    "v7_inventory_frozen": true
+  },
+  "success_action": {
+    "when": "final_gate_passes",
+    "retained_model": "nested_selected_official_terra_stack",
+    "v7_inventory_frozen": true,
+    "independent_hidden_evaluation_still_required": true
+  },
+  "scientific_claims": {
+    "adaptive_after_v1_through_v6_and_full_oof_prestudy_observed": true,
+    "same_train_nested_development_evidence_only": true,
+    "independent_confirmation_claim_allowed": false,
+    "generalization_claim_allowed": false,
+    "deployment_claim_allowed": false
+  }
+}
