@@ -55,9 +55,30 @@ score-only routers per outer fold. None of the 100 route fits passed the strict
 joint gate, so every outer fold fell back to exact R0 and final RMSE remains
 `0.568780`. Four-zone routing showed tiny descriptive gains at scores 1, 2,
 and 5, but did not improve score-1/5 recall and slightly traded off scores 3/4.
-The preregistered stop rule now freezes further same-train model search. See
+The preregistered stop rule froze the V4 candidate inventory and learned
+state. A later user clarification authorized a separately named V5 study; V4
+itself remains immutable. See
 `docs/experiment_records/iterative_tail_router_20260801_001.md` for nesting,
 all 20 aggregate route results, band diagnostics, checksums, and claim limits.
+
+### Fresh nested twenty-learner study (v5)
+
+A separately authorized adaptive train-only study evaluated five new bounded
+GPU learner families, four fixed variants each, over frozen
+Qwen3-Embedding-8B train-OOF embeddings, exact R0 scores, and score-blind
+rationale hash features. The sealed 5-outer x 4-inner protocol completed 100
+candidate OOF evaluations (400 fresh inner fits) on GPUs 0--3. None passed the
+strict joint gate, so all outer folds fell back to exact R0 and final RMSE
+remains `0.568780`.
+
+The best macro candidate still worsened mean RMSE by `0.000404`; it improved
+score-5 continuous RMSE and 3/4 balanced accuracy but worsened the `{1,2}`
+tail. A different candidate improved both tails while degrading global RMSE
+and 3/4 separation. Score-5 integer recall did not change in any candidate
+cell. Thus V5 reproduces the tail-versus-center trade-off rather than finding
+a promotable learner. It is descriptive same-train evidence only. See
+`docs/experiment_records/iterative_tail_learner_20260802_001.md` for all 20
+candidate summaries, gate failures, execution evidence, and checksums.
 
 ## `evaluation.txt` end-to-end re-audit (completed)
 
