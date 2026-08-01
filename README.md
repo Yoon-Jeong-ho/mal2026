@@ -146,6 +146,22 @@ the required `0.010`. Exact R0 therefore remains the protocol-valid model.
 See
 `docs/experiment_records/iterative_official_selective_flip_20260802_001.md`.
 
+### Score-blind Terra + Luna dual-agent stack (v10)
+
+V10 froze its candidate inventory before downloading a new 6,000-output
+score-blind GPT-5.6-Luna batch, then bound only the validated manifest and row
+checksums. The fixed 96-dimensional view combined three Terra and three Luna
+participant score vectors with within-model and cross-model disagreement
+features. A fresh residual ridge or one of two optional 3/4 flip variants was
+selected inside the same sealed 5-outer x 4-inner protocol.
+
+Only outer folds 0 and 1 passed the full inner gate; folds 2--4 failed solely
+because 3/4 balanced-accuracy gain stayed below `0.010`. The nested development
+RMSE was `0.563717` versus R0 `0.568780`, and all axes, both tails, equal-band,
+Spearman, and the paired interval improved. Final macro and 3/4-BA gains were
+only `0.005063` and `0.004180`, so exact R0 remains selected. See
+`docs/experiment_records/iterative_official_dual_agent_20260802_001.md`.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
