@@ -128,6 +128,24 @@ nudges were less efficient than V7; any further boundary attempt must be a
 separately registered high-confidence selective flip, not a V8 retune. See
 `docs/experiment_records/iterative_official_boundary_20260802_001.md`.
 
+### High-confidence official Terra boundary flips (v9)
+
+V9 preregistered a discontinuous alternative to V8's smooth nudges: a cell
+could cross 3.5 only when a fresh adjacent/threshold classifier disagreed
+confidently with the fresh official-agent residual and the residual was inside
+a fixed near-boundary window. GPU0 smoke passed, then outer folds 0--3 ran
+concurrently on GPUs 0--3 and outer fold 4 followed on GPU0. Three folds
+selected a flip candidate and two fell back to exact R0 because their inner
+3/4 balanced-accuracy gain was below `0.010`.
+
+The nested development RMSE was `0.563067` versus R0 `0.568780`; every axis,
+both tails, equal-band RMSE, Spearman, and the paired bootstrap moved in the
+favorable direction. The final gate nevertheless failed because macro gain
+was only `0.005714` and 3/4 balanced-accuracy gain only `0.004620`, both below
+the required `0.010`. Exact R0 therefore remains the protocol-valid model.
+See
+`docs/experiment_records/iterative_official_selective_flip_20260802_001.md`.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
