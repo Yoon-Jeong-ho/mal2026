@@ -47,6 +47,18 @@ and score-5 continuous RMSE moved slightly in the correct direction. V3 is
 adaptive after observing v2 and is not confirmatory. See
 `docs/experiment_records/iterative_tail_cycle_20260801_001.md`.
 
+### Final nested twenty-router study (v4)
+
+The final adaptive train-only attempt rebuilt R16/R17/direct/hurdle/soft
+components inside a sealed 5-outer x 4-inner protocol and fit 20 fixed
+score-only routers per outer fold. None of the 100 route fits passed the strict
+joint gate, so every outer fold fell back to exact R0 and final RMSE remains
+`0.568780`. Four-zone routing showed tiny descriptive gains at scores 1, 2,
+and 5, but did not improve score-1/5 recall and slightly traded off scores 3/4.
+The preregistered stop rule now freezes further same-train model search. See
+`docs/experiment_records/iterative_tail_router_20260801_001.md` for nesting,
+all 20 aggregate route results, band diagnostics, checksums, and claim limits.
+
 ## `evaluation.txt` end-to-end re-audit (completed)
 
 The current prompt-alignment rerun separates four contracts: score-blind
