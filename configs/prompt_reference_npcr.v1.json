@@ -1,0 +1,38 @@
+{
+  "schema_version": "mal2026-prompt-reference-npcr-v1",
+  "run_id": "prompt-reference-npcr-v1-20260803-001",
+  "train_path": "eval/train.jsonl",
+  "train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+  "embedding_manifest_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/manifest.json",
+  "embedding_manifest_sha256": "9ccb63c857f80cefb1ed15ac4f60ca75f5570d044c273030d5eb0185c756e938",
+  "embedding_rows_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/rows.jsonl",
+  "embedding_rows_sha256": "949451b690ea12df126bc6aa9b1cf7f2f016e3c60f69d67b1d460719b6404f16",
+  "r0_oof_prediction_path": "data/processed/restricted/r0_exact_oof_v1/r0-exact-oof-20260731-002/merged/oof_predictions.jsonl",
+  "r0_oof_prediction_sha256": "823b0c0b2114d9442e1d4e65ff7fd310e529b82d1283c78b2466b7a0141eec04",
+  "output_root": "outputs/prompt-reference-npcr-v1",
+  "restricted_output_root": "data/processed/restricted/prompt_reference_npcr_v1",
+  "seed": 2026080304,
+  "outer_folds": 5,
+  "inner_folds": 4,
+  "axes": ["content", "organization", "expression"],
+  "average_target_forbidden": true,
+  "candidates": [
+    {"id": "adjacent-skip2", "gaps": [1, 2], "references_per_gap": 2, "anchors_per_query": 8},
+    {"id": "adjacent-allskip", "gaps": [1, 2, 3, 4], "references_per_gap": 1, "anchors_per_query": 8}
+  ],
+  "hidden_dim": 64,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "epochs": 16,
+  "batch_size": 128,
+  "inner_selection": ["macro_rmse", "equal_group_rmse", "low_tail_rmse", "high_tail_rmse", "candidate_id"],
+  "promotion_gate": {
+    "minimum_macro_rmse_improvement": 0.005,
+    "maximum_axis_rmse_worsening": 0.01,
+    "maximum_gold_3_4_balanced_accuracy_drop": 0.01,
+    "low_tail_noninferior": true,
+    "high_tail_noninferior": true,
+    "paired_bootstrap_resamples": 1000,
+    "paired_bootstrap_lower_bound_above_zero": true
+  }
+}

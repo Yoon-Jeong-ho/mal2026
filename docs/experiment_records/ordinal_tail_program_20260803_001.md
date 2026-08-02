@@ -124,3 +124,47 @@ three-epoch natural-prior cRT head. Both phases preserve the declared
 `ordinal loss + 0.25 raw-score expected-score MSE` objective. A GPU0 plumbing
 smoke precedes the exact five-fold GPU0–3 OOF run; no canonical validation
 path exists in the Stage 2 config.
+
+## Stage 4 — prompt-reference NPCR (preregistered)
+
+Stage 4 is bound by `configs/prompt_reference_npcr.v1.json` and uses only the
+checksum-bound canonical train rows, exact R0 OOF fold/prediction lineage, and
+the frozen 4,096-dimensional public embedding artifact. R0 continuous scores
+are verified against the artifact per ID/fold/axis but are never a feature of
+the NPCR utility network; they are retained only as the protected identity
+fallback and aggregate comparator. No validation path/string is allowed in the
+configuration, and `average` is forbidden.
+
+For every axis and fit fold, pairs are same-`prompt_num` only, exclude self and
+same-document comparisons, and are selected deterministically from adjacent
+gap 1 plus skip gaps. The scalar utility loss is Huber on raw-axis-score
+difference `f(query)-f(reference)`. A held row is restored only from fit-fold,
+same-prompt anchors via the clipped median of `anchor_score + f(query) -
+f(anchor)`; held gold never selects an anchor.
+
+The fixed matrix has two candidates: `adjacent-skip2` (gaps 1/2, two references
+per gap) and `adjacent-allskip` (gaps 1/2/3/4, one reference per gap), both
+with eight anchors. For each of the five outer folds, candidates are evaluated
+on four disjoint 1,200→400 inner fits and selected **only against each other**
+by the fixed lexicographic tuple: raw macro RMSE, equal-group RMSE, low-tail
+RMSE, high-tail RMSE, then candidate ID. Exact R0 predictions never enter
+inner selection or an outer refit; every outer fold always refits the selected
+NPCR candidate and emits one honest NPCR prediction.
+
+Only after all five outer predictions are assembled is the complete nested
+NPCR OOF compared with protected exact R0. Promotion then requires macro
+raw-RMSE improvement of at least 0.005, each axis worsening by at most 0.01
+RMSE, 3/4 balanced accuracy falling by at most 0.01, nonzero global low
+`{1,2}` and high `{5}` support, low/high tail non-inferiority, and a source-ID
+clustered, three-axis-preserving 1,000-resample paired-bootstrap macro-RMSE
+lower bound above zero. Score 1 is descriptive only. Failure changes only the
+global recommendation to the exact-R0 identity; it does not replace any outer
+NPCR prediction.
+
+`scripts/run_prompt_reference_npcr_gpu0_3.sh smoke` performs the one-epoch,
+one-axis GPU0 plumbing smoke and records config/runner/module/launcher/test
+hashes; its eight-row result is explicitly non-selectable. `full` refuses to
+run unless that attestation still matches, then schedules folds 0/4 on GPU0
+serially and folds 1/2/3 on GPUs 1/2/3. Both modes refuse occupied GPUs and
+never overwrite outputs. No Stage 4 GPU launch has occurred while Stage 3 owns
+GPUs 0--3.
