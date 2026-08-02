@@ -1,0 +1,288 @@
+{
+  "common_stage3_promotion_gate": {
+    "candidate": "stage3_coral-natural_only",
+    "high_tail_5_noninferior": true,
+    "low_tail_1_2_noninferior": true,
+    "macro_rmse_min_improvement": 0.005,
+    "maximum_axis_rmse_worsening": 0.01,
+    "maximum_gold_3_4_balanced_accuracy_drop": 0.01,
+    "maximum_macro_spearman_drop": 0.005,
+    "operator": "AND",
+    "paired_bootstrap": {
+      "improvement_quantity": "H0_macro_RMSE_minus_candidate_macro_RMSE",
+      "required_lower_bound_strictly_gt": 0.0,
+      "resamples": 10000,
+      "unit": "source_id_with_all_three_axes_clustered"
+    },
+    "reference": "H0_exact_R0_continuous_train_OOF",
+    "require_all_five_outer_folds": true,
+    "require_finite_metrics": true,
+    "require_nonzero_low_1_2_and_high_5_support_every_axis": true
+  },
+  "data_contract": {
+    "average_feature_forbidden": true,
+    "average_selection_metric_forbidden": true,
+    "average_target_forbidden": true,
+    "axes": [
+      "content",
+      "organization",
+      "expression"
+    ],
+    "axis_models_and_predictions_independent": true,
+    "inner_folds": 4,
+    "outer_folds": 5,
+    "selection_population": "canonical_train_only_nested_oof",
+    "validation_path_absent_from_manifest": true,
+    "validation_used_for_selection": false
+  },
+  "decision_list": [
+    {
+      "rule": "always_emit_exact_historical_deployable_full_train_R0_epoch1_4_prediction_ensemble",
+      "slot": "H0"
+    },
+    {
+      "rule": "if_and_only_if_common_stage3_promotion_gate_passes_emit_stage3_coral-natural_full_refit; otherwise if_and_only_if_stage4_own_fixed_promotion_gate_passes emit_stage4_NPCR_full_refit; otherwise leave_slot_empty",
+      "slot": "H1",
+      "stage4_final_candidate_mode": {
+        "allowed_candidate_ids": [
+          "adjacent-allskip",
+          "adjacent-skip2"
+        ],
+        "no_new_matrix_or_hyperparameter_selection": true,
+        "rule": "modal_candidate_id",
+        "source": "five_completed_nested_outer_stage4_selected_candidate_ids",
+        "tie_break": "lexicographically_lowest_candidate_id"
+      }
+    },
+    {
+      "calibration": "identity_only",
+      "fixed_member_contract": "0.8_H0_exact_R0_plus_0.2_Stage3_coral-natural_axiswise_continuous_predictions",
+      "learned_calibration_or_weight_selection": false,
+      "rule": "if_and_only_if_the_existing_stage5_fixed_gate_passes emit_its_only_preregistered_blend; otherwise leave_slot_empty",
+      "shared_refit_rule": "when both H1 Stage3 and H2 are present, both must reference the same artifact hash; when H1 falls back to Stage4 and H2 is present, H2 still references that sole coral artifact hash",
+      "slot": "H2",
+      "stage3_artifact_reuse": "H2 must consume the sole hash-bound Stage3 coral-natural full-refit artifact; a second coral-natural refit is forbidden",
+      "stage3_refit_creation_condition": "create exactly one Stage3 coral-natural full-refit artifact if either the common Stage3 H1 gate or the existing Stage5 H2 gate passes",
+      "stage4_NPCR_is_not_an_H2_member": true
+    }
+  ],
+  "deployment_freeze": {
+    "h1_h2_final_rationale": {
+      "adapter_path": "deployment/runtime_bundle_r0/rationale/adapters/final_dpo",
+      "adapter_sha256": "887abf9d1bf07693251a17b7a0fb655fe8203fa6945e9c178a38bdc538ded826",
+      "component": "H0 final-DPO rationale generator conditioned on that candidate own emitted integer content/organization/expression scores",
+      "max_tokens": 512,
+      "seed": 42,
+      "temperature": 0.0,
+      "top_p": 1.0
+    },
+    "h1_stage3_score_input": "official canonical writing prompt plus essay only",
+    "h1_stage4_feature_and_fallback_contract": {
+      "anchor_library": "persist all 2,000 canonical train rows as the restricted same-prompt labeled anchor library; no validation or hidden rows enter it",
+      "blind_rationale_generator": {
+        "adapter_id": "rank2_ax4_random1",
+        "adapter_path": "deployment/runtime_bundle_r0/rationale/adapters/rank2_ax4_random1",
+        "adapter_sha256": "39c68bb5c98da25eaa466434ba1c6d4a47bedcec580c991f00335627382a3a73",
+        "max_tokens": 512,
+        "seed": 42,
+        "temperature": 0.0,
+        "top_p": 1.0
+      },
+      "canonical_prompt_text_mapping": {
+        "construction": "persist the exact bijective canonical prompt-text to prompt_num map from all 2,000 canonical train rows",
+        "expected_unique_prompt_num_count": 9,
+        "expected_unique_prompt_text_count": 9,
+        "inference": "submission supplies prompt text; infer prompt_num only by exact prompt-text match",
+        "require_bijection": true
+      },
+      "query_level_fallback": "use the H0 continuous axis prediction unchanged when submitted prompt text has no exact canonical prompt-text match, inferred prompt_num is unavailable, or fewer than one eligible same-prompt anchor remains after self/same-document exclusion",
+      "score_encoder": {
+        "model_id": "Qwen/Qwen3-Embedding-8B",
+        "pooling": "last_nonpad_then_float32_L2",
+        "public_base_only": true,
+        "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af"
+      },
+      "score_input": {
+        "contract": "writing_prompt plus student_essay plus canonical JSON evaluation_rationales, with ensure_ascii=false and compact separators",
+        "max_length": 2048,
+        "renderer": "deployment/src/mal2026_submission/production_r0.py:_score_input"
+      }
+    }
+  },
+  "failure_rule": {
+    "empty_slots_must_not_be_filled_with_new_variants": true,
+    "if_stage3_stage4_and_stage5_all_fail": "submit_H0_only",
+    "negative_results_preserved": true
+  },
+  "full_refit_freeze": {
+    "H1_stage3": "create exactly one full-train coral-natural refit if the common Stage3 H1 gate or Stage5 H2 gate passes, using the fixed Stage3 formula/hyperparameters/axiswise raw-score objective; H1 may use it only when the common Stage3 gate passes",
+    "H1_stage4": "same_modal_NPCR_candidate_family_and_checksum-bound_Stage4_hyperparameters; fit_pairs_and_anchors_on_all_2000_train_only; no_new_candidate_or_parameter_search",
+    "H2_stage5": "reuse the sole hash-bound full-train Stage3 coral-natural refit created when either the Stage3 H1 or Stage5 H2 gate passes; do not run another coral refit; apply only the fixed identity 0.8/0.2 axiswise blend",
+    "forbidden_after_gate": [
+      "validation_choice",
+      "new_prompt",
+      "new_seed_selection",
+      "new_calibration",
+      "new_blend_weight",
+      "new_threshold",
+      "new_average_target",
+      "new_candidate"
+    ]
+  },
+  "full_refit_seed_contract": {
+    "stage3_coral_natural": {
+      "base_seed": 2026080302,
+      "crt_seed_by_axis": {
+        "content": 782205628,
+        "expression": 1508715968,
+        "organization": 152263886
+      },
+      "formula": "int.from_bytes(sha256(f'{base}\\0full-refit\\0coral-natural\\0{axis}\\0{phase}'.encode()).digest()[:4], 'big') % (2**31 - 1)",
+      "phase1_seed_by_axis": {
+        "content": 592530948,
+        "expression": 286654097,
+        "organization": 677979439
+      },
+      "refit": "one full-train refit only; the resulting artifact is the sole non-H0 member permitted for H2"
+    },
+    "stage4_npcr": {
+      "axis_index_contract": {
+        "content": 0,
+        "expression": 2,
+        "organization": 1
+      },
+      "base_seed": 2026080304,
+      "candidate_seed_by_axis": {
+        "adjacent-allskip": {
+          "content": 704285545,
+          "expression": 224474707,
+          "organization": 1314313536
+        },
+        "adjacent-skip2": {
+          "content": 1185757628,
+          "expression": 811459031,
+          "organization": 1203094570
+        }
+      },
+      "formula": "int(sha256(f'{base}\\0full-refit\\0{candidate}\\0{axis_index}\\0outer-refit'.encode()).hexdigest()[:15], 16) % (2**31 - 1)",
+      "refit": "one full-train refit of the fixed modal candidate only"
+    }
+  },
+  "h0_final_refit_map": {
+    "axis_contract": "three independent continuous score heads; average head discarded before continuation",
+    "bundle_completion_path": "deployment/runtime_bundle_r0/bundle_complete.json",
+    "bundle_completion_sha256": "58c029d014b80ac9530a1e6e2535a235bb8e90f45b1713246b0919c11045e80f",
+    "candidate_id": "historical_r0_prediction_ensemble_dpo_v1",
+    "epoch_prediction_ensemble": {
+      "ensemble": "uniform_axiswise_continuous_mean_then_clip_1_5_then_half_up",
+      "member_epochs": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "members": [
+        {
+          "adapter_path": "deployment/runtime_bundle_r0/score/adapters/epoch_01/adapter_model.safetensors",
+          "adapter_sha256": "ee51c22d5c0f8770b7940cffcb2b05d28c2301478bc88cf66075ac992f54b2eb",
+          "epoch": 1,
+          "head_path": "deployment/runtime_bundle_r0/score/heads/epoch_01.safetensors",
+          "head_sha256": "47e7b1c89b69e4e7b0f7c4774f4846c8bd987fcfe4f9994c65d407c840dcc34b",
+          "source_state_sha256": "fd317dd017133f2d6120d857a2d7f7d6caebaf547590cead155ca0ffda1a9c7c"
+        },
+        {
+          "adapter_path": "deployment/runtime_bundle_r0/score/adapters/epoch_02/adapter_model.safetensors",
+          "adapter_sha256": "9a5835caacc0a59db2fe5bbb2792cc6f657e3a16d4db63dac8d87279cd0c8819",
+          "epoch": 2,
+          "head_path": "deployment/runtime_bundle_r0/score/heads/epoch_02.safetensors",
+          "head_sha256": "41916a9e1e9deb60f0972b56f86cdc8ad8aea3cd38f103ad5118dc1331531bd2",
+          "source_state_sha256": "dd47ac7ea93dce46da5f9e9b44cf86039331a0973f5f7f21cee46b2f4b85b57d"
+        },
+        {
+          "adapter_path": "deployment/runtime_bundle_r0/score/adapters/epoch_03/adapter_model.safetensors",
+          "adapter_sha256": "de85f123cfe5d7908331eae1a71acfff4258a788863179d6c7d4f54a522e5d4b",
+          "epoch": 3,
+          "head_path": "deployment/runtime_bundle_r0/score/heads/epoch_03.safetensors",
+          "head_sha256": "84e9e051df198cf641688e258e8c31c5e4093c541e64361c6956a66f8f28b35a",
+          "source_state_sha256": "96f5897a27f600b52156dd992e41fa7aefb0d7c6948d3fbf71b0c002939d469d"
+        },
+        {
+          "adapter_path": "deployment/runtime_bundle_r0/score/adapters/epoch_04/adapter_model.safetensors",
+          "adapter_sha256": "ff94022e5056f2ced615dad7ce5ea51b51bd6bbe1139a31e5048d9747e613ec9",
+          "epoch": 4,
+          "head_path": "deployment/runtime_bundle_r0/score/heads/epoch_04.safetensors",
+          "head_sha256": "9773fa1796071c29bb214dbaba4684a3f36f502d1ba1ec214e03a5538d6cae3f",
+          "source_state_sha256": "30b8c677973a2b0df8052cf67a2717ba37b6f64180bc4e48be1572c3e4b6c592"
+        }
+      ]
+    },
+    "runtime_manifest_path": "deployment/runtime_manifest.r0.template.json",
+    "runtime_manifest_sha256": "a44760a93d7f84d31aff2a6531cd5895044db64d394a373ffd154273c25b641d",
+    "score_base": {
+      "model_id": "Qwen/Qwen3-Embedding-8B",
+      "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af"
+    },
+    "slot": "H0",
+    "status": "always_present_protected_deployable_full_train_artifact"
+  },
+  "purpose": "Fix final-candidate decision order before any Stage3 outer result exists; this manifest is not a training, evaluation, or submission runner.",
+  "run_id": "stage6-submission-prereg-v1-20260803-001",
+  "runtime_fill_policy": "After upstream completion, a runtime handoff may fill only the PENDING aggregate hashes, completed outer-artifact hashes, candidate full-refit artifact hashes, and execution metadata. It must not alter any decision-list, gate, refit, calibration, weight, average, or validation field.",
+  "schema_version": "mal2026-stage6-submission-prereg-v1",
+  "status": "preregistered_non_runnable_pending_upstream_artifacts",
+  "upstream_preregistration": {
+    "stage3": {
+      "aggregate_path": "outputs/kure-ordinal-oof-v1/kure-ordinal-oof-v1-20260803-001/aggregate.json",
+      "aggregate_sha256": "PENDING_AFTER_STAGE3_COMPLETION",
+      "allowed_h1_method_id": "coral-natural",
+      "config_file_sha256": "5108e37c490482fbbf45c043f2ad4d0154048d432b4a4a163b3d102f8c6d756e",
+      "config_path": "configs/kure_ordinal_oof.v1.json",
+      "rps_role": "descriptive_only_not_eligible_for_H1_H2_or_full_refit",
+      "run_id": "kure-ordinal-oof-v1-20260803-001"
+    },
+    "stage4": {
+      "aggregate_path": "outputs/prompt-reference-npcr-v1/prompt-reference-npcr-v1-20260803-001/aggregate.json",
+      "aggregate_sha256": "PENDING_AFTER_STAGE4_COMPLETION",
+      "config_file_sha256": "d9b715b24ed4c2144f1fe2a45c79494a953f098e3798e7f2f17a7a5634c63722",
+      "config_path": "configs/prompt_reference_npcr.v1.json",
+      "run_id": "prompt-reference-npcr-v1-20260803-001"
+    },
+    "stage5": {
+      "aggregate_path": "PENDING_AFTER_STAGE5_RUNTIME_CONFIGURATION",
+      "aggregate_sha256": "PENDING_AFTER_STAGE5_COMPLETION",
+      "preregistration_path": "configs/conservative_oof_combiner.prereg.v1.json",
+      "preregistration_sha256": "19a202f375e8e2d47be8d7f21ea015422f85a5d8b45eaccc090b6221cba58b35"
+    }
+  },
+  "validation_descriptive_audit": {
+    "H0": {
+      "may_not_affect_H1_H2_gate_decisions_or_submission_order": true,
+      "reevaluation_forbidden": true,
+      "sole_evaluation": "the existing historical H0 metric recorded with the immutable bundle",
+      "status": "grandfathered_historical_deployable_context_only"
+    },
+    "new_H1_H2_only": {
+      "allowed_outputs": [
+        "aggregate_axis_RMSE",
+        "aggregate_macro_Spearman",
+        "aggregate_low_1_2_tail_RMSE",
+        "aggregate_high_5_tail_RMSE",
+        "aggregate_gold_3_4_balanced_accuracy",
+        "aggregate_calibration_diagnostics"
+      ],
+      "forbidden_actions": [
+        "selection",
+        "ranking",
+        "slot_reordering",
+        "candidate_drop",
+        "retraining",
+        "retuning",
+        "new_submission_candidate",
+        "second_evaluation"
+      ],
+      "maximum_evaluations": "one aggregate-only evaluation per frozen present new slot",
+      "precondition": "each present H1/H2 artifact hash and submission order is written to the append-only run ledger before any validation load",
+      "row_level_validation_output_forbidden": true
+    }
+  }
+}

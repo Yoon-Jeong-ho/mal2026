@@ -185,3 +185,76 @@ After upstream completion, a runnable runtime config may populate only pending
 artifact hashes, their already-fixed deterministic paths, and observed
 completion metadata. It may not change source identity, calibration, weights,
 gate thresholds, or any other scientific value in the preregistration.
+
+## Stage 6 submission decision-list preregistration — 2026-08-03
+
+Before any Stage 3 outer result is read, `configs/stage6_submission_prereg.v1.json`
+fixes at most three hidden submission slots. H0 is always the deployable historical
+full-train R0 epoch-1--4 **axis-wise** continuous prediction ensemble. H1 is
+Stage 3 `coral-natural` only when the fixed common gate passes; otherwise it is
+Stage 4 NPCR only when Stage 4's already-fixed gate passes. H2 is only the
+already-preregistered Stage 5 identity `0.8 * H0 + 0.2 * coral-natural` blend
+when its own fixed gate passes. RPS is descriptive only and is never refit or
+submitted through this decision list.
+
+The Stage 3 gate is fixed as: at least 0.005 macro-RMSE improvement; at most
+0.01 per-axis RMSE worsening and 0.01 gold-3/4 balanced-accuracy loss; at most
+0.005 macro-Spearman loss; non-inferior low `{1,2}` and high `{5}` tails with
+nonzero support in every axis; finite metrics across all five outer folds; and
+a 10,000-resample source-ID-clustered, three-axis-preserving paired-bootstrap
+lower bound strictly above zero for `R0 RMSE - candidate RMSE`.
+
+A final candidate is a frozen procedure, not an outer-fold checkpoint. After
+its decision-list condition passes it may be refit only on all 2,000 canonical
+training rows using the same model family, hyperparameters, seed policy, and
+axis-wise raw-score objective. Stage 4's full-refit candidate is the mode of its
+five already-nested outer selected candidate IDs, with a lexicographic tie-break;
+this does not open a new matrix search. No `average` target, feature, loss, or
+selection metric is permitted.
+
+Validation remains a one-time descriptive aggregate-only audit after hashes for
+all present candidate artifacts and their submission order have been frozen in
+the run ledger. It cannot select, rank, remove, reorder, tune, or re-evaluate a
+candidate. If all Stage 3/4/5 gates fail, H0 alone is retained and empty slots
+are not filled with variants.
+
+### Stage 6 implementation-freeze addendum — pre-commit
+
+The manifest now fixes full-refit seeds rather than merely a seed policy. Stage 3
+`coral-natural` uses base `2026080302` and
+`int.from_bytes(sha256(f'{base}\0full-refit\0coral-natural\0{axis}\0{phase}'.encode()).digest()[:4], 'big') % (2**31 - 1)`:
+phase-1/cRT seeds are content `592530948`/`782205628`, organization
+`677979439`/`152263886`, and expression `286654097`/`1508715968`. Stage 4
+uses its first-15-hex derivation with `outer=full-refit` and `phase=outer-refit`.
+For `adjacent-allskip`, content/organization/expression seeds are `704285545`,
+`1314313536`, and `224474707`; for `adjacent-skip2` they are `1185757628`,
+`1203094570`, and `811459031`.
+
+H2 may exist when the already-preregistered Stage 5 gate passes, independently
+of the standalone Stage 3 H1 gate. Exactly one Stage 3 `coral-natural`
+full-refit artifact is created if either gate passes; H2 always reuses that
+artifact by hash, and H1 reuses the same hash when its Stage 3 gate also passes.
+If H1 falls back to Stage 4 NPCR, H2 still uses that sole coral artifact. A
+second coral refit is forbidden. For an H1 Stage 4 NPCR full refit, the five
+nested outer selected candidate IDs are reduced by a fixed modal rule with
+lexicographic tie-break and no new candidate search.
+
+Deployment is frozen as follows. Stage 3 scores the official prompt plus essay.
+Stage 4 uses the exact H0 score-blind `rank2_ax4_random1` rationale generator
+(seed 42, temperature 0, top-p 1, 512 tokens), exact legacy `_score_input`,
+and public Qwen3-Embedding-8B at revision
+`1d8ad4ca9b3dd8059ad90a75d4983776a23d44af`, with 2,048-token truncation
+and last-nonpadding float32 L2 pooling. It persists the all-2,000 restricted
+same-prompt labeled anchor library and the exact bijective canonical
+prompt-text↔`prompt_num` map (9 unique prompt texts and 9 unique prompt numbers).
+Submission supplies prompt text, so `prompt_num` is inferred only by an exact
+prompt-text match. An unknown/mismatched prompt text, unavailable inferred
+`prompt_num`, or fewer than one eligible anchor uses the query's H0 continuous
+prediction unchanged. H1/H2 reuse the H0 final
+DPO rationale component, conditioned on their own emitted integer scores; the
+blind/final adapter hashes are bound in the manifest.
+
+The historical H0 metric is grandfathered as its sole already-recorded
+contextual evaluation and is never rerun. The one-time descriptive validation
+audit applies only to newly frozen H1/H2 artifacts after their hashes and order
+are ledgered; it cannot affect any gate, slot, ranking, or retuning decision.
