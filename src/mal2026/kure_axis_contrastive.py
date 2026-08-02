@@ -384,7 +384,7 @@ def _dataloader(dataset: EncodedRows, tokenizer: Any, config: AxisContrastiveCon
     return DataLoader(dataset, batch_size=config.per_device_eval_batch_size, shuffle=False, collate_fn=make_collator(tokenizer), num_workers=0, pin_memory=True), None
 
 
-def _train_epochs(model: Any, dataset: EncodedRows, tokenizer: Any, config: AxisContrastiveConfig, epochs: int, *, evaluate: Any | None = None, smoke: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _train_epochs(model: Any, dataset: EncodedRows, tokenizer: Any, config: AxisContrastiveConfig, epochs: int, *, phase: str, evaluate: Any | None = None, smoke: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     import torch
     from transformers import get_linear_schedule_with_warmup
     device = torch.device("cuda")
@@ -424,6 +424,14 @@ def _train_epochs(model: Any, dataset: EncodedRows, tokenizer: Any, config: Axis
         if evaluate is not None:
             event["evaluation"] = evaluate(model, epoch)
         events.append(event)
+        progress = {
+            "event": "epoch_completed", "phase": phase, "arm": config.arm,
+            "axis": config.axis, "epoch": epoch, "epochs": epochs,
+            "global_step": global_step, "train_loss": event["train_losses"]["loss"],
+        }
+        if evaluate is not None:
+            progress["hybrid_rmse"] = event["evaluation"]["methods"]["hybrid"]["continuous_rmse"]
+        print(json.dumps(progress, sort_keys=True), flush=True)
     return events, {"global_step": global_step, "runtime_seconds": time.monotonic() - started}
 
 
@@ -673,7 +681,7 @@ def run(config: AxisContrastiveConfig, *, smoke: bool = False) -> dict[str, Any]
     def evaluate(current_model: Any, _: int) -> dict[str, Any]:
         return evaluate_representation(current_model, selection_train, selection_dev, tokenizer, config)
 
-    events, selection_runtime = _train_epochs(model, selection_train, tokenizer, config, 1 if smoke else len(config.selection_epochs), evaluate=evaluate, smoke=smoke)
+    events, selection_runtime = _train_epochs(model, selection_train, tokenizer, config, 1 if smoke else len(config.selection_epochs), phase="smoke" if smoke else "selection", evaluate=evaluate, smoke=smoke)
     selected = min(events, key=lambda row: (
         float(row["evaluation"]["methods"]["hybrid"]["continuous_rmse"]),
         -float(row["evaluation"]["methods"]["hybrid"]["continuous_spearman"]), int(row["epoch"]),
@@ -694,7 +702,7 @@ def run(config: AxisContrastiveConfig, *, smoke: bool = False) -> dict[str, Any]
     tokenizer, refit_model, refit_initialization = _initialize(config)
     need(refit_initialization == initialization, "selection/refit initialization differs")
     refit_dataset = EncodedRows(all_train, axis_labels(all_train, config.axis), tokenizer, config.max_length)
-    refit_events, refit_runtime = _train_epochs(refit_model, refit_dataset, tokenizer, config, int(selected["epoch"]), evaluate=None)
+    refit_events, refit_runtime = _train_epochs(refit_model, refit_dataset, tokenizer, config, int(selected["epoch"]), phase="refit", evaluate=None)
     state_path = output / "selected_refit_trainable.safetensors"
     save_file(trainable_state(refit_model), str(state_path))
 
