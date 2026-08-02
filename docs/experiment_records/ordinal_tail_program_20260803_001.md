@@ -88,3 +88,39 @@ The existing `.venv-standard` environment does not contain `pytest`. Package
 installation is prohibited, so test modules are executed with Python's
 standard `unittest` runner. This environment limitation and the failed pytest
 probe are preserved in the append-only ignored run ledger.
+
+## Stage 1 frozen-feature result
+
+The five outer folds and the 10,000-resample paired bootstrap completed under
+Git SHA `c79542369b98fd9795697aa414eafe7410499068`. The exploratory candidate
+was selected independently inside each outer-train population; all five folds
+selected `coral-natural`.
+
+| Metric | exploratory CORAL | exact R0 | improvement (positive is better) |
+|---|---:|---:|---:|
+| macro RMSE | 0.631782 | 0.568780 | -0.063002 |
+| equal-group RMSE | 0.792635 | 0.691549 | -0.101086 |
+| low-tail `{1,2}` RMSE | 1.252784 | 0.923335 | -0.329449 |
+| score-5 RMSE | 0.927654 | 0.884190 | -0.043464 |
+| gold-3/4 balanced accuracy | 0.620455 | 0.643313 | -0.022857 |
+| Spearman | 0.485949 | 0.600288 | -0.114339 |
+
+The paired macro-RMSE improvement interval was `[-0.073804, -0.052106]`;
+therefore every point gate and the bootstrap gate failed. The checksum-bound
+protected output remains exact R0. This is retained as a negative result: a
+small ordinal head over the frozen public embedding does not replace the
+fine-tuned R0 scorer.
+
+The preregistered distinct-family ranking still advances only the two cheapest
+representation hypotheses to the end-to-end test:
+
+1. `coral-natural` — mean outer/inner OOF RMSE `0.645302`;
+2. `rps-natural` — mean outer/inner OOF RMSE `0.664481`.
+
+Stage 2 therefore uses the validation-free config
+`configs/kure_ordinal_oof.v1.json`: pinned KURE-v1 plus the checksum-bound
+AI-Hub backbone, independent per-axis LoRA, six phase-one epochs, and a
+three-epoch natural-prior cRT head. Both phases preserve the declared
+`ordinal loss + 0.25 raw-score expected-score MSE` objective. A GPU0 plumbing
+smoke precedes the exact five-fold GPU0–3 OOF run; no canonical validation
+path exists in the Stage 2 config.
