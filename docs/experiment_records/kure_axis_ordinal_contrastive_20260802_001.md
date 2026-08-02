@@ -1,6 +1,7 @@
 # KURE axis-wise ordinal contrastive scoring V1 — preregistration
 
-Status: preregistered; no V1 GPU training result inspected at this commit
+Status: completed; AI-Hub warm start beat the public KURE arm but the fixed
+contrastive scorer did not beat the historical direct KURE control
 
 Date: 2026-08-02 (Asia/Seoul)
 
@@ -174,3 +175,118 @@ a hidden-benchmark improvement.
   result. Never overwrite an existing run directory.
 - Commit reproducibility code/config/aggregate documentation locally; do not
   push. The user will push later.
+
+## External method evidence checked before implementation
+
+The design was informed by Rank-N-Contrast's target-distance ranking
+objective ([NeurIPS 2023](https://papers.nips.cc/paper_files/paper/2023/file/39e9c5913c970e3e49c2df629daff636-Paper-Conference.pdf)),
+RankSim's label/feature neighbor-rank matching
+([ICML 2022](https://proceedings.mlr.press/v162/gong22a.html)), and KURE's
+official CLS-normalize/CachedGIST training contract
+([KURE repository](https://github.com/nlpai-lab/KURE)). The repository does
+not contain Sentence Transformers, FAISS, SciPy, or scikit-learn, so the
+fixed balanced batching, pair/rank loss, and spherical clustering were
+implemented with the maintained local PyTorch/Transformers/PEFT stack. A
+small custom loop was required because the loss couples examples inside an
+exact-score-balanced physical batch and evaluates fit-only prototypes after
+each epoch; the ordinary Trainer random sampler cannot preserve that batch
+contract.
+
+## Execution evidence
+
+- Preregistration/implementation commit: `4afb7ac`.
+- Durable runner commit: `512fb52`.
+- Existing environment: PyTorch 2.11.0+cu130, Transformers 5.14.1, Datasets
+  5.0.0, PEFT 0.19.1.
+- Nine scoped unit tests, Python compilation, JSON parsing, dependency/hash
+  validation, and whitespace checks passed before launch.
+- GPU0 base and AI-Hub-warm-start two-update smokes both exited zero.
+- Full execution ran from 11:02:29 to 11:54:25 KST. The first queue used
+  physical GPUs 0--3 concurrently; the remaining two axes used GPUs 0--1.
+  No pre-existing process was terminated or displaced. An already running
+  delayed idle scheduler was observed and recorded; its own all-GPU-idle gate
+  prevented conflict while this run was active.
+- Active-job telemetry means for GPUs 0/1/2/3 were 92.15/89.25/89.81/90.30%
+  including CPU load/tokenization intervals. Means over nonzero-utilization
+  samples were 98.03/96.96/97.29/95.72%. Peak memory was 30,473/30,473/
+  27,095/29,429 MiB.
+- All six axis states are present and about 29.7 MB each. Total ignored run
+  storage is about 207 MB.
+- Aggregate SHA-256:
+  `340ab23b4e64ec984b652651c8ecdf48333b9af8cf46d7beae6625305d2d89eb`.
+- Append-only ledger SHA-256:
+  `9ff1596192131d64b93420684b1359e2fb34e29c60edde6303a8d0223ff35d62`.
+- GPU telemetry SHA-256:
+  `fa8592cde810d8d92fe7ac35edab467e1867ccab29c74e8b2c47e0117ab6de29`.
+
+## Results
+
+All values below are macro means of the three independently trained axis
+models. Lower RMSE and higher Spearman are better.
+
+### Primary hybrid scorer
+
+| arm | selected epochs C/O/E | train-internal selection RMSE | selection Spearman | descriptive validation RMSE | validation Spearman |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Public KURE base | 5 / 2 / 6 | 0.862604 | 0.188204 | 0.857228 | 0.236203 |
+| AI-Hub full-backbone warm start | 6 / 6 / 6 | **0.704267** | **0.438332** | **0.704142** | **0.471360** |
+
+The AI-Hub warm start materially prevented the severe public-base collapse,
+improving internal RMSE by 0.158337. It nevertheless remained substantially
+worse than the historical direct-KURE descriptive validation result
+0.641856 (difference +0.062286 RMSE). Therefore V1 is a negative result for
+promotion, not a new best model.
+
+AI-Hub-arm descriptive validation hybrid results by axis were:
+
+| axis | RMSE | Spearman | `{1,2}` RMSE | score-5 RMSE | gold-3/4 balanced accuracy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| content | 0.649867 | 0.454427 | 1.126741 | 1.520089 | 0.672277 |
+| organization | 0.834004 | 0.429946 | 1.167258 | 1.545515 | 0.574852 |
+| expression | 0.628554 | 0.529707 | 1.205120 | 1.142751 | 0.658739 |
+| macro | **0.704142** | **0.471360** | **1.166373** | **1.402785** | **0.635289** |
+
+Organization remains the dominant failure. Its label-centroid adjacent cosine
+was 0.992372 while its nonadjacent mean was still 0.940859, so the metric
+space did not create enough score separation. Content and expression had
+larger gaps (0.921582 vs 0.658475 and 0.818774 vs 0.293927 respectively) but
+their tail errors remained high.
+
+### Inference ablation
+
+| inference method | AI-Hub selection RMSE | AI-Hub descriptive validation RMSE |
+| --- | ---: | ---: |
+| continuous head | 0.744511 | 0.748780 |
+| soft label prototypes | 0.755461 | 0.759558 |
+| **fixed primary hybrid** | **0.704267** | **0.704142** |
+| score-conditioned spherical k=2 | 0.751129 | 0.750780 |
+| interpolated 0.5 centers | 1.231258 | 1.244564 |
+| interpolated 0.1 centers | 1.225051 | 1.240814 |
+
+The hybrid rescued part of each component's error, but neither clustering nor
+hard nearest-center scoring improved it. Fine 0.1 centers were only 0.00375
+better than 0.5 centers on descriptive validation and both were unusable.
+Since the supervised labels are integers, denser interpolation added no new
+training signal; nearest angular position among high-dimensional linearly
+interpolated centroids amplified poorly separated directions instead.
+
+## Decision and limits
+
+V1 proves that the requested three-axis KURE contrastive pipeline, balanced
+hard-negative batches, AI-Hub stage-1 comparison, prototypes, clustering, and
+0.1/0.5 inference can run reproducibly. It does **not** show a score gain over
+the existing direct encoder, so none of the six V1 checkpoints is promoted.
+
+The public-base arm's prototype geometry nearly collapsed; the AI-Hub arm
+retained ordinal information but its contrastive weights and flexible
+256-dimensional projection did not enforce enough center separation,
+especially for organization. A materially different future experiment could
+pre-register fixed two-dimensional ordinal angular anchors or proxy-ordinal
+loss rather than post hoc increasing V1 weights. That is not silently tried
+against this already observed validation population.
+
+Canonical validation was read once after each all-train refit exactly as
+planned, but it had been exposed in older repository work. These results are
+technical/descriptive and make no claim about the hidden benchmark. Exact R0
+OOF 0.568780 is on a different population/protocol and is not compared as if
+it were validation RMSE.

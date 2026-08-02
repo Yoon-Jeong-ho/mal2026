@@ -326,6 +326,22 @@ is common to both arms, but lacks an external sampled-logprob TIS/MIS
 correction.  See the linked experiment record for exact commands, gates,
 aggregate metrics, framework caveat, and current continuation state.
 
+## KURE axis-wise ordinal contrastive study (completed, negative)
+
+Three independent content/organization/expression KURE LoRA encoders were
+trained with score-balanced batches, ordinal cosine/rank losses, and fit-only
+prototype inference. Public KURE and the completed 48,016-row AI-Hub
+full-backbone warm start were compared. The AI-Hub arm was clearly better
+internally, but its fixed hybrid scorer still reached only `0.704267`
+train-internal selection RMSE and `0.704142` descriptive validation RMSE,
+worse than the historical direct-KURE validation control `0.641856`.
+Spherical k=2 scoring reached `0.750780`; interpolated 0.5/0.1 nearest centers
+reached `1.244564`/`1.240814` and were rejected. No V1 checkpoint is promoted.
+See
+`docs/experiment_records/kure_axis_ordinal_contrastive_20260802_001.md` for
+the axis metrics, hard-negative/centroid contract, GPU evidence, hashes, and
+the repeated-validation limitation.
+
 ## Local static/unit checks
 
 Run the repository tests without exposing restricted inputs:
