@@ -398,6 +398,15 @@ def promotion_gate(truth: np.ndarray, baseline: np.ndarray, candidate: np.ndarra
             "exact_r0_metrics": base, "candidate_metrics": cand}
 
 
+def _assert_private_file(path: Path) -> None:
+    # The project restricted volume may coerce 0660 to its inherited 0770
+    # group-private ACL.  Match the KURE/NPCR writers: require owner rw and
+    # reject every world bit; execute bits add no disclosure for JSONL data.
+    mode = path.stat().st_mode
+    need(mode & 0o007 == 0 and mode & 0o600 == 0o600,
+         "restricted output permissions differ")
+
+
 def _private_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> str:
     need(not path.exists(), "refusing to overwrite restricted combiner output")
     path.parent.mkdir(parents=True, exist_ok=True); os.chmod(path.parent, 0o770)
@@ -409,7 +418,7 @@ def _private_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> str:
         os.chmod(temporary, 0o660); os.replace(temporary, path); os.chmod(path, 0o660)
     except Exception:
         Path(temporary).unlink(missing_ok=True); raise
-    need(path.stat().st_mode & 0o007 == 0 and path.stat().st_mode & 0o111 == 0, "restricted output permissions differ")
+    _assert_private_file(path)
     return file_sha256(path)
 
 

@@ -11,7 +11,7 @@ import numpy as np
 
 from mal2026.conservative_oof_combiner import (
     CALIBRATION_STATUS, PREREGISTRATION_SHA256, CombinerConfig, ConservativeCombinerError, FoldFile, SourceSpec,
-    _load_source_fold, _validate_upstream_aggregate, fit_outer_combiner, fixed_candidate, promotion_gate,
+    _assert_private_file, _load_source_fold, _private_jsonl, _validate_upstream_aggregate, fit_outer_combiner, fixed_candidate, promotion_gate,
 )
 from mal2026.iterative_tail_metrics import AXES
 
@@ -53,6 +53,17 @@ def config_mapping() -> dict:
 
 
 class ConservativeCombinerTests(unittest.TestCase):
+    def test_private_writer_accepts_project_acl_and_rejects_world_bits(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "restricted" / "rows.jsonl"
+            _private_jsonl(path, [{"source_id": "x"}])
+            self.assertEqual(path.stat().st_mode & 0o777, 0o660)
+            path.chmod(0o770)
+            _assert_private_file(path)
+            path.chmod(0o774)
+            with self.assertRaisesRegex(ConservativeCombinerError, "permissions"):
+                _assert_private_file(path)
+
     def test_config_forbids_validation_and_average(self) -> None:
         CombinerConfig.from_mapping(config_mapping())
         invalid = dict(config_mapping(), note="validation rows")
