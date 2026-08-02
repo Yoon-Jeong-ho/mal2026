@@ -10,7 +10,7 @@ from unittest.mock import patch
 import numpy as np
 
 from mal2026.conservative_oof_combiner import (
-    CALIBRATION_STATUS, CombinerConfig, ConservativeCombinerError, FoldFile, SourceSpec,
+    CALIBRATION_STATUS, PREREGISTRATION_SHA256, CombinerConfig, ConservativeCombinerError, FoldFile, SourceSpec,
     _load_source_fold, _validate_upstream_aggregate, fit_outer_combiner, fixed_candidate, promotion_gate,
 )
 from mal2026.iterative_tail_metrics import AXES
@@ -23,14 +23,21 @@ def config_mapping() -> dict:
         "fold_manifest_path": "manifest.json", "fold_manifest_sha256": "b" * 64,
         "fold_rows_path": "rows.jsonl", "fold_rows_sha256": "c" * 64,
         "r0_oof_prediction_path": "r0.jsonl", "r0_oof_prediction_sha256": "d" * 64,
+        "preregistration_path": "configs/conservative_oof_combiner.prereg.v1.json",
+        "preregistration_sha256": PREREGISTRATION_SHA256,
         "sources": [{"id": "stage3-coral", "kind": "stage3_kure", "provenance": "standard_5fold_oof",
-            "upstream_run_id": "kure-run", "upstream_config_sha256": "e" * 64,
+            "upstream_run_id": "kure-ordinal-oof-v1-20260803-001",
+            "upstream_config_sha256": "28e6ba7465b91ba1fcc306f97f10a8e213d4a6e0069ba499fd92199d827a15aa",
             "upstream_outer_schema": "kure-outer-v1", "upstream_aggregate_schema": "kure-aggregate-v1",
             "upstream_method_id": "coral-natural", "upstream_method_inventory": ["coral-natural"],
-            "aggregate_path": "aggregate.json", "aggregate_sha256": "f" * 64,
+            "aggregate_path": "outputs/kure-ordinal-oof-v1/kure-ordinal-oof-v1-20260803-001/aggregate.json",
+            "aggregate_sha256": "f" * 64,
             "fold_files": [
-            {"outer_fold": fold, "public_path": f"public-{fold}.json", "public_sha256": str(fold) * 64,
-             "restricted_path": f"restricted-{fold}.jsonl", "restricted_sha256": str(fold + 1) * 64}
+            {"outer_fold": fold,
+             "public_path": f"outputs/kure-ordinal-oof-v1/kure-ordinal-oof-v1-20260803-001/outer-{fold:02d}.json",
+             "public_sha256": str(fold) * 64,
+             "restricted_path": f"data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-{fold:02d}/coral-natural/predictions.jsonl",
+             "restricted_sha256": str(fold + 1) * 64}
             for fold in range(5)]}],
         "output_root": "outputs/combiner", "restricted_output_root": "data/processed/restricted/combiner",
         "seed": 17, "axes": list(AXES), "average_target_forbidden": True,
@@ -57,6 +64,22 @@ class ConservativeCombinerTests(unittest.TestCase):
         invalid = config_mapping()
         invalid["promotion_gate"]["maximum_spearman_drop"] = 0.006
         with self.assertRaisesRegex(ConservativeCombinerError, "promotion gate"):
+            CombinerConfig.from_mapping(invalid)
+
+    def test_preregistration_tamper_and_stage3_lineage_mismatch_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            tampered = Path(temporary) / "prereg.json"
+            original = Path("configs/conservative_oof_combiner.prereg.v1.json").read_bytes()
+            tampered.write_bytes(original + b"\n")
+            invalid = config_mapping()
+            invalid["preregistration_path"] = str(tampered)
+            invalid["preregistration_sha256"] = hashlib.sha256(tampered.read_bytes()).hexdigest()
+            with self.assertRaisesRegex(ConservativeCombinerError, "preregistration checksum"):
+                CombinerConfig.from_mapping(invalid)
+
+        invalid = config_mapping()
+        invalid["sources"][0]["upstream_config_sha256"] = "9" * 64
+        with self.assertRaisesRegex(ConservativeCombinerError, "Stage3 run/config/report"):
             CombinerConfig.from_mapping(invalid)
 
     def test_standard_oof_learned_fitting_rejected_and_fixed_math_held_safe(self) -> None:

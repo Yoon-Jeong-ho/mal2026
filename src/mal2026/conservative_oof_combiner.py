@@ -26,6 +26,9 @@ from .r0_ordinal_residual import load_embedding_artifact
 
 SCHEMA_VERSION = "mal2026-conservative-oof-combiner-v1"
 CALIBRATION_STATUS = "unavailable_requires_genuinely_outer_nested_base_predictions"
+PREREGISTRATION_SCHEMA = "mal2026-conservative-oof-combiner-prereg-v1"
+PREREGISTRATION_SHA256 = "19a202f375e8e2d47be8d7f21ea015422f85a5d8b45eaccc090b6221cba58b35"
+PREREGISTRATION_COMMIT = "722a46ba51399066e402dc7f9f3a67ea40e19ee0"
 
 
 class ConservativeCombinerError(ValueError):
@@ -118,6 +121,8 @@ class CombinerConfig:
     fold_rows_sha256: str
     r0_oof_prediction_path: str
     r0_oof_prediction_sha256: str
+    preregistration_path: str
+    preregistration_sha256: str
     sources: tuple[SourceSpec, ...]
     output_root: str
     restricted_output_root: str
@@ -165,7 +170,7 @@ class CombinerConfig:
              "fixed Stage3 coral partner is absent")
         need(Path(self.output_root).resolve() != Path(self.restricted_output_root).resolve(), "public/restricted roots must differ")
         for digest in (self.train_sha256, self.fold_manifest_sha256, self.fold_rows_sha256,
-                       self.r0_oof_prediction_sha256, self.config_sha256):
+                       self.r0_oof_prediction_sha256, self.preregistration_sha256, self.config_sha256):
             need(len(digest) == 64, "checksum format differs")
         gate = self.promotion_gate
         expected = {"minimum_macro_rmse_improvement", "maximum_axis_rmse_worsening",
@@ -179,6 +184,59 @@ class CombinerConfig:
              and gate["low_tail_noninferior"] is True and gate["high_tail_noninferior"] is True
              and int(gate["paired_bootstrap_resamples"]) == 10000
              and gate["paired_bootstrap_lower_bound_above_zero"] is True, "promotion gate differs")
+        _load_preregistration(self)
+
+
+def _load_preregistration(config: CombinerConfig) -> Mapping[str, Any]:
+    need(config.preregistration_sha256 == PREREGISTRATION_SHA256
+         and file_sha256(config.preregistration_path) == PREREGISTRATION_SHA256,
+         "preregistration checksum differs")
+    try:
+        preregistration = json.loads(Path(config.preregistration_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConservativeCombinerError("preregistration is unreadable") from exc
+    need(preregistration.get("schema_version") == PREREGISTRATION_SCHEMA
+         and preregistration.get("status") == "preregistered_non_runnable_pending_artifacts"
+         and preregistration.get("stage3_outer_output_count_observed_at_preregistration") == 0,
+         "preregistration identity/pre-result evidence differs")
+
+    lineage = preregistration.get("stage3_lineage")
+    partner = next((item for item in config.sources if item.identifier == config.fixed_partner_source_id), None)
+    need(isinstance(lineage, Mapping) and partner is not None
+         and lineage.get("run_id") == partner.upstream_run_id
+         and lineage.get("upstream_report_config_sha256") == partner.upstream_config_sha256
+         and file_sha256(lineage.get("config_path", "")) == lineage.get("config_file_sha256"),
+         "preregistered Stage3 run/config/report binding differs")
+
+    contract = preregistration.get("scientific_contract")
+    need(isinstance(contract, Mapping) and set(contract) == {
+        "combination_mode", "partner_source", "partner_method_id", "calibration",
+        "learned_calibration_or_weight_selection", "r0_weight", "partner_weight",
+        "members", "axes", "average_target_forbidden", "promotion_gate"},
+        "preregistered scientific contract fields differ")
+    expected_gate = dict(config.promotion_gate)
+    expected_gate["require_nonzero_low_1_2_and_high_5_support_every_axis"] = True
+    need(contract["combination_mode"] == config.combination_mode
+         and contract["partner_source"] == partner.kind
+         and contract["partner_method_id"] == config.fixed_partner_method_id
+         and contract["calibration"] == "identity"
+         and contract["learned_calibration_or_weight_selection"] is False
+         and float(contract["r0_weight"]) == 0.8
+         and float(contract["partner_weight"]) == config.fixed_partner_weight
+         and contract["members"] == 2
+         and tuple(contract["axes"]) == config.axes
+         and contract["average_target_forbidden"] == config.average_target_forbidden
+         and contract["promotion_gate"] == expected_gate,
+         "runtime config differs from preregistered scientific contract")
+
+    templates = preregistration.get("artifact_path_templates")
+    need(isinstance(templates, Mapping)
+         and partner.aggregate_path == templates.get("stage3_aggregate")
+         and all(binding.public_path == templates["stage3_outer_public"].format(outer_fold=binding.outer_fold)
+                 and binding.restricted_path == templates["stage3_coral_restricted"].format(outer_fold=binding.outer_fold)
+                 for binding in partner.fold_files),
+         "runtime Stage3 artifact paths differ from preregistration")
+    return preregistration
 
 
 def fit_outer_combiner(*_: Any, **__: Any) -> tuple[np.ndarray, Mapping[str, Any]]:
@@ -402,6 +460,11 @@ def run(config: CombinerConfig | str | Path, *, validate_only: bool = False) -> 
               "promotion_gate": gate,
               "protected_output": "candidate" if gate["eligible"] else "exact_r0_identity",
               "restricted_predictions_sha256": restricted_sha, "config_sha256": value.config_sha256,
+              "preregistration_sha256": value.preregistration_sha256,
+              "preregistration_commit": PREREGISTRATION_COMMIT,
+              "preregistration_pre_result_evidence": {
+                  "stage3_outer_output_count_before_commit": 0,
+                  "stage3_outer_output_count_after_commit": 0},
               "train_sha256": value.train_sha256, "fold_rows_sha256": value.fold_rows_sha256,
               "fold_manifest_sha256": value.fold_manifest_sha256,
               "r0_oof_prediction_sha256": value.r0_oof_prediction_sha256,
@@ -420,6 +483,7 @@ def run(config: CombinerConfig | str | Path, *, validate_only: bool = False) -> 
     return result
 
 
-__all__ = ["CALIBRATION_STATUS", "CombinerConfig", "ConservativeCombinerError", "FoldFile",
+__all__ = ["CALIBRATION_STATUS", "PREREGISTRATION_COMMIT", "PREREGISTRATION_SHA256",
+           "CombinerConfig", "ConservativeCombinerError", "FoldFile",
            "SourceSpec", "fit_outer_combiner", "fixed_candidate", "load_inputs",
            "promotion_gate", "run"]
