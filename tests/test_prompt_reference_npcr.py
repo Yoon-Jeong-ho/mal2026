@@ -13,7 +13,7 @@ import torch
 
 from mal2026.prompt_reference_npcr import (
     NPCRConfig, NPCRRow, PairSamplingSpec, PromptReferenceNPCRError, _validate_public_payload,
-    _atomic_jsonl_private, bound_r0_predictions, build_prompt_pairs, build_utility_network,
+    _assert_private_file, _atomic_jsonl_private, bound_r0_predictions, build_prompt_pairs, build_utility_network,
     load_canonical_raw_rows, ordinal_band, outer_and_inner_indices, recover_absolute_scores,
     select_anchors, train_utility_network, utility_difference,
 )
@@ -117,6 +117,15 @@ class PromptReferenceNPCRTests(unittest.TestCase):
             _atomic_jsonl_private(path, [{"source_id": "x"}])
             self.assertEqual(path.stat().st_mode & 0o777, 0o660)
             self.assertEqual(path.parent.stat().st_mode & 0o007, 0)
+
+            # The project volume may coerce files to its group-private 0770
+            # ACL.  That mode remains acceptable, while any world bit must
+            # still fail closed.
+            path.chmod(0o770)
+            _assert_private_file(path)
+            path.chmod(0o774)
+            with self.assertRaisesRegex(PromptReferenceNPCRError, "project-private"):
+                _assert_private_file(path)
 
 
 if __name__ == "__main__":
