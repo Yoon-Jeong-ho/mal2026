@@ -1,0 +1,61 @@
+{
+  "schema_version": "mal2026-conservative-oof-combiner-prereg-v1",
+  "status": "preregistered_non_runnable_pending_artifacts",
+  "preregistered_at": "2026-08-03T03:57:01+09:00",
+  "stage3_outer_output_count_observed_at_preregistration": 0,
+  "stage3_lineage": {
+    "run_id": "kure-ordinal-oof-v1-20260803-001",
+    "config_path": "configs/kure_ordinal_oof.v1.json",
+    "config_file_sha256": "5108e37c490482fbbf45c043f2ad4d0154048d432b4a4a163b3d102f8c6d756e",
+    "upstream_report_config_sha256": "28e6ba7465b91ba1fcc306f97f10a8e213d4a6e0069ba499fd92199d827a15aa",
+    "stage2_aggregate_path": "outputs/ordinal-tail-program-v1/ordinal-tail-program-v1-20260803-001/fixed_feature/aggregate.json",
+    "stage2_aggregate_sha256": "ab6344591fceb9a889d182f3303d5a0ea236f2c103b69e2ad8d0cf751139f17d"
+  },
+  "stage4_lineage": {
+    "run_id": "prompt-reference-npcr-v1-20260803-001",
+    "config_path": "configs/prompt_reference_npcr.v1.json",
+    "config_file_sha256": "d9b715b24ed4c2144f1fe2a45c79494a953f098e3798e7f2f17a7a5634c63722",
+    "upstream_report_config_sha256": "d9b715b24ed4c2144f1fe2a45c79494a953f098e3798e7f2f17a7a5634c63722",
+    "role": "checksum_bound_audit_source_not_a_combination_member"
+  },
+  "scientific_contract": {
+    "combination_mode": "preregistered_fixed_standard_oof",
+    "partner_source": "stage3_kure",
+    "partner_method_id": "coral-natural",
+    "calibration": "identity",
+    "learned_calibration_or_weight_selection": false,
+    "r0_weight": 0.8,
+    "partner_weight": 0.2,
+    "members": 2,
+    "axes": ["content", "organization", "expression"],
+    "average_target_forbidden": true,
+    "promotion_gate": {
+      "minimum_macro_rmse_improvement": 0.005,
+      "maximum_axis_rmse_worsening": 0.01,
+      "maximum_gold_3_4_balanced_accuracy_drop": 0.01,
+      "maximum_spearman_drop": 0.005,
+      "low_tail_noninferior": true,
+      "high_tail_noninferior": true,
+      "require_nonzero_low_1_2_and_high_5_support_every_axis": true,
+      "paired_bootstrap_resamples": 10000,
+      "paired_bootstrap_lower_bound_above_zero": true
+    }
+  },
+  "artifact_path_templates": {
+    "stage3_aggregate": "outputs/kure-ordinal-oof-v1/kure-ordinal-oof-v1-20260803-001/aggregate.json",
+    "stage3_outer_public": "outputs/kure-ordinal-oof-v1/kure-ordinal-oof-v1-20260803-001/outer-{outer_fold:02d}.json",
+    "stage3_coral_restricted": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-{outer_fold:02d}/coral-natural/predictions.jsonl",
+    "stage4_aggregate": "outputs/prompt-reference-npcr-v1/prompt-reference-npcr-v1-20260803-001/aggregate.json",
+    "stage4_outer_public": "outputs/prompt-reference-npcr-v1/prompt-reference-npcr-v1-20260803-001/outer-{outer_fold:02d}.json",
+    "stage4_restricted": "data/processed/restricted/prompt_reference_npcr_v1/prompt-reference-npcr-v1-20260803-001/outer-{outer_fold:02d}.jsonl"
+  },
+  "pending_runtime_bindings": {
+    "stage3_aggregate_sha256": "PENDING_AFTER_STAGE3_COMPLETION",
+    "stage3_outer_public_sha256_by_fold": "PENDING_AFTER_STAGE3_COMPLETION",
+    "stage3_coral_restricted_sha256_by_fold": "PENDING_AFTER_STAGE3_COMPLETION",
+    "stage4_aggregate_sha256": "PENDING_AFTER_STAGE4_COMPLETION",
+    "stage4_outer_public_sha256_by_fold": "PENDING_AFTER_STAGE4_COMPLETION",
+    "stage4_restricted_sha256_by_fold": "PENDING_AFTER_STAGE4_COMPLETION"
+  },
+  "runtime_fill_policy": "A later runnable config may fill only artifact hashes, deterministic artifact paths, and observed completion metadata; it may not change any scientific_contract value."
+}

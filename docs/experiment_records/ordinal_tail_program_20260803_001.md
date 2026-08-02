@@ -168,3 +168,20 @@ run unless that attestation still matches, then schedules folds 0/4 on GPU0
 serially and folds 1/2/3 on GPUs 1/2/3. Both modes refuse occupied GPUs and
 never overwrite outputs. No Stage 4 GPU launch has occurred while Stage 3 owns
 GPUs 0--3.
+
+## Stage 5 pre-result preregistration — 2026-08-03T03:57:01+09:00
+
+At registration time, the observed count of Stage 3 outer output JSON files was
+exactly `0`. The non-runnable manifest
+`configs/conservative_oof_combiner.prereg.v1.json` therefore fixes the Stage 5
+scientific choices before any Stage 3 outer result exists: the source method is
+`coral-natural`, calibration is identity with no learned calibration or weight
+selection, and the only candidate is `0.8 * exact_R0 + 0.2 * coral-natural`.
+The manifest also fixes every promotion threshold, including Spearman
+non-inferiority with at most `0.005` loss, and deterministic Stage 3/4 artifact
+path templates.
+
+After upstream completion, a runnable runtime config may populate only pending
+artifact hashes, their already-fixed deterministic paths, and observed
+completion metadata. It may not change source identity, calibration, weights,
+gate thresholds, or any other scientific value in the preregistration.
