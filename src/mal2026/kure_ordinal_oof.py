@@ -87,8 +87,14 @@ def _secure_dir(path: Path) -> None:
     for directory in reversed(missing):
         os.chmod(directory, 0o700)
     os.chmod(path, 0o700)
-    need(all((directory.stat().st_mode & 0o777) == 0o700 for directory in [path, *missing]),
-         "restricted directory permission differs")
+    # The project volume enforces a group-restricted 0770 ACL even after a
+    # 0700 chmod.  Accept user-only or project-group-only access, but fail
+    # closed if any world bit is present or the owner lacks full access.
+    need(all(
+        ((directory.stat().st_mode & 0o007) == 0)
+        and ((directory.stat().st_mode & 0o700) == 0o700)
+        for directory in [path, *missing]
+    ), "restricted directory permission differs")
 
 
 @dataclass(frozen=True)
@@ -444,7 +450,9 @@ def _write_json_fresh(path: Path, value: Mapping[str, Any], *, private: bool = F
         raise
     if private:
         os.chmod(path, 0o600)
-        need((path.stat().st_mode & 0o777) == 0o600, "restricted JSON permission differs")
+        mode = path.stat().st_mode & 0o777
+        need((mode & 0o007) == 0 and (mode & 0o600) == 0o600,
+             "restricted JSON permission differs")
     return file_sha256(path)
 
 
@@ -472,7 +480,9 @@ def _write_jsonl_fresh(path: Path, rows: Sequence[Mapping[str, Any]]) -> str:
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
-    need((path.stat().st_mode & 0o777) == 0o600, "restricted JSONL permission differs")
+    mode = path.stat().st_mode & 0o777
+    need((mode & 0o007) == 0 and (mode & 0o600) == 0o600,
+         "restricted JSONL permission differs")
     return file_sha256(path)
 
 
@@ -482,7 +492,9 @@ def _save_checkpoint_fresh(path: Path, state: Mapping[str, Any]) -> str:
     _secure_dir(path.parent)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     save_file(dict(state), str(temporary)); os.chmod(temporary, 0o600); os.replace(temporary, path)
-    need((path.stat().st_mode & 0o777) == 0o600, "restricted checkpoint permission differs")
+    mode = path.stat().st_mode & 0o777
+    need((mode & 0o007) == 0 and (mode & 0o600) == 0o600,
+         "restricted checkpoint permission differs")
     return file_sha256(path)
 
 

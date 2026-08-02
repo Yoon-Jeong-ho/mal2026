@@ -142,9 +142,10 @@ class KUREOrdinalOOFTests(unittest.TestCase):
         _write_jsonl_fresh(rows, [{"source_id": "restricted"}])
         checkpoint = root / "state.safetensors"
         checkpoint_sha = _save_checkpoint_fresh(checkpoint, {"head.weight": torch.ones(1, 1)})
-        self.assertEqual(root.stat().st_mode & 0o777, 0o700)
-        self.assertEqual(manifest.stat().st_mode & 0o777, 0o600)
-        self.assertEqual(rows.stat().st_mode & 0o777, 0o600)
+        for path, owner_required in ((root, 0o700), (manifest, 0o600), (rows, 0o600)):
+            mode = path.stat().st_mode & 0o777
+            self.assertEqual(mode & 0o007, 0)
+            self.assertEqual(mode & owner_required, owner_required)
         self.assertEqual(checkpoint.stat().st_mode & 0o777, 0o600)
         self.assertEqual(checkpoint_sha, file_sha256(checkpoint))
 
