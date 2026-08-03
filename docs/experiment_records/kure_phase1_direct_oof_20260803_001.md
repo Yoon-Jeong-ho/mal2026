@@ -89,12 +89,47 @@ with cRT caused avoidable central collapse.
 ## Pending before runnable status
 
 1. Explicit user authorization for this named phase-1 direct-decode protocol.
-2. Independent code review with no launch blockers.
-3. A committed data-steward generator, followed by one fresh label-free projection
-   and manifest whose hashes are inserted into the config. Candidate inference and
-   the data-steward stage remain operationally separated.
-4. A committed runnable config binding this task-card SHA and every checkpoint
+2. A committed runnable config binding the final authorized task-card SHA and every checkpoint
    SHA, plus exact commands, seeds, environment, hardware mapping, ACL and
    telemetry evidence fields.
-5. A new append-only authorization entry quoting the approval without adding
+3. A new append-only authorization entry quoting the approval without adding
    evaluation content or identifiers.
+
+## Completed preparation evidence
+
+- Preparation/code commit:
+  `10cb2e430eff03c40089e9be9eec1f211496c093`
+- Data-steward command:
+  `.venv-standard/bin/python scripts/prepare_kure_phase1_direct_input.py --config configs/kure_phase1_direct_oof.v1.json`
+- Preparation-request config SHA-256:
+  `54fc72c254939adba8f46cbc8b5881b52a36ec8f2eb230b3344043015b63392c`
+- Generator SHA-256:
+  `02fc15af87bc022a18e4fd54e9ed414708997f76792c61e6bb956d97683ad0c4`
+- Restricted label-free projection:
+  - SHA-256: `602e6e39f21ce13abbcc3463af6b01b100da096da4b07d90e279cf43012a5170`
+  - 2,000 rows; exactly 400 rows per frozen outer fold.
+  - Exact top-level schema: `id`, `document_id`, `prompt_num`, `prompt`,
+    `essay`, and `outer_fold`; no score, average, gold, or label field.
+- Restricted manifest SHA-256:
+  `a208b0b538703fa0410ec52b8cf9f7332cdac6489912a358ff42d8a36503d98f`
+- Both restricted artifacts and every parent through the restricted anchor have
+  zero world permission bits. The project filesystem reports mode `0770` for
+  these ordinary files despite the generator requesting `0660`; privacy checks
+  therefore enforce the repository boundary (owner/group only) rather than an
+  unsupported exact mode.
+- The generator ran exactly once. No GPU, model inference, metric computation,
+  validation row, or scientific result was used in this preparation stage.
+
+## Independent code-review evidence
+
+- Final disposition: **APPROVE for code preparation only; not approval to run**.
+- Focused unit tests: 18/18 passed.
+- Python compilation and Bash syntax checks passed.
+- The pending launcher dynamically failed before GPU query, lock acquisition,
+  or output creation.
+- The review found no remaining critical, high, medium, or low code issue after
+  fixes for held-label isolation, checkpoint lineage, fail-closed scheduler and
+  telemetry handling, live-job-only cleanup, no-clobber publication, ACL checks,
+  prediction-band reporting, and failure-ledger preservation.
+- LSP/type-check tools were absent from the existing environment and were not
+  installed, consistent with the repository environment policy.
