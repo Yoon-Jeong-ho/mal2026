@@ -528,8 +528,20 @@ def _held_gold_after_persist(path: Path, expected_sha256: str, held_ids: set[str
     return result
 
 
+def set_process_title(stage: str) -> str:
+    """Expose the current MAL2026 direct-evaluation stage in process listings."""
+    need(stage and len(stage) <= 96 and all(char.isalnum() or char in "._:-" for char in stage),
+         "process-title stage differs")
+    import setproctitle
+    title = f"mal2026:direct:{stage}"
+    setproctitle.setproctitle(title)
+    need(setproctitle.getproctitle() == title, "setproctitle did not preserve the requested title")
+    return title
+
+
 def _environment() -> Mapping[str, Any]:
     import torch
+    import setproctitle
     try:
         import transformers
         transformers_version = transformers.__version__
@@ -538,7 +550,8 @@ def _environment() -> Mapping[str, Any]:
     return {"python": sys.version.split()[0], "platform": platform.platform(), "torch": torch.__version__,
             "transformers": transformers_version, "cuda": torch.version.cuda,
             "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
-            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES")}
+            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+            "process_title": setproctitle.getproctitle()}
 
 
 def _git_sha() -> str:
@@ -551,11 +564,13 @@ def run(config: KUREPhase1DirectOOFConfig | str | Path, *, outer_fold: int,
     need(outer_fold in range(5), "outer fold must be 0..4")
     need(not smoke or outer_fold == 0, "smoke requires outer fold 0")
     if validate_only:
+        set_process_title("validate")
         # Pending drafts intentionally have unfilled post-commit projection/card hashes.
         if value.status == "authorized": value.validate_safe_dependencies()
         return {"schema_version": SCHEMA_VERSION, "status": "validated", "execution_authorized": value.execution_authorized,
                 "checkpoint_bindings": 15, "validation_rows_loaded": False, "average_target_used": False, "gpu_used": False}
     value.require_execution_authorization()
+    set_process_title(f"{'smoke' if smoke else 'oof'}:f{outer_fold}:load")
     import torch
     from transformers import AutoTokenizer
     need(torch.cuda.is_available(), "phase1-direct inference requires an explicitly launched GPU job")
@@ -573,6 +588,7 @@ def run(config: KUREPhase1DirectOOFConfig | str | Path, *, outer_fold: int,
     predictions = []
     axis_bindings = []
     for axis in axes:
+        set_process_title(f"{'smoke' if smoke else 'oof'}:f{outer_fold}:{axis}")
         binding = next(item for item in value.checkpoint_bindings if item.outer_fold == outer_fold and item.axis == axis)
         model, disclosure = restore_phase1_model(source, binding)
         prediction = _predict(model, held, tokenizer, batch_size=value.batch_size, max_length=value.max_length,
@@ -582,6 +598,7 @@ def run(config: KUREPhase1DirectOOFConfig | str | Path, *, outer_fold: int,
                               "decode": "saved_phase1_CORAL_PMF_expected_score", **disclosure})
         del model; torch.cuda.empty_cache()
     matrix = np.column_stack(predictions)
+    set_process_title(f"{'smoke' if smoke else 'oof'}:f{outer_fold}:persist")
     restricted = Path(value.restricted_output_root) / ("smoke/outer-00" if smoke else f"outer-{outer_fold:02d}")
     private_path = restricted / METHOD / "predictions.jsonl"
     private_sha = _atomic_private_jsonl(private_path, (
@@ -721,8 +738,9 @@ def summarize_gpu_telemetry(path: Path, selected_gpus: Sequence[int], minimum_sa
             "minimum_samples_per_gpu": minimum_samples, "gpus": summaries}
 
 
-def scheduler_state_conflict(state: Mapping[str, Any], selected_gpus: Sequence[int], *, age_seconds: float) -> str | None:
-    """Return a fail-closed conflict reason for the named 004 idle scheduler."""
+def scheduler_state_conflict(state: Mapping[str, Any], selected_gpus: Sequence[int], *, age_seconds: float,
+                             expected_run_id: str = "vllm-soak-gpu0-3-120h-20260803-004") -> str | None:
+    """Return a fail-closed conflict reason for an explicitly named idle scheduler."""
     allowed = {"delayed", "armed", "launched", "launched_then_stopped_by_user",
                "superseded_before_launch", "expired_without_launch"}
     need(isinstance(state, Mapping) and state.get("schema_version") == "mal2026-vllm-idle-arm-state-v1",
@@ -730,9 +748,10 @@ def scheduler_state_conflict(state: Mapping[str, Any], selected_gpus: Sequence[i
     status = state.get("status")
     need(status in allowed, "active scheduler status is unknown")
     need(state.get("physical_gpus") == [0, 1, 2, 3], "active scheduler GPU inventory is malformed")
-    expected_run = "vllm-soak-gpu0-3-120h-20260803-004"
     identity = state.get("run_id") if status in {"launched", "launched_then_stopped_by_user"} else state.get("planned_run_id")
-    need(identity == expected_run, "active scheduler run identity is malformed")
+    need(expected_run_id in {"vllm-soak-gpu0-3-120h-20260803-004",
+                             "vllm-soak-gpu0-3-120h-20260803-005"}
+         and identity == expected_run_id, "active scheduler run identity is malformed")
     selected = set(selected_gpus)
     need(selected and selected <= {0, 1, 2, 3}, "scheduler selected GPU inventory differs")
     if not selected.intersection(state["physical_gpus"]): return None
@@ -752,6 +771,7 @@ def scheduler_state_conflict(state: Mapping[str, Any], selected_gpus: Sequence[i
 
 def aggregate(config: KUREPhase1DirectOOFConfig | str | Path) -> Mapping[str, Any]:
     value = KUREPhase1DirectOOFConfig.from_json(config) if isinstance(config, (str, Path)) else config
+    set_process_title("aggregate")
     value.require_execution_authorization(); source = _source_config(value)
     # Collect and authenticate all predictions before any gold labels are read.
     predictions: dict[str, tuple[float, float, float]] = {}; bindings = []
@@ -820,4 +840,5 @@ def aggregate(config: KUREPhase1DirectOOFConfig | str | Path) -> Mapping[str, An
 __all__ = ["CheckpointBinding", "FoldMembershipBinding", "KUREPhase1DirectOOFConfig",
            "KUREPhase1DirectOOFError", "aggregate", "config_sha256", "direct_coral_expected_score",
            "load_phase1_state", "prediction_band_diagnostics", "restore_phase1_model", "run",
-           "scheduler_state_conflict", "summarize_gpu_telemetry", "verify_post_prediction_gold_dependencies"]
+           "scheduler_state_conflict", "set_process_title", "summarize_gpu_telemetry",
+           "verify_post_prediction_gold_dependencies"]

@@ -218,6 +218,29 @@ class KUREPhase1DirectOOFTests(unittest.TestCase):
             module.scheduler_state_conflict({**launched, "status": "mystery"}, (0,), age_seconds=0)
         with self.assertRaises(KUREPhase1DirectOOFError):
             module.scheduler_state_conflict({**launched, "schema_version": "bad"}, (0,), age_seconds=0)
+        delayed_005 = {"schema_version": "mal2026-vllm-idle-arm-state-v1", "status": "delayed",
+                       "physical_gpus": [0, 1, 2, 3],
+                       "planned_run_id": "vllm-soak-gpu0-3-120h-20260803-005",
+                       "idle_required_seconds": 1800, "consecutive_idle_seconds": 0}
+        self.assertIsNone(module.scheduler_state_conflict(
+            delayed_005, (0, 1, 2, 3), age_seconds=1,
+            expected_run_id="vllm-soak-gpu0-3-120h-20260803-005"))
+        with self.assertRaises(KUREPhase1DirectOOFError):
+            module.scheduler_state_conflict(
+                delayed_005, (0,), age_seconds=1,
+                expected_run_id="vllm-soak-gpu0-3-120h-20260803-004")
+
+    def test_setproctitle_exposes_direct_stage(self) -> None:
+        import setproctitle
+        previous = setproctitle.getproctitle()
+        try:
+            self.assertEqual(module.set_process_title("smoke:f0:content"),
+                             "mal2026:direct:smoke:f0:content")
+            self.assertEqual(setproctitle.getproctitle(), "mal2026:direct:smoke:f0:content")
+            with self.assertRaises(KUREPhase1DirectOOFError):
+                module.set_process_title("bad stage")
+        finally:
+            setproctitle.setproctitle(previous)
 
     def test_preparer_membership_read_only_and_projection_helper(self) -> None:
         spec = importlib.util.spec_from_file_location("phase1_preparer", "scripts/prepare_kure_phase1_direct_input.py")
@@ -295,6 +318,9 @@ false
         self.assertIn("stage_failed", launcher)
         self.assertIn('outputs/reservations/gpu0-3-watchdog-coordination-v1', launcher)
         self.assertIn('vllm-idle-arm-gpu0-3-20260803-004/state.json', launcher)
+        self.assertIn('vllm-idle-arm-gpu0-3-20260803-005/state.json', launcher)
+        self.assertIn('--scheduler-run-id "$run_id"', launcher)
+        self.assertIn('setproctitle.setproctitle', launcher)
         self.assertNotIn('glob("*/state.json")', launcher)
         self.assertIn("telemetry_summary_sha256", launcher); self.assertIn("evidence_sha256", launcher)
         self.assertIn("task_card_sha256", launcher); self.assertIn("config_sha256", launcher)

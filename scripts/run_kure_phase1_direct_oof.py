@@ -8,7 +8,7 @@ import time
 
 from mal2026.kure_phase1_direct_oof import (
     KUREPhase1DirectOOFConfig, _atomic_public_json, aggregate, run, scheduler_state_conflict,
-    summarize_gpu_telemetry,
+    set_process_title, summarize_gpu_telemetry,
 )
 
 
@@ -21,21 +21,35 @@ def main() -> None:
     group.add_argument("--check-authorization", action="store_true")
     group.add_argument("--telemetry-csv", type=Path)
     group.add_argument("--scheduler-state", type=Path)
+    parser.add_argument("--scheduler-run-id")
     parser.add_argument("--telemetry-summary", type=Path)
     parser.add_argument("--selected-gpus")
     parser.add_argument("--minimum-samples", type=int)
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--smoke", action="store_true")
     args = parser.parse_args()
+    if args.outer_fold is not None:
+        set_process_title(f"cli:{'smoke' if args.smoke else 'oof'}:f{args.outer_fold}")
+    elif args.aggregate:
+        set_process_title("cli:aggregate")
+    elif args.telemetry_csv:
+        set_process_title("cli:telemetry-summary")
+    elif args.scheduler_state:
+        set_process_title("cli:scheduler-gate")
+    else:
+        set_process_title("cli:authorization-gate")
     config = KUREPhase1DirectOOFConfig.from_json(args.config)
     if args.scheduler_state:
-        if not args.selected_gpus or args.validate_only or args.smoke:
-            parser.error("scheduler validation requires --selected-gpus")
+        if not args.selected_gpus or not args.scheduler_run_id or args.validate_only or args.smoke:
+            parser.error("scheduler validation requires --selected-gpus and --scheduler-run-id")
         selected = tuple(int(item) for item in args.selected_gpus.split(","))
         if args.scheduler_state.exists():
             try: state = json.loads(args.scheduler_state.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError) as exc: raise SystemExit("active scheduler state is unreadable") from exc
-            reason = scheduler_state_conflict(state, selected, age_seconds=time.time() - args.scheduler_state.stat().st_mtime)
+            reason = scheduler_state_conflict(
+                state, selected, age_seconds=time.time() - args.scheduler_state.stat().st_mtime,
+                expected_run_id=args.scheduler_run_id,
+            )
             if reason: raise SystemExit(reason)
         result = {"status": "scheduler_safe", "selected_gpus": selected}
     elif args.telemetry_csv:

@@ -3,12 +3,22 @@
 ## Authorization state
 
 - Proposed run ID: `kure-phase1-direct-oof-v1-20260803-001`
-- Status: `draft_non_runnable_pending_explicit_scientific_authorization`
+- Status: `authorized_pending_hash_binding_and_smoke`
 - GPU scope if authorized: physical GPU0 for a nonselectable smoke, then
   physical GPUs 0--3 for inference-only exact five-fold OOF. The fixed mapping
   is fold 0→GPU0, fold 1→GPU1, fold 2→GPU2, fold 3→GPU3, and fold 4→GPU0.
-- No GPU execution, scientific result, refit, validation evaluation, or
-  deployment decision is authorized by this draft.
+- User authorization recorded on 2026-08-03 (Asia/Seoul), verbatim:
+  `그래 goal도 다시 쭉 진행해보자. gpu 작업은 종료해놨고, 너가 끝까지 진행하면서 겨로가를 내면 된다.`
+- This contextual approval authorizes the named GPU0 smoke and GPU0--3 exact
+  five-fold direct OOF protocol in this card. It does not authorize
+  validation-based selection, `average`, calibration, refit, deployment, or
+  any later LDS scientific run.
+- Every long-running repository-owned Python process in this protocol must use
+  the installed `setproctitle` package and expose a `mal2026:direct:*` title
+  containing its stage and, for inference workers, fold/axis when applicable.
+- The stopped `...-004` scheduler and delayed `...-005` successor are checked
+  explicitly. The experiment never signals either scheduler; the shared GPU
+  coordination locks and fresh compute-process gate prevent overlap.
 
 This card is required because directly decoding an intermediate Stage3 head
 was not a preregistered Stage3 candidate. It is an adaptive, same-train
@@ -88,12 +98,10 @@ with cRT caused avoidable central collapse.
 
 ## Pending before runnable status
 
-1. Explicit user authorization for this named phase-1 direct-decode protocol.
-2. A committed runnable config binding the final authorized task-card SHA and every checkpoint
+1. A committed runnable config binding the final authorized task-card SHA and every checkpoint
    SHA, plus exact commands, seeds, environment, hardware mapping, ACL and
    telemetry evidence fields.
-3. A new append-only authorization entry quoting the approval without adding
-   evaluation content or identifiers.
+2. The GPU0 smoke and its hash-bound attestation.
 
 ## Completed preparation evidence
 
