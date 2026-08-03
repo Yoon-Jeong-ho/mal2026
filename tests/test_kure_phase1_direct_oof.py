@@ -251,6 +251,13 @@ class KUREPhase1DirectOOFTests(unittest.TestCase):
         self.assertIsNone(module.scheduler_state_conflict(
             delayed_005, (0, 1, 2, 3), age_seconds=1,
             expected_run_id="vllm-soak-gpu0-3-120h-20260803-005"))
+        self.assertIsNone(module.scheduler_state_conflict(
+            delayed_005, (0,), age_seconds=-299,
+            expected_run_id="vllm-soak-gpu0-3-120h-20260803-005"))
+        with self.assertRaises(KUREPhase1DirectOOFError):
+            module.scheduler_state_conflict(
+                delayed_005, (0,), age_seconds=-301,
+                expected_run_id="vllm-soak-gpu0-3-120h-20260803-005")
         with self.assertRaises(KUREPhase1DirectOOFError):
             module.scheduler_state_conflict(
                 delayed_005, (0,), age_seconds=1,

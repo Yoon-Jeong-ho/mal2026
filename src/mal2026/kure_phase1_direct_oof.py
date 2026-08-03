@@ -757,7 +757,12 @@ def scheduler_state_conflict(state: Mapping[str, Any], selected_gpus: Sequence[i
     if not selected.intersection(state["physical_gpus"]): return None
     if status == "launched": return "active named idle-scheduler already launched overlapping work"
     if status in {"armed", "delayed"}:
-        need(math.isfinite(age_seconds) and age_seconds >= 0, "active scheduler state age is malformed")
+        # Scheduler state may be written through a filesystem/client whose
+        # wall clock leads this launcher slightly. Bound that integration-only
+        # skew instead of treating a fresh state as stale or unsafe.
+        need(math.isfinite(age_seconds) and age_seconds >= -300,
+             "active scheduler state age is malformed")
+        age_seconds = max(0.0, age_seconds)
         if age_seconds > 120: return "stale active named idle-scheduler state"
         required = state.get("idle_required_seconds", 1800)
         consecutive = state.get("consecutive_idle_seconds", 0)
