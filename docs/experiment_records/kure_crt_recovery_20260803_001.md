@@ -3,7 +3,7 @@
 ## Status and authority
 
 - Run ID: `kure-ordinal-crt-recovery-v1-20260803-001`
-- Status: pre-registered; GPU execution pending the GPU0 smoke gate.
+- Status: completed negative; exact R0 remains protected.
 - Authorized scope: GPUs 0--3, with physical GPU0 used first for the smoke gate.
 - Scientific scope: a narrow integration recovery of the failed Stage3
   `coral-natural` cRT head. The failed Stage3 artifacts are preserved and are
@@ -120,5 +120,81 @@ integration failure can be removed without changing the scientific hypothesis.
 
 ## Results and deviations
 
-Pending. Smoke and full-run hashes, exact commands, utilization, metrics,
-negative outcomes, and any integration-only deviation will be appended here.
+### Execution evidence
+
+- Runtime Git SHA: `a57165eb9f52e9f58fad773b1c59f31a268b7a5f`
+- GPU0 smoke: completed from 09:16:33 to 09:17:25 KST.
+  - Smoke report SHA-256:
+    `9c20526d69046a6c7b2854212ca89eec9f04ea77bf22cbd9faf2f70823499935`
+  - Nonselectable; content-only; no validation or average target loaded.
+  - The 30-second telemetry interval captured only two zero-utilization
+    samples, so telemetry alone cannot prove the short GPU compute window.
+    CUDA-visible GPU0 runtime evidence, two completed training steps,
+    output/attestation hashes, and exit code 0 agree; this sampling limitation
+    is retained rather than imputed.
+- Full GPUs 0--3 exact OOF: completed with exit code 0 from 09:18:10 to
+  11:20:16 KST.
+  - Aggregate SHA-256:
+    `aef53a1ec26875ffe9bf88ddbb9fd7c4846402d3c392f0d928fe05364e3c289a`
+  - Telemetry SHA-256:
+    `3427c72642c4cfe36029f556d43d6527b8ed172032ab8fe54a50499120d6d6dd`
+  - All 5 outer folds, 2,000 rows, 15 axis/fold heads, and all 12,000
+    configured cRT optimizer updates completed.
+  - No validation row or `average` target was used.
+
+Active-sample GPU utilization averaged 97.32%, 96.74%, 96.00%, and 96.38%
+on GPUs 0, 1, 2, and 3. Peak memory was 17,707, 15,277, 16,287, and
+21,019 MiB. Overall utilization is lower on GPUs 1--3 because the fifth outer
+fold was necessarily executed after their first assigned fold had completed;
+GPU0 ran folds 0 and 4 sequentially.
+
+### Exact OOF result
+
+| Metric | Exact R0 | cRT recovery | R0 minus candidate |
+|---|---:|---:|---:|
+| Macro RMSE | 0.568780 | 0.637326 | -0.068546 |
+| Spearman | 0.600288 | 0.468933 | -0.131355 |
+| Low `{1,2}` RMSE | 0.923335 | 1.178755 | -0.255420 |
+| Score-5 RMSE | 0.884190 | 0.921444 | -0.037254 |
+| Gold-3/4 balanced accuracy | 0.643313 | 0.601213 | -0.042099 |
+| Equal-group RMSE | 0.691549 | 0.786439 | -0.094890 |
+
+Axis RMSE worsened on every axis: content `0.509024 -> 0.562299`,
+organization `0.688392 -> 0.751909`, and expression
+`0.508925 -> 0.597769`. The 10,000-cluster bootstrap interval for
+`R0 RMSE - candidate RMSE` was `[-0.078734, -0.058056]`. The macro RMSE,
+axis RMSE, 3/4 balanced-accuracy, Spearman, both tail, and bootstrap gates all
+failed; only fold coverage, finite metrics, and tail support passed.
+
+The original all-score-3 software collapse is fixed: continuous predictions
+vary and round to scores 2, 3, or 4. However, no prediction on any axis rounds
+to score 1 or 5. Rounded prediction counts were:
+
+- content: score 2 = 69, score 3 = 1,137, score 4 = 794;
+- organization: score 2 = 35, score 3 = 854, score 4 = 1,111;
+- expression: score 2 = 23, score 3 = 267, score 4 = 1,710.
+
+Across 6,000 axis predictions, 5,873 (`97.88%`) still round to score 3 or 4.
+
+Therefore the integration repair succeeded mechanically but failed
+scientifically: longer head optimization and prior initialization alone do not
+overcome central-range contraction, and they materially worsen the rare low
+tail. The recovery candidate is rejected, no refit or validation evaluation is
+allowed, and exact R0 remains the sole protected candidate.
+
+### Next scientific decision
+
+The independent primary-source refresh ranks outer-train-only label-density
+smoothing (LDS) as the next single candidate, followed—only if LDS fails—by a
+separate regularized three-band GroupDRO candidate. Balanced Softmax and
+RankSim are later alternatives. NPCR and the fixed blend are not repeated
+because their exact OOF results are already negative. A new LDS loss changes
+the scientific protocol and has not been launched under this recovery card.
+
+An independent post-run verifier recomputed fold coverage, every reported
+metric, predicted-band counts, and the full 10,000-resample bootstrap. It found
+zero numerical discrepancy and verified the five public/restricted fold
+bindings, permissions, ledger evidence, telemetry hashes, and absence of
+validation/average use. Its verdict was `PARTIAL`: the software collapse is
+fixed, but the remaining 2--4 central collapse makes the candidate
+scientifically unusable.
