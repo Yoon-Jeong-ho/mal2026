@@ -258,3 +258,99 @@ The historical H0 metric is grandfathered as its sole already-recorded
 contextual evaluation and is never rerun. The one-time descriptive validation
 audit applies only to newly frozen H1/H2 artifacts after their hashes and order
 are ledgered; it cannot affect any gate, slot, ranking, or retuning decision.
+
+## Exact OOF execution results — 2026-08-03
+
+All results below are train-only five-fold OOF results over the 2,000 canonical
+training rows.  No validation row was loaded, and only the independent
+`content`, `organization`, and `expression` axes were used.  The `average`
+target remained forbidden.
+
+The protected exact-R0 reference remained macro RMSE `0.568780216250`, macro
+Spearman `0.600288438665`, low-`{1,2}` RMSE `0.923334875868`, score-5 RMSE
+`0.884189937458`, and gold-3/4 balanced accuracy `0.643312588962`.
+
+### Stage 3: KURE LoRA plus natural-prior cRT
+
+The full GPU0--3 run completed all five outer folds without OOM or model-load
+failure.  GPU0 ran folds 0 and 4 sequentially; GPUs 1--3 ran folds 1--3.
+Active-worker mean utilization was 97.1--98.1%, with peak selected-GPU memory
+between 17,121 and 21,019 MiB.  Launcher Git was
+`2312e86459730edaf83c4004fa0804c325e59f04`; later preregistration-only commits
+were present when the aggregate reported Git
+`e73c866dad920e6494ad833c101a6304e368fb15`.
+
+| method | macro RMSE | Spearman | low `{1,2}` RMSE | score-5 RMSE | gold-3/4 BA |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| exact R0 | 0.568780 | 0.600288 | 0.923335 | 0.884190 | 0.643313 |
+| `coral-natural` | 0.815172 | 0.304338 | 1.054435 | 1.604044 | 0.500000 |
+| `rps-natural` (descriptive only) | 0.811998 | 0.262419 | 1.053551 | 1.599832 | 0.500000 |
+
+Both final cRT heads rounded every one of their 6,000 axis predictions to score
+3.  A read-only checkpoint forensic found that the fresh 1,024-to-5 cRT head,
+trained for only 120 optimizer updates at the shared `5e-5` backbone LR, stayed
+near its random uniform initialization and did not even fit the outer-fit class
+prior.  The expected-score calculation, PMF construction, and LoRA updates were
+not the cause.  This is retained as an integration-level negative result, not a
+promoted scientific candidate.
+
+The preregistered 10,000-resample promotion gate failed every performance
+condition.  Its source-ID-clustered RMSE improvement interval for exact R0 minus
+`coral-natural` was `[-0.263165, -0.229313]`.  Stage 3 aggregate SHA-256 is
+`eb13d63d28258f331ebcefb2b79f4364ddcc9ff38eec38da533665222706e0e3`;
+promotion-decision SHA-256 is
+`467783faf86686e2cac4a0d58ec181294ce12ba9bef73ec2499e3d6a18d8e2b8`.
+
+### Stage 4: same-prompt NPCR
+
+After a GPU0 smoke, the two fixed NPCR pair inventories ran on GPUs 0--3.  All
+five nested outer folds independently selected `adjacent-allskip`.  Full OOF
+macro RMSE was `0.735574575563`, Spearman `0.457197155862`, low-`{1,2}` RMSE
+`1.054242808998`, score-5 RMSE `0.895966481859`, and gold-3/4 balanced accuracy
+`0.521399174381`.  Relative to exact R0, macro RMSE worsened by `0.166794359313`;
+the 1,000-resample paired interval was `[-0.180642, -0.153187]`.  The global
+recommendation therefore remained exact-R0 identity.  Aggregate SHA-256 is
+`298e3046dea5d8df844bbc2f6f02cc8f21d26c57b6d19e24a138bee803f6d449`;
+launch Git was `0d9755594550243f5c200901943dd150844e1860`.
+
+### Stage 5: preregistered fixed blend
+
+The sole allowed combination was the identity-calibrated axiswise blend
+`0.8 * exact_R0 + 0.2 * Stage3 coral-natural`.  It produced macro RMSE
+`0.579904345262`, Spearman `0.600482600511`, low-`{1,2}` RMSE `0.931426388457`,
+score-5 RMSE `1.020386718729`, and gold-3/4 balanced accuracy
+`0.649917241369`.  Although BA and Spearman increased slightly, macro RMSE
+worsened by `0.011124129012`, expression RMSE exceeded the per-axis worsening
+cap, and both tails worsened.  The 10,000-resample RMSE improvement interval was
+`[-0.015126, -0.007114]`; the protected output is exact-R0 identity.
+
+Attempt 1 completed the bootstrap but the restricted-volume inherited `0770`
+ACL triggered an obsolete no-execute-bit assertion after the private JSONL was
+written.  That private artifact was preserved and no public aggregate was
+published.  Commit `0814d50c48e5c2b0172ef1029fbf65beb5fb4ca8` aligned the
+writer with the already-reviewed group-private KURE/NPCR policy, after which a
+fresh run ID completed.  The successful aggregate SHA-256 is
+`e715abd762cf0dc5429ddba2debf3cefeeb81955f63348527115c4f64fa71a9a`;
+its runtime-config SHA-256 is
+`4932e654fcfaeb7ae1020b8fdbe938b8efef4fcc0efb6b9d498523ff9ab1905e`.
+
+Consequently none of Stage 3, Stage 4, or Stage 5 qualifies for a full refit or
+descriptive validation audit under the frozen decision list.  H0 remains the
+only eligible submission slot.  The fail-closed Stage 6 materializer was added
+in commit `cffc255c0b926e7e6c173612870ffa61839aaed4` after three independent
+review rounds.  It verifies the Stage 3 promotion runtime-to-upstream five-fold
+hash chain, the exact Stage 4 preregistered aggregate, the Stage 5 runtime and
+both source-fold hash chains, and the immutable H0 runtime/adapters.  A first
+materialization attempt failed before output because the earlier promotion
+runtime had recorded its output path as absolute while the supplied binding was
+relative; that input config is preserved.  A fresh binding using the identical
+file's canonical absolute path then completed without changing any scientific
+field.
+
+The final Stage 6 result contains exactly one slot, H0
+`historical_r0_prediction_ensemble_dpo_v1`; all three new gate evidence flags
+are false and the pending-deploy list is empty.  No new full refit and no
+validation evaluation were run.  Runtime-config SHA-256 is
+`1db87d766adc52d923fc469dd07788dda51bfe5a24b04411be168e135785e407` and
+decision SHA-256 is
+`76177f7355ca1de6498c9aa46a19d3571d1ef7c6f1099215c9cfdbfbddff8364`.
