@@ -1,18 +1,18 @@
 {
   "schema_version": "mal2026-kure-lds-oof-v1",
-  "status": "authorized_for_steward_preparation",
-  "execution_authorized": false,
+  "status": "authorized",
+  "execution_authorized": true,
   "steward_preparation_authorized": true,
   "steward_task_card_sha256": "3bdc031e1371349df4171676da7ff004741f06ec200f48a58e883919df4e0946",
   "steward_task_card_commit": "3ad31c2a310be9002188caa9c964a8a7591403b9",
   "task_card_path": "docs/experiment_records/kure_lds_oof_20260803_001.md",
-  "task_card_sha256": "3bdc031e1371349df4171676da7ff004741f06ec200f48a58e883919df4e0946",
-  "task_card_commit": "3ad31c2a310be9002188caa9c964a8a7591403b9",
+  "task_card_sha256": "80e4a966d083f662f07cb70c742d2463cef9a82a6fff0b079ac6aa9ef19000cb",
+  "task_card_commit": "72803205a98d4332e1b05506a46ecfc2a4d3fe96",
   "preparer_path": "scripts/prepare_kure_lds_inputs.py",
   "preparer_sha256": "c22acdd2b8dab579bf20a736b24a275dc736833523abad0aecc6400f9d76884d",
   "preparer_commit": "3ad31c2a310be9002188caa9c964a8a7591403b9",
   "preparation_request_config_sha256": "fddb792a1bec685825de7fb9b37ca238bf7b9e4fbe89e897ca5d7394635122ca",
-  "steward_authorized_config_sha256": "",
+  "steward_authorized_config_sha256": "ccba74503e399f6f5b6527659a964f6d7cf5cb1fdcf38d765eab01482e532861",
   "run_id": "kure-coral-lds-oof-v1-20260803-001",
   "direct_aggregate_path": "outputs/kure-phase1-direct-oof-v1/kure-phase1-direct-oof-v1-20260803-001/aggregate.json",
   "direct_aggregate_sha256": "4624146639b9b7c93a13850b8114169b49f6bec3997356219d000f4875fce94d",
@@ -36,97 +36,97 @@
   "label_free_manifest_path": "data/processed/restricted/kure_phase1_direct_input_v1/kure-phase1-direct-oof-v1-20260803-001/manifest.json",
   "label_free_manifest_sha256": "a208b0b538703fa0410ec52b8cf9f7332cdac6489912a358ff42d8a36503d98f",
   "fit_label_manifest_path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/manifest.json",
-  "fit_label_manifest_sha256": "",
+  "fit_label_manifest_sha256": "c38d21fc9ec54c1d7140a03e74287f22316c1ab8e6e05217d8f89372061a7e58",
   "fit_label_bindings": [
     {
       "outer_fold": 0,
       "axis": "content",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-00-content-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "490c31fe105546bf4babbfa3a93da70e8cf5db8a2cb06a2f9ed4a5e0fbbab77a"
     },
     {
       "outer_fold": 0,
       "axis": "organization",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-00-organization-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "f0e89d1d22dfa5c6cc73401860f43c6c6f4891a35e61fc79f3b5e7da8a82fd50"
     },
     {
       "outer_fold": 0,
       "axis": "expression",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-00-expression-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "48aa773bc979311b289c7bd1733f990bc95cc0a3ac33145dab9d4e9f51d08235"
     },
     {
       "outer_fold": 1,
       "axis": "content",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-01-content-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "c4a162d938d55ab72a76b2ff5e528fdef79826a4ec94e97ed4648126f7faab49"
     },
     {
       "outer_fold": 1,
       "axis": "organization",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-01-organization-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "e4a35858d3089f880c96bc454087376b64bc8c84a6d498acca8a2adadf43625a"
     },
     {
       "outer_fold": 1,
       "axis": "expression",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-01-expression-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "5850c893f66fb4cd4fc9c77e290a0da33f0049d14283942467bddc56423339b2"
     },
     {
       "outer_fold": 2,
       "axis": "content",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-02-content-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "66155a64d0227c7c301be94e5a1f6b44e546bbea5adb07aa674d541c0c63b5e0"
     },
     {
       "outer_fold": 2,
       "axis": "organization",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-02-organization-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "0f4c91b77e4d820201c5152cfe7fbc71bcc0f55d56f89b3625d713571f49db33"
     },
     {
       "outer_fold": 2,
       "axis": "expression",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-02-expression-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "a123deba8cd02c5c894097f06854815fe5b6bc943d4713b5a806db6e6916a5ed"
     },
     {
       "outer_fold": 3,
       "axis": "content",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-03-content-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "9bd466a0fee1bb00e5afd79abc8c1d86b4a30c7c42e0ee9ea534dd0acd471015"
     },
     {
       "outer_fold": 3,
       "axis": "organization",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-03-organization-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "ac2cebd8919552e8a45e125f3768ae7a8bf0ffd3440d570eaf388213a2396c76"
     },
     {
       "outer_fold": 3,
       "axis": "expression",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-03-expression-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "a8e77323517a15bc6cd448487b9aad64710b87a6edca7d138bfe0fa51d244f2e"
     },
     {
       "outer_fold": 4,
       "axis": "content",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-04-content-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "cb58f7647168b4d2319f3e49c89d1bc26e26551ab0beef559e4fed9fe57df06a"
     },
     {
       "outer_fold": 4,
       "axis": "organization",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-04-organization-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "3635cf5385a2a64abc9de2d84ae28d9e0cf62bc8cf31c070c4776d363ebc0a24"
     },
     {
       "outer_fold": 4,
       "axis": "expression",
       "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-04-expression-fit-labels.jsonl",
-      "sha256": ""
+      "sha256": "e5a236dcaf32377dc086245e5c99c5199412c812e66668bb0770dc5fcdb3b347"
     }
   ],
   "output_root": "outputs/kure-coral-lds-oof-v1/kure-coral-lds-oof-v1-20260803-001",

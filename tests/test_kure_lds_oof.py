@@ -13,23 +13,32 @@ class KURELDSOOFTests(unittest.TestCase):
  @classmethod
  def setUpClass(cls): cls.raw=json.loads(Path("configs/kure_lds_oof.v1.json").read_text())
  def config(self): return KURELDSOOFConfig.from_mapping(self.raw)
+ def pending_raw(self):
+  raw=json.loads(json.dumps(self.raw)); raw.update({"status":"pending_direct_failure_and_scientific_authorization",
+   "execution_authorized":False,"steward_preparation_authorized":False})
+  for key in ("steward_task_card_sha256","steward_task_card_commit","task_card_sha256","task_card_commit",
+              "preparer_sha256","preparer_commit","preparation_request_config_sha256","steward_authorized_config_sha256",
+              "direct_aggregate_sha256","direct_task_card_sha256","direct_config_file_sha256","direct_report_config_sha256",
+              "label_free_projection_sha256","label_free_manifest_sha256","fit_label_manifest_sha256"): raw[key]=""
+  for item in raw["fit_label_bindings"]: item["sha256"]=""
+  return raw
  def trainable_state(self):
   state={"score.weight":torch.zeros(1,1024),"score.bias":torch.zeros(1),"cut_base":torch.zeros(()),"cut_gaps":torch.zeros(3)}
   for i in range(120): state[f"layer1024.{i}.lora_A.default.weight"]=torch.zeros(16,1024); state[f"layer1024.{i}.lora_B.default.weight"]=torch.zeros(1024,16)
   for i in range(24): state[f"layer4096.{i}.lora_A.default.weight"]=torch.zeros(16,4096); state[f"layer4096.{i}.lora_B.default.weight"]=torch.zeros(4096,16)
   return state
  def test_pending_config_and_exact_inventory(self):
-  c=self.config(); self.assertEqual((c.status,c.execution_authorized,c.steward_preparation_authorized),("pending_direct_failure_and_scientific_authorization",False,False))
+  c=KURELDSOOFConfig.from_mapping(self.pending_raw()); self.assertEqual((c.status,c.execution_authorized,c.steward_preparation_authorized),("pending_direct_failure_and_scientific_authorization",False,False))
   self.assertEqual([(x.outer_fold,x.axis) for x in c.fit_label_bindings],[(f,a) for f in range(5) for a in m.AXES])
   self.assertTrue(all(x.sha256=="" for x in c.fit_label_bindings))
   self.assertEqual((c.task_card_sha256,c.preparer_sha256,c.direct_aggregate_sha256,c.fit_label_manifest_sha256),("","","",""))
   self.assertEqual(c.integration_recovery_policy,"identical_hash_missing_fold_resume_only_preserve_partial_immutable_no_complete_rerun_no_scientific_retune")
  def test_pending_run_and_aggregate_fail_closed(self):
-  c=self.config(); self.assertEqual(m.run(c,outer_fold=0,validate_only=True)["gpu_used"],False)
+  c=KURELDSOOFConfig.from_mapping(self.pending_raw()); self.assertEqual(m.run(c,outer_fold=0,validate_only=True)["gpu_used"],False)
   with self.assertRaisesRegex(KURELDSOOFError,"not authorized"): m.run(c,outer_fold=0)
   with self.assertRaisesRegex(KURELDSOOFError,"not authorized"): m.aggregate(c)
  def test_two_stage_authorization_shape_is_unambiguous(self):
-  raw=json.loads(json.dumps(self.raw)); raw.update({"status":"authorized_for_steward_preparation","steward_preparation_authorized":True})
+  raw=self.pending_raw(); raw.update({"status":"authorized_for_steward_preparation","steward_preparation_authorized":True})
   for key in ("steward_task_card_sha256","task_card_sha256","preparer_sha256","preparation_request_config_sha256","direct_aggregate_sha256",
               "direct_task_card_sha256","direct_config_file_sha256","direct_report_config_sha256",
               "label_free_projection_sha256","label_free_manifest_sha256"): raw[key]="a"*64
@@ -42,7 +51,7 @@ class KURELDSOOFTests(unittest.TestCase):
   for item in final["fit_label_bindings"]: item["sha256"]="d"*64
   configured=KURELDSOOFConfig.from_mapping(final); self.assertTrue(configured.execution_authorized)
   with self.assertRaisesRegex(KURELDSOOFError,"data-steward"): configured.require_steward_authorization()
- def test_pending_preparer_dynamically_refuses_before_artifacts(self):
+ def test_final_preparer_dynamically_refuses_before_artifacts(self):
   target=Path(self.raw["fit_label_manifest_path"]); before=target.exists()
   result=subprocess.run([str(Path(".venv-standard/bin/python")),"scripts/prepare_kure_lds_inputs.py","--config","configs/kure_lds_oof.v1.json"],capture_output=True,text=True)
   self.assertNotEqual(result.returncode,0); self.assertIn("not authorized",result.stderr); self.assertEqual(target.exists(),before)
@@ -206,8 +215,13 @@ class KURELDSOOFTests(unittest.TestCase):
      with self.assertRaises(KURELDSOOFError): m._validate_outer_public(bad,c,0,private)
  def test_pending_launcher_gate_precedes_fake_nvidia_and_artifacts(self):
   with tempfile.TemporaryDirectory() as td:
-   sentinel=Path(td)/"called"; fake=Path(td)/"nvidia-smi"; fake.write_text(f"#!/bin/sh\ntouch {sentinel}\nexit 99\n"); fake.chmod(0o755)
-   result=subprocess.run(["bash","scripts/run_kure_lds_oof_gpu0_3.sh","smoke"],env={**os.environ,"PATH":f"{td}:{os.environ['PATH']}"},capture_output=True,text=True)
+   root=Path(td); sentinel=root/"called"; fake=root/"nvidia-smi"; fake.write_text(f"#!/bin/sh\ntouch {sentinel}\nexit 99\n"); fake.chmod(0o755)
+   pending=root/"pending.json"; pending.write_text(json.dumps(self.pending_raw()))
+   text=Path("scripts/run_kure_lds_oof_gpu0_3.sh").read_text().replace(
+    'CONFIG="$ROOT/configs/kure_lds_oof.v1.json"',f'CONFIG="{pending}"')
+   copied=Path("scripts")/f".test-lds-pending-{os.getpid()}.sh"; copied.write_text(text); copied.chmod(0o700)
+   try: result=subprocess.run(["bash",str(copied),"smoke"],env={**os.environ,"PATH":f"{td}:{os.environ['PATH']}"},capture_output=True,text=True)
+   finally: copied.unlink(missing_ok=True)
    self.assertNotEqual(result.returncode,0); self.assertFalse(sentinel.exists()); self.assertIn("not authorized",result.stderr)
  def test_launcher_dangling_output_sentinels_precede_nvidia_and_gpu_launch(self):
   original=Path("scripts/run_kure_lds_oof_gpu0_3.sh").read_text()
