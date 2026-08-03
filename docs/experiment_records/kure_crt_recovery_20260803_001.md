@@ -80,6 +80,9 @@ The reviewed executable bundle before launch is:
 The implementation commit SHA is recorded below after the scoped commit and
 before GPU execution.
 
+- Scoped implementation commit:
+  `0b87ce24bdb81bb92a764e682ed96696bc793d5d`
+
 Independent code review found no code or protocol blocker after two high
 findings were repaired: the frozen 10,000-resample common gate is now executed,
 and exact command/environment/hardware evidence is now materialized. The
