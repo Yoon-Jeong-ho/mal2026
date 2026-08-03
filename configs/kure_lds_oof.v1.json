@@ -1,0 +1,184 @@
+{
+  "schema_version": "mal2026-kure-lds-oof-v1",
+  "status": "pending_direct_failure_and_scientific_authorization",
+  "execution_authorized": false,
+  "steward_preparation_authorized": false,
+  "steward_task_card_sha256": "",
+  "steward_task_card_commit": "",
+  "task_card_path": "docs/experiment_records/kure_lds_oof_20260803_001.md",
+  "task_card_sha256": "",
+  "task_card_commit": "",
+  "preparer_path": "scripts/prepare_kure_lds_inputs.py",
+  "preparer_sha256": "",
+  "preparer_commit": "",
+  "preparation_request_config_sha256": "",
+  "steward_authorized_config_sha256": "",
+  "run_id": "kure-coral-lds-oof-v1-20260803-001",
+  "direct_aggregate_path": "outputs/kure-phase1-direct-oof-v1/kure-phase1-direct-oof-v1-20260803-001/aggregate.json",
+  "direct_aggregate_sha256": "",
+  "direct_task_card_sha256": "",
+  "direct_config_file_sha256": "",
+  "direct_report_config_sha256": "",
+  "source_stage3_config_path": "configs/kure_ordinal_oof.v1.json",
+  "source_stage3_config_sha256": "5108e37c490482fbbf45c043f2ad4d0154048d432b4a4a163b3d102f8c6d756e",
+  "source_stage3_report_config_sha256": "28e6ba7465b91ba1fcc306f97f10a8e213d4a6e0069ba499fd92199d827a15aa",
+  "source_stage3_aggregate_sha256": "eb13d63d28258f331ebcefb2b79f4364ddcc9ff38eec38da533665222706e0e3",
+  "train_path": "eval/train.jsonl",
+  "train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+  "fold_manifest_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/manifest.json",
+  "fold_manifest_sha256": "9ccb63c857f80cefb1ed15ac4f60ca75f5570d044c273030d5eb0185c756e938",
+  "fold_rows_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/rows.jsonl",
+  "fold_rows_sha256": "949451b690ea12df126bc6aa9b1cf7f2f016e3c60f69d67b1d460719b6404f16",
+  "r0_oof_prediction_path": "data/processed/restricted/r0_exact_oof_v1/r0-exact-oof-20260731-002/merged/oof_predictions.jsonl",
+  "r0_oof_prediction_sha256": "823b0c0b2114d9442e1d4e65ff7fd310e529b82d1283c78b2466b7a0141eec04",
+  "label_free_projection_path": "data/processed/restricted/kure_phase1_direct_input_v1/kure-phase1-direct-oof-v1-20260803-001/rows.jsonl",
+  "label_free_projection_sha256": "",
+  "label_free_manifest_path": "data/processed/restricted/kure_phase1_direct_input_v1/kure-phase1-direct-oof-v1-20260803-001/manifest.json",
+  "label_free_manifest_sha256": "",
+  "fit_label_manifest_path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/manifest.json",
+  "fit_label_manifest_sha256": "",
+  "fit_label_bindings": [
+    {
+      "outer_fold": 0,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-00-content-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 0,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-00-organization-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 0,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-00-expression-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 1,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-01-content-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 1,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-01-organization-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 1,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-01-expression-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 2,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-02-content-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 2,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-02-organization-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 2,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-02-expression-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 3,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-03-content-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 3,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-03-organization-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 3,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-03-expression-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 4,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-04-content-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 4,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-04-organization-fit-labels.jsonl",
+      "sha256": ""
+    },
+    {
+      "outer_fold": 4,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_lds_input_v1/kure-coral-lds-oof-v1-20260803-001/outer-04-expression-fit-labels.jsonl",
+      "sha256": ""
+    }
+  ],
+  "output_root": "outputs/kure-coral-lds-oof-v1/kure-coral-lds-oof-v1-20260803-001",
+  "restricted_output_root": "data/processed/restricted/kure_coral_lds_oof_v1/kure-coral-lds-oof-v1-20260803-001",
+  "seed": 2026080302,
+  "epochs": 6,
+  "learning_rate": 5e-05,
+  "weight_decay": 0.01,
+  "batch_size": 20,
+  "gradient_accumulation_steps": 2,
+  "max_length": 1536,
+  "raw_rmse_auxiliary_weight": 0.25,
+  "grid_start": 1.0,
+  "grid_stop": 5.0,
+  "grid_step": 0.05,
+  "lds_sigma": 0.25,
+  "lds_truncation": 0.5,
+  "weight_floor": 0.25,
+  "weight_cap": 4.0,
+  "mean_weight_tolerance": 1e-06,
+  "smoke_gpu": 0,
+  "full_gpu_scope": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "fold_gpu_mapping": {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 0
+  },
+  "telemetry_columns": [
+    "timestamp",
+    "index",
+    "uuid",
+    "name",
+    "memory.total",
+    "driver_version",
+    "utilization.gpu",
+    "memory.used"
+  ],
+  "smoke_minimum_samples": 1,
+  "full_minimum_samples": 2,
+  "telemetry_interval_seconds": 30,
+  "axes": [
+    "content",
+    "organization",
+    "expression"
+  ],
+  "average_target_forbidden": true,
+  "integration_recovery_policy": "identical_hash_missing_fold_resume_only_preserve_partial_immutable_no_complete_rerun_no_scientific_retune"
+}
