@@ -38,6 +38,15 @@ class KUREPhase1DirectOOFTests(unittest.TestCase):
                        preparation_request_config_sha256="g" * 64,
                        label_free_projection_sha256="e" * 64, label_free_manifest_sha256="f" * 64)
 
+    def pending_config(self) -> KUREPhase1DirectOOFConfig:
+        raw = dict(self.raw)
+        raw.update({"status": "pending_scientific_authorization", "execution_authorized": False})
+        for key in ("task_card_sha256", "task_card_commit", "preparer_sha256", "preparer_commit",
+                    "preparation_request_config_sha256", "label_free_projection_sha256",
+                    "label_free_manifest_sha256"):
+            raw[key] = ""
+        return KUREPhase1DirectOOFConfig.from_mapping(raw)
+
     def test_exact_fifteen_checkpoints_and_five_memberships(self) -> None:
         config = self.config(); config.validate(require_dependencies=False)
         self.assertEqual(len(config.checkpoint_bindings), 15)
@@ -55,7 +64,7 @@ class KUREPhase1DirectOOFTests(unittest.TestCase):
                          "eb13d63d28258f331ebcefb2b79f4364ddcc9ff38eec38da533665222706e0e3")
 
     def test_pending_config_is_fail_closed_for_actual_execution(self) -> None:
-        config = self.config()
+        config = self.pending_config()
         self.assertEqual((config.status, config.execution_authorized), ("pending_scientific_authorization", False))
         self.assertEqual((config.label_free_projection_sha256, config.task_card_sha256,
                           config.preparation_request_config_sha256), ("", "", ""))
@@ -195,10 +204,27 @@ class KUREPhase1DirectOOFTests(unittest.TestCase):
 
     def test_pending_launcher_dynamic_sentinel_before_nvidia(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            sentinel = Path(temporary) / "nvidia-called"; fake = Path(temporary) / "nvidia-smi"
+            temporary_path = Path(temporary)
+            sentinel = temporary_path / "nvidia-called"; fake = temporary_path / "nvidia-smi"
             fake.write_text(f"#!/bin/sh\ntouch {sentinel}\nexit 99\n"); fake.chmod(0o755)
-            result = subprocess.run(["bash", "scripts/run_kure_phase1_direct_oof_gpu0_3.sh", "smoke"],
-                                    env={**os.environ, "PATH": f"{temporary}:{os.environ['PATH']}"}, capture_output=True, text=True)
+            pending = dict(self.raw)
+            pending.update({"status": "pending_scientific_authorization", "execution_authorized": False})
+            for key in ("task_card_sha256", "task_card_commit", "preparer_sha256", "preparer_commit",
+                        "preparation_request_config_sha256", "label_free_projection_sha256",
+                        "label_free_manifest_sha256"):
+                pending[key] = ""
+            pending_path = temporary_path / "pending.json"; pending_path.write_text(json.dumps(pending))
+            launcher = Path("scripts/run_kure_phase1_direct_oof_gpu0_3.sh").read_text()
+            launcher = launcher.replace('CONFIG="$ROOT/configs/kure_phase1_direct_oof.v1.json"',
+                                        f'CONFIG="{pending_path}"')
+            copied = Path("scripts") / f".test-direct-pending-{os.getpid()}.sh"
+            try:
+                copied.write_text(launcher); copied.chmod(0o700)
+                result = subprocess.run(["bash", str(copied), "smoke"],
+                                        env={**os.environ, "PATH": f"{temporary}:{os.environ['PATH']}"},
+                                        capture_output=True, text=True)
+            finally:
+                copied.unlink(missing_ok=True)
             self.assertNotEqual(result.returncode, 0); self.assertFalse(sentinel.exists())
             self.assertIn("not authorized", result.stderr)
 

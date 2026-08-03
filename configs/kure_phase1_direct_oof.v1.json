@@ -1,14 +1,14 @@
 {
   "schema_version": "mal2026-kure-phase1-direct-oof-v1",
-  "status": "pending_scientific_authorization",
-  "execution_authorized": false,
+  "status": "authorized",
+  "execution_authorized": true,
   "task_card_path": "docs/experiment_records/kure_phase1_direct_oof_20260803_001.md",
-  "task_card_sha256": "",
-  "task_card_commit": "",
+  "task_card_sha256": "16f9e8aa4a7d4921bf8d38530d2216838fb1be699e4be9ef47c7f538826c425c",
+  "task_card_commit": "4141ef2f8c47bd12dbc0421ae5d7d25eb405402f",
   "preparer_path": "scripts/prepare_kure_phase1_direct_input.py",
-  "preparer_sha256": "",
-  "preparer_commit": "",
-  "preparation_request_config_sha256": "",
+  "preparer_sha256": "02fc15af87bc022a18e4fd54e9ed414708997f76792c61e6bb956d97683ad0c4",
+  "preparer_commit": "10cb2e430eff03c40089e9be9eec1f211496c093",
+  "preparation_request_config_sha256": "54fc72c254939adba8f46cbc8b5881b52a36ec8f2eb230b3344043015b63392c",
   "run_id": "kure-phase1-direct-oof-v1-20260803-001",
   "source_stage3_config_path": "configs/kure_ordinal_oof.v1.json",
   "source_stage3_config_sha256": "5108e37c490482fbbf45c043f2ad4d0154048d432b4a4a163b3d102f8c6d756e",
@@ -51,9 +51,9 @@
     }
   ],
   "label_free_projection_path": "data/processed/restricted/kure_phase1_direct_input_v1/kure-phase1-direct-oof-v1-20260803-001/rows.jsonl",
-  "label_free_projection_sha256": "",
+  "label_free_projection_sha256": "602e6e39f21ce13abbcc3463af6b01b100da096da4b07d90e279cf43012a5170",
   "label_free_manifest_path": "data/processed/restricted/kure_phase1_direct_input_v1/kure-phase1-direct-oof-v1-20260803-001/manifest.json",
-  "label_free_manifest_sha256": "",
+  "label_free_manifest_sha256": "a208b0b538703fa0410ec52b8cf9f7332cdac6489912a358ff42d8a36503d98f",
   "checkpoint_bindings": [
     {
       "outer_fold": 0,
