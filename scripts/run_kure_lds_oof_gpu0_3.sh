@@ -70,10 +70,16 @@ for gpu in "${CHECK_GPUS[@]}"; do
   flock -n "$fd" || { echo "coordination lock is held for physical GPU $gpu" >&2; exit 1; }
   LOCK_FDS+=("$fd")
 done
-# Non-destructive gate for the one currently named scheduler. Historical
-# stopped/superseded scheduler records are deliberately outside this contract.
+# Non-destructive gates for the stopped 004 lineage and the explicitly named
+# delayed 005 successor. The latter observes the shared coordination locks.
 IFS=,; SELECTED_CSV="${CHECK_GPUS[*]}"; unset IFS
-PYTHONPATH=src "$PYTHON" "$RUNNER" --config "$CONFIG" --scheduler-state "outputs/legacy/vllm-idle-scheduler/vllm-idle-arm-gpu0-3-20260803-004/state.json" --selected-gpus "$SELECTED_CSV" >/dev/null
+for scheduler in \
+  "outputs/legacy/vllm-idle-scheduler/vllm-idle-arm-gpu0-3-20260803-004/state.json|vllm-soak-gpu0-3-120h-20260803-004" \
+  "outputs/legacy/vllm-idle-scheduler/vllm-idle-arm-gpu0-3-20260803-005/state.json|vllm-soak-gpu0-3-120h-20260803-005"; do
+  state="${scheduler%%|*}"; run_id="${scheduler#*|}"
+  [[ ! -e "$state" && ! -L "$state" ]] || PYTHONPATH=src "$PYTHON" "$RUNNER" --config "$CONFIG" \
+    --scheduler-state "$state" --scheduler-run-id "$run_id" --selected-gpus "$SELECTED_CSV" >/dev/null
+done
 for gpu in "${CHECK_GPUS[@]}"; do
   processes="$(nvidia-smi --id="$gpu" --query-compute-apps=pid --format=csv,noheader,nounits | sed '/^[[:space:]]*$/d')"
   [[ -z "$processes" ]] || { echo "GPU $gpu has a pre-existing compute process" >&2; exit 1; }
@@ -95,9 +101,11 @@ append_event() {
   local kind="$1" rc="${2:-0}"
   "$PYTHON" - "$LEDGER" "$kind" "$rc" "$MODE" "$RUN_DIR" "$ATTEMPT_TAG" <<'PY'
 import hashlib,json,os,sys
+import setproctitle
 from datetime import datetime,timezone
 from pathlib import Path
 ledger,kind,rc,mode,root,attempt=Path(sys.argv[1]),sys.argv[2],int(sys.argv[3]),sys.argv[4],Path(sys.argv[5]),sys.argv[6]
+setproctitle.setproctitle(f'mal2026:lds:ledger:{mode}:{kind}')
 def sha(path):
  h=hashlib.sha256()
  with path.open('rb') as f:
@@ -151,8 +159,10 @@ trap 'exit 143' TERM
 if [[ "$MODE" == "full" ]]; then
   "$PYTHON" - "$RUN_DIR/smoke/outer-00.json" "$RUN_DIR/smoke/attestation.json" "$RUN_DIR/logs/gpu-telemetry-smoke-summary.json" "$CONFIG" "$RUNNER" "$MODULE" "$PREPARER" "$LAUNCHER" "$TEST" <<'PY'
 import hashlib,json,sys
+import setproctitle
 from pathlib import Path
 report_path,attestation_path,summary_path,*paths=map(Path,sys.argv[1:]); report=json.loads(report_path.read_text()); attestation=json.loads(attestation_path.read_text()); config=json.loads(paths[0].read_text())
+setproctitle.setproctitle('mal2026:lds:smoke-attestation-check')
 assert report["status"]=="completed" and report["mode"]=="smoke" and report["nonselectable"] is True
 assert report["task_card_sha256"]==attestation["task_card_sha256"]==config["task_card_sha256"]
 assert report["config_file_sha256"]==attestation["config_sha256"]==hashlib.sha256(paths[0].read_bytes()).hexdigest()
@@ -172,8 +182,10 @@ fi
 ! lexists "$TELEMETRY" && ! lexists "$SUMMARY" || { echo "refusing to overwrite telemetry" >&2; exit 1; }
 "$PYTHON" - "$TELEMETRY" "$TELEMETRY_STOP" "${CHECK_GPUS[*]}" "$$" <<'PY' &
 import csv,os,signal,subprocess,sys,time
+import setproctitle
 from pathlib import Path
 out,stop,raw,parent=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3],int(sys.argv[4]); selected={int(x) for x in raw.split()}
+setproctitle.setproctitle(f'mal2026:lds:telemetry:{"-".join(map(str,sorted(selected)))}')
 fields=['timestamp','index','uuid','name','memory.total','driver_version','utilization.gpu','memory.used']
 try:
  with out.open('x',newline='') as f:
@@ -216,8 +228,10 @@ PYTHONPATH=src "$PYTHON" "$RUNNER" --config "$CONFIG" --telemetry-csv "$TELEMETR
 if [[ "$MODE" == "smoke" ]]; then
   "$PYTHON" - "$RUN_DIR/smoke/outer-00.json" "$RUN_DIR/smoke/attestation.json" "$SUMMARY" "$CONFIG" "$RUNNER" "$MODULE" "$PREPARER" "$LAUNCHER" "$TEST" <<'PY'
 import hashlib,json,os,sys,tempfile
+import setproctitle
 from pathlib import Path
 report,output,summary,*paths=map(Path,sys.argv[1:]); assert not (output.exists() or output.is_symlink()); result=json.loads(report.read_text()); config=json.loads(paths[0].read_text())
+setproctitle.setproctitle('mal2026:lds:smoke-attestation-write')
 assert result['task_card_sha256']==config['task_card_sha256'] and result['config_file_sha256']==hashlib.sha256(paths[0].read_bytes()).hexdigest()
 assert result['validation_rows_loaded'] is False and result['average_target_used'] is False
 value={'schema_version':'mal2026-kure-coral-lds-smoke-attestation-v1','physical_gpu':0,'nonselectable':True,'smoke_report_sha256':hashlib.sha256(report.read_bytes()).hexdigest(),'telemetry_summary_sha256':hashlib.sha256(summary.read_bytes()).hexdigest(),'task_card_sha256':result['task_card_sha256'],'config_sha256':result['config_file_sha256'],'validation_rows_loaded':False,'average_target_used':False}

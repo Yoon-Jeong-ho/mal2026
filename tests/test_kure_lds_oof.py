@@ -251,5 +251,15 @@ esac
   self.assertIn("wait_tracked_pid",text); self.assertIn("pkill -TERM -P",text); self.assertIn("gpu-telemetry",text); self.assertIn("--fold-status",text)
   self.assertLess(text.index("--fold-status"),text.index('COORD_DIR="$ROOT/outputs/reservations'))
   self.assertIn("'attempt_tag':attempt",text); self.assertIn("'telemetry_summary_path'",text); self.assertIn("MAL2026_ATTEMPT_TAG",text)
+  self.assertIn("vllm-idle-arm-gpu0-3-20260803-005/state.json",text); self.assertIn('--scheduler-run-id "$run_id"',text)
+  self.assertIn("setproctitle.setproctitle",text)
+ def test_setproctitle_exposes_lds_stage(self):
+  import setproctitle
+  previous=setproctitle.getproctitle()
+  try:
+   self.assertEqual(m.set_process_title("smoke:f0:content"),"mal2026:lds:smoke:f0:content")
+   self.assertEqual(setproctitle.getproctitle(),"mal2026:lds:smoke:f0:content")
+   with self.assertRaises(KURELDSOOFError): m.set_process_title("bad stage")
+  finally: setproctitle.setproctitle(previous)
 
 if __name__=="__main__": unittest.main()

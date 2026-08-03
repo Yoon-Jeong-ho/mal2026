@@ -46,6 +46,17 @@ def need(condition: bool, message: str) -> None:
         raise KURELDSOOFError(message)
 
 
+def set_process_title(stage: str) -> str:
+    """Expose the active LDS stage/fold/axis in process listings."""
+    need(stage and len(stage) <= 96 and all(char.isalnum() or char in "._:-" for char in stage),
+         "process-title stage differs")
+    import setproctitle
+    title=f"mal2026:lds:{stage}"
+    setproctitle.setproctitle(title)
+    need(setproctitle.getproctitle()==title,"setproctitle did not preserve the requested title")
+    return title
+
+
 def _lexists(path:Path)->bool:
     return path.exists() or path.is_symlink()
 
@@ -557,8 +568,11 @@ def _smoke_subset(rows:Sequence[_TextRow], labels:Mapping[str,float])->list[_Tex
 def run(config:KURELDSOOFConfig|str|Path,*,outer_fold:int,validate_only:bool=False,smoke:bool=False)->Mapping[str,Any]:
     value=KURELDSOOFConfig.from_json(config) if isinstance(config,(str,Path)) else config
     need(outer_fold in range(5) and (not smoke or outer_fold==0),"outer/smoke fold differs")
-    if validate_only: return {"status":"validated","execution_authorized":value.execution_authorized,"gpu_used":False,"validation_rows_loaded":False,"average_target_used":False}
+    if validate_only:
+        set_process_title("validate")
+        return {"status":"validated","execution_authorized":value.execution_authorized,"gpu_used":False,"validation_rows_loaded":False,"average_target_used":False}
     value.require_execution_authorization()
+    set_process_title(f"{'smoke' if smoke else 'oof'}:f{outer_fold}:load")
     import torch
     from transformers import AutoTokenizer
     need(torch.cuda.is_available(),"LDS training requires explicit GPU launch")
@@ -574,6 +588,7 @@ def run(config:KURELDSOOFConfig|str|Path,*,outer_fold:int,validate_only:bool=Fal
     predictions=[]; disclosures=[]
     restricted=Path(value.restricted_output_root)/("smoke/outer-00" if smoke else f"outer-{outer_fold:02d}")
     for axis in axes:
+        set_process_title(f"{'smoke' if smoke else 'oof'}:f{outer_fold}:{axis}")
         labels=all_labels[(outer_fold,axis)]; need({r.identifier for r in fit} <= set(labels),"axis fit text/label identity differs")
         seed=derived_seed(value.seed,outer_fold,"coral-natural",axis,"phase1"); seed_runtime(seed)
         train_data=_LDSDataset(fit,labels,tokenizer,value.max_length)
@@ -587,7 +602,8 @@ def run(config:KURELDSOOFConfig|str|Path,*,outer_fold:int,validate_only:bool=Fal
                             "fit_records":len(fit),"lds":train_data.lds,"fit_token_length_audit":token_length_audit(fit,tokenizer,value.max_length),
                             "held_token_length_audit":token_length_audit(held,tokenizer,value.max_length)})
         del trainer,model; torch.cuda.empty_cache()
-    matrix=np.column_stack(predictions); private=restricted/METHOD/"predictions.jsonl"
+    matrix=np.column_stack(predictions); set_process_title(f"{'smoke' if smoke else 'oof'}:f{outer_fold}:persist")
+    private=restricted/METHOD/"predictions.jsonl"
     private_sha=_atomic_private_jsonl(private,({"source_id":r.identifier,"outer_fold":outer_fold,
         "prediction":{axis:float(matrix[i,j]) for j,axis in enumerate(axes)}} for i,r in enumerate(held)))
     result={"schema_version":SCHEMA_VERSION,"status":"completed","mode":"smoke" if smoke else "outer_fold",
@@ -682,7 +698,8 @@ def fold_status(config:KURELDSOOFConfig,fold:int)->str:
 
 
 def aggregate(config:KURELDSOOFConfig|str|Path)->Mapping[str,Any]:
-    value=KURELDSOOFConfig.from_json(config) if isinstance(config,(str,Path)) else config; value.require_execution_authorization()
+    value=KURELDSOOFConfig.from_json(config) if isinstance(config,(str,Path)) else config
+    set_process_title("aggregate"); value.require_execution_authorization()
     projection,folds=_load_projection(value); predictions={}; bindings=[]
     for fold in range(5):
         public_path=Path(value.output_root)/f"outer-{fold:02d}.json"; private_path=Path(value.restricted_output_root)/f"outer-{fold:02d}"/METHOD/"predictions.jsonl"
@@ -719,4 +736,4 @@ def aggregate(config:KURELDSOOFConfig|str|Path)->Mapping[str,Any]:
 
 __all__=["KURELDSOOFConfig","KURELDSOOFError","aggregate","assert_grid_alignment","gaussian_kernel",
          "fold_status","lds_example_weights","run","scheduler_state_conflict","smoothed_density","solve_clipped_mean_one",
-         "summarize_gpu_telemetry","weighted_hybrid_loss"]
+         "set_process_title","summarize_gpu_telemetry","weighted_hybrid_loss"]

@@ -41,6 +41,8 @@ def publish(path,rows):
     except BaseException: tmp.unlink(missing_ok=True); raise
     return digest(path)
 def main():
+    import setproctitle
+    setproctitle.setproctitle("mal2026:lds:steward-preparation")
     ap=argparse.ArgumentParser(); ap.add_argument("--config",type=Path,required=True); args=ap.parse_args()
     config_path=args.config.resolve(); need(config_path==ROOT/"configs/kure_lds_oof.v1.json","canonical LDS config is required")
     parsed=KURELDSOOFConfig.from_json(config_path); parsed.require_steward_authorization(); config=json.loads(config_path.read_text(encoding="utf-8"))
