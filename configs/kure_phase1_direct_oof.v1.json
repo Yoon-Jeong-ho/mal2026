@@ -1,0 +1,187 @@
+{
+  "schema_version": "mal2026-kure-phase1-direct-oof-v1",
+  "status": "pending_scientific_authorization",
+  "execution_authorized": false,
+  "task_card_path": "docs/experiment_records/kure_phase1_direct_oof_20260803_001.md",
+  "task_card_sha256": "",
+  "task_card_commit": "",
+  "preparer_path": "scripts/prepare_kure_phase1_direct_input.py",
+  "preparer_sha256": "",
+  "preparer_commit": "",
+  "preparation_request_config_sha256": "",
+  "run_id": "kure-phase1-direct-oof-v1-20260803-001",
+  "source_stage3_config_path": "configs/kure_ordinal_oof.v1.json",
+  "source_stage3_config_sha256": "5108e37c490482fbbf45c043f2ad4d0154048d432b4a4a163b3d102f8c6d756e",
+  "source_stage3_report_config_sha256": "28e6ba7465b91ba1fcc306f97f10a8e213d4a6e0069ba499fd92199d827a15aa",
+  "source_stage3_aggregate_path": "outputs/kure-ordinal-oof-v1/kure-ordinal-oof-v1-20260803-001/aggregate.json",
+  "source_stage3_aggregate_sha256": "eb13d63d28258f331ebcefb2b79f4364ddcc9ff38eec38da533665222706e0e3",
+  "train_path": "eval/train.jsonl",
+  "train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+  "fold_manifest_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/manifest.json",
+  "fold_manifest_sha256": "9ccb63c857f80cefb1ed15ac4f60ca75f5570d044c273030d5eb0185c756e938",
+  "fold_rows_path": "data/processed/restricted/r0_ordinal_residual_embeddings_v1/r0-public-frozen-embedding-20260731-001/train/merged/rows.jsonl",
+  "fold_rows_sha256": "949451b690ea12df126bc6aa9b1cf7f2f016e3c60f69d67b1d460719b6404f16",
+  "r0_oof_prediction_path": "data/processed/restricted/r0_exact_oof_v1/r0-exact-oof-20260731-002/merged/oof_predictions.jsonl",
+  "r0_oof_prediction_sha256": "823b0c0b2114d9442e1d4e65ff7fd310e529b82d1283c78b2466b7a0141eec04",
+  "fold_membership_bindings": [
+    {
+      "outer_fold": 0,
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-00/coral-natural/predictions.jsonl",
+      "sha256": "187d7d5c4d8bbce85fdb00cb804226a75aa46bbcfa461980c962d5a25914b723"
+    },
+    {
+      "outer_fold": 1,
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-01/coral-natural/predictions.jsonl",
+      "sha256": "a09a87e7006b8820221f33ac83ae91c0c07698c1da3fd1e0d3f723bdb0a5c4c3"
+    },
+    {
+      "outer_fold": 2,
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-02/coral-natural/predictions.jsonl",
+      "sha256": "bdcd67494a62a57809f381947eba8eeef5ca949a338226a08f9c46695ddfdbe8"
+    },
+    {
+      "outer_fold": 3,
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-03/coral-natural/predictions.jsonl",
+      "sha256": "1957d6a4b79e490056a8e5724cc781cb9aef94adaa7cc5017a530a33b31dd329"
+    },
+    {
+      "outer_fold": 4,
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-04/coral-natural/predictions.jsonl",
+      "sha256": "5a492ded8c862ebc8112e6e1d7b0484a7ae77c181b5263268da7e9b252b6c0fd"
+    }
+  ],
+  "label_free_projection_path": "data/processed/restricted/kure_phase1_direct_input_v1/kure-phase1-direct-oof-v1-20260803-001/rows.jsonl",
+  "label_free_projection_sha256": "",
+  "label_free_manifest_path": "data/processed/restricted/kure_phase1_direct_input_v1/kure-phase1-direct-oof-v1-20260803-001/manifest.json",
+  "label_free_manifest_sha256": "",
+  "checkpoint_bindings": [
+    {
+      "outer_fold": 0,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-00/coral-natural/content/trainable.safetensors",
+      "sha256": "958a9e17ae17b7d3eb77e7887d7fc747ec00d20c877bd568df86c2d9196eeb33"
+    },
+    {
+      "outer_fold": 0,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-00/coral-natural/organization/trainable.safetensors",
+      "sha256": "9f7728e3285328ca17473970186f56d793ac2c1a786cf65d12f5fd66f4c01b52"
+    },
+    {
+      "outer_fold": 0,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-00/coral-natural/expression/trainable.safetensors",
+      "sha256": "49d2af3c54d9f507047fa4cbc6f725bc52d24ca2e5df313bc104b4c616239e57"
+    },
+    {
+      "outer_fold": 1,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-01/coral-natural/content/trainable.safetensors",
+      "sha256": "104937d1f74ee565a5609cea2ceb657951526d70d3ca97b082eabe62ebe958b9"
+    },
+    {
+      "outer_fold": 1,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-01/coral-natural/organization/trainable.safetensors",
+      "sha256": "c8c49df46458c0b7b1468002be69ec4b859cedd3111b92f3a59334f3b4676073"
+    },
+    {
+      "outer_fold": 1,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-01/coral-natural/expression/trainable.safetensors",
+      "sha256": "fe163d000b855921ad0d4afaedfd2dc3877b1f134129c56f78f3f2a5660f76ee"
+    },
+    {
+      "outer_fold": 2,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-02/coral-natural/content/trainable.safetensors",
+      "sha256": "9c6d9bdb0db021514656661396366faed71cad0ba2c2871951233acc20a29e76"
+    },
+    {
+      "outer_fold": 2,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-02/coral-natural/organization/trainable.safetensors",
+      "sha256": "898249447ce52382b38ae4654d2633a657a934a0b3c0a64a0c841fb212d27fcf"
+    },
+    {
+      "outer_fold": 2,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-02/coral-natural/expression/trainable.safetensors",
+      "sha256": "670de45dfa307a3e337af93f2b31daaeb1fd0c58a3b6e24856af63e5602cf8c7"
+    },
+    {
+      "outer_fold": 3,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-03/coral-natural/content/trainable.safetensors",
+      "sha256": "2eab58f489400186ac9a88ffbf7db524f5c0b58ab89bc8330d206b0799ce8631"
+    },
+    {
+      "outer_fold": 3,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-03/coral-natural/organization/trainable.safetensors",
+      "sha256": "552117d235e44f94802eec63b10f7eb173682147ed3441ce8302f76310d3f31e"
+    },
+    {
+      "outer_fold": 3,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-03/coral-natural/expression/trainable.safetensors",
+      "sha256": "2919c76d8f5438b179dbb39541e1a89561775ddb684ff238e8b579b864cacc89"
+    },
+    {
+      "outer_fold": 4,
+      "axis": "content",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-04/coral-natural/content/trainable.safetensors",
+      "sha256": "8c5dd2a18b3a481e3456b2a76de29b019ec0079dc86287c8346be75f4527c51d"
+    },
+    {
+      "outer_fold": 4,
+      "axis": "organization",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-04/coral-natural/organization/trainable.safetensors",
+      "sha256": "781fef2f40d5783e3ad928cc9d2df89655ca4e3bf15b5ea3b515268773a0941b"
+    },
+    {
+      "outer_fold": 4,
+      "axis": "expression",
+      "path": "data/processed/restricted/kure_ordinal_oof_v1/kure-ordinal-oof-v1-20260803-001/outer-04/coral-natural/expression/trainable.safetensors",
+      "sha256": "02201f1c3fb488e4243bb714965e310fd371557911e019244fab4ce397f1103c"
+    }
+  ],
+  "output_root": "outputs/kure-phase1-direct-oof-v1/kure-phase1-direct-oof-v1-20260803-001",
+  "restricted_output_root": "data/processed/restricted/kure_phase1_direct_oof_v1/kure-phase1-direct-oof-v1-20260803-001",
+  "seed": 2026080302,
+  "batch_size": 20,
+  "max_length": 1536,
+  "smoke_gpu": 0,
+  "full_gpu_scope": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "fold_gpu_mapping": {
+    "0": 0,
+    "1": 1,
+    "2": 2,
+    "3": 3,
+    "4": 0
+  },
+  "telemetry_columns": [
+    "timestamp",
+    "index",
+    "uuid",
+    "name",
+    "memory.total",
+    "driver_version",
+    "utilization.gpu",
+    "memory.used"
+  ],
+  "smoke_minimum_samples": 1,
+  "full_minimum_samples": 2,
+  "telemetry_interval_seconds": 30,
+  "axes": [
+    "content",
+    "organization",
+    "expression"
+  ],
+  "average_target_forbidden": true
+}

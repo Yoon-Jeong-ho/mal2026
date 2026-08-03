@@ -5,7 +5,8 @@
 - Proposed run ID: `kure-phase1-direct-oof-v1-20260803-001`
 - Status: `draft_non_runnable_pending_explicit_scientific_authorization`
 - GPU scope if authorized: physical GPU0 for a nonselectable smoke, then
-  physical GPUs 0--3 for inference-only exact five-fold OOF.
+  physical GPUs 0--3 for inference-only exact five-fold OOF. The fixed mapping
+  is fold 0→GPU0, fold 1→GPU1, fold 2→GPU2, fold 3→GPU3, and fold 4→GPU0.
 - No GPU execution, scientific result, refit, validation evaluation, or
   deployment decision is authorized by this draft.
 
@@ -37,9 +38,15 @@ with cRT caused avoidable central collapse.
    continuous expectation over scores 1--5. No calibration, threshold tuning,
    blending, retraining, refitting, inverse-prior correction, or candidate
    selection is allowed.
-4. Held inputs may contain only prompt and essay text during inference. Held
-   axis labels can first be read after the restricted predictions have been
-   atomically written. The source `average` score is never indexed.
+4. A separate, pre-run data-steward stage materializes one hash-bound, restricted,
+   label-free projection containing only `id`, document/prompt identifiers, prompt,
+   essay, and outer-fold membership. This projection is generated before and
+   independently of candidate model inference and scientific results. Candidate
+   inference workers must not open, stat/hash, or otherwise access gold-bearing
+   train, fold-row, or exact-R0 files before their restricted predictions are
+   durably committed. They read held text and folds only from the label-free
+   projection. Held axis labels may first be opened after prediction commit; the
+   source `average` score is never indexed.
 5. A GPU0 content-only smoke is nonselectable and cannot be reused as a
    scientific result. Only after its attested hashes pass may all five outer
    folds run once across GPUs 0--3.
@@ -83,8 +90,11 @@ with cRT caused avoidable central collapse.
 
 1. Explicit user authorization for this named phase-1 direct-decode protocol.
 2. Independent code review with no launch blockers.
-3. A committed runnable config binding this task-card SHA and every checkpoint
+3. A committed data-steward generator, followed by one fresh label-free projection
+   and manifest whose hashes are inserted into the config. Candidate inference and
+   the data-steward stage remain operationally separated.
+4. A committed runnable config binding this task-card SHA and every checkpoint
    SHA, plus exact commands, seeds, environment, hardware mapping, ACL and
    telemetry evidence fields.
-4. A new append-only authorization entry quoting the approval without adding
+5. A new append-only authorization entry quoting the approval without adding
    evaluation content or identifiers.
