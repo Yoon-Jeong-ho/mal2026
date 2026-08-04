@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>MAL2026 글쓰기 평가</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="MAL2026 글쓰기 평가 홈">
+        <span class="brand-mark">M</span>
+        <span><strong>MAL2026</strong><small>한국어 글쓰기 평가</small></span>
+      </a>
+      <div id="user-area" class="user-area hidden">
+        <span id="user-name"></span>
+        <button id="logout" class="text-button" type="button">이름 바꾸기</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="login-view" class="login-view">
+        <div class="login-copy">
+          <p class="eyebrow">HUMAN VALIDATION</p>
+          <h1>사람의 눈으로<br><em>글의 품질</em>을 확인합니다.</h1>
+          <p>글을 먼저 독립적으로 채점한 뒤, 두 개의 평가 설명이 적절한지 차례로 확인해 주세요. 중간에 나가도 같은 이름으로 이어서 할 수 있습니다.</p>
+        </div>
+        <div class="login-card card">
+          <div class="step-number">시작하기</div>
+          <h2>이름을 선택해 주세요</h2>
+          <p class="muted">응답은 이름별로 따로 안전하게 저장됩니다.</p>
+          <div id="name-grid" class="name-grid" role="group" aria-label="평가자 이름"></div>
+        </div>
+      </section>
+
+      <section id="study-view" class="study-view hidden">
+        <div class="progress-wrap">
+          <div class="progress-copy"><span id="progress-label">0 / 20</span><span id="phase-label">독립 채점</span></div>
+          <div class="progress-track"><div id="progress-bar" class="progress-bar"></div></div>
+        </div>
+
+        <section class="common-notice card" aria-labelledby="common-notice-title">
+          <div class="common-notice-heading"><span class="notice-icon">!</span><strong id="common-notice-title">모든 글의 공통 작성 안내</strong></div>
+          <p id="common-notice"></p>
+        </section>
+
+        <div id="completion-view" class="completion card hidden">
+          <div class="completion-mark">✓</div>
+          <p class="eyebrow">ALL DONE</p>
+          <h2>모든 평가를 마쳤습니다.</h2>
+          <p>응답이 저장되었습니다. 참여해 주셔서 감사합니다.</p>
+        </div>
+
+        <div id="item-view">
+          <div class="item-heading">
+            <div><p class="eyebrow">WRITING SAMPLE</p><h2>글 <span id="item-number"></span></h2></div>
+            <span id="stage-pill" class="stage-pill">독립 채점</span>
+          </div>
+
+          <section class="reading-grid">
+            <article class="card prompt-card">
+              <div class="card-label">글쓰기 주제</div>
+              <p id="topic-prompt"></p>
+            </article>
+            <article class="card essay-card">
+              <div class="card-label">학생 글</div>
+              <div id="essay" class="essay-text"></div>
+            </article>
+          </section>
+
+          <form id="score-form" class="response-card card hidden">
+            <details class="rubric inline-rubric">
+              <summary><strong>1~5점 채점 기준 보기</strong><span>평가 전에 꼭 확인해 주세요</span></summary>
+              <div id="rubric-content"></div>
+            </details>
+            <div class="response-heading">
+              <div><span class="step-number">STEP 1</span><h3>글을 직접 채점해 주세요</h3></div>
+              <p>세 기준을 서로 독립적으로 판단해 주세요.</p>
+            </div>
+            <div id="score-fields" class="score-fields"></div>
+            <button class="primary-button" type="submit">채점 확정하고 다음으로</button>
+          </form>
+
+          <form id="rationale-form" class="response-card card hidden">
+            <div class="response-heading rationale-heading">
+              <div><span class="step-number">STEP 2</span><h3>평가 설명 <span id="rationale-label">A</span></h3></div>
+              <p>작성 주체는 공개하지 않습니다. 학생 글에 비추어 설명 자체가 타당한지 판단해 주세요.</p>
+            </div>
+            <section class="judge-guide" aria-labelledby="judge-guide-title">
+              <h4 id="judge-guide-title">평가 설명 판단 기준</h4>
+              <p id="judge-guide-intro"></p>
+              <div id="judge-guide-checks" class="judge-guide-checks"></div>
+            </section>
+            <div id="score-recap" class="score-recap"></div>
+            <div id="rationale-fields" class="rationale-fields"></div>
+            <button id="rationale-submit" class="primary-button" type="submit">확인하고 다음으로</button>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

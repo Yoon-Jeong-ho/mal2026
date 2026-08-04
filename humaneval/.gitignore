@@ -1,0 +1,7 @@
+# Restricted Mac/local study bundles must never enter version control.
+local_data/
+study_bundle/
+
+# Keep accidental in-folder response stores and SQLite sidecars local.
+*.sqlite3
+*.sqlite3-*
