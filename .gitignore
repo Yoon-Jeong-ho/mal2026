@@ -11,6 +11,8 @@ data/processed/
 # explicit rule documents the canonical isolation root in addition to the
 # legacy broad processed-data exclusion above.
 data/processed/restricted/openai_rationale_batches/
+# Restricted GPT-5.6-Luna low-tail diagnostic requests, responses, and row maps.
+data/processed/restricted/luna_tail_causal_audit_v1/
 data/logs/
 eval/
 

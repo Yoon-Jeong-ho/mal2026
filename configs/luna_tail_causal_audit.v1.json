@@ -1,0 +1,52 @@
+{
+  "schema_version": "mal2026-luna-tail-causal-audit-plan-v1",
+  "run_id": "luna-r0-tail-causal-audit-v1-20260804-002",
+  "model": "gpt-5.6-luna",
+  "inputs": {
+    "canonical_train_path": "eval/train.jsonl",
+    "canonical_train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "exact_r0_oof_path": "data/processed/restricted/r0_exact_oof_v1/r0-exact-oof-20260731-002/merged/oof_predictions.jsonl",
+    "exact_r0_oof_sha256": "823b0c0b2114d9442e1d4e65ff7fd310e529b82d1283c78b2466b7a0141eec04",
+    "r0_input_rationale_path": "data/processed/restricted/rlaif_top3_encoder_v1/rationales/rlaif-top3-rationale-generation-v1-rank2_ax4_random1-train-full-001/generated_rationales.jsonl",
+    "r0_input_rationale_sha256": "d3fba8cfa43d62ea17b904d65164aee9f68e173c6dde9701d9f3683532b7eab1",
+    "official_score_blind_rationale_path": "data/processed/restricted/evaluation_prompt_rationale_v2/evaluation-prompt-rationale-generation-v2-score-blind-20260729-004/rationales.train.jsonl",
+    "official_score_blind_rationale_sha256": "d4a2be9a070c786728fde6f64f066ac9d462bc5f83305a2d9161b380abd88e55",
+    "official_score_conditioned_rationale_path": "data/processed/restricted/evaluation_prompt_rationale_v2/evaluation-prompt-rationale-generation-v2-score-conditioned-20260729-002/rationales.train.jsonl",
+    "official_score_conditioned_rationale_sha256": "d0633e6a23ffb6ad26f4abfa12f32ab22b705ee16be3ed94fc6e2f05056170da",
+    "final_dpo_rationale_path": "data/processed/restricted/official_prompt_alignment_v1/final_rationale_handoff/official-rationale-dpo-selected-handoff-exact-bundle-20260729-021/rationales.train.jsonl",
+    "final_dpo_rationale_sha256": "45dc9bfd05d60c75214221e34149ed7bff6dae0d571a90fde287ab193bb6f347",
+    "evaluation_prompt_path": "evaluation.txt",
+    "evaluation_prompt_sha256": "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145"
+  },
+  "population": {
+    "axes": ["content", "organization", "expression"],
+    "primary": "all gold-band 1/2 axis cases whose exact-R0 half-up band is 3/4",
+    "low_control": "all gold-band 1/2 axis cases whose exact-R0 half-up band is 1/2",
+    "center_control_per_axis": 30,
+    "high_collapse_control_per_axis": 30,
+    "control_sampling": "deterministic prompt-stratified hash round-robin",
+    "seed": 2026080401
+  },
+  "conditions": {
+    "canonical_blind": {"repetitions": 3, "gold_prediction_or_rationale_visible": false},
+    "operational_blind": {"repetitions": 3, "gold_prediction_or_rationale_visible": false},
+    "revealed_causal": {"repetitions": 2, "gold_prediction_or_rationale_visible": true}
+  },
+  "api": {
+    "endpoint": "/v1/responses",
+    "reasoning_effort": "none",
+    "store": false,
+    "max_output_tokens": 1000,
+    "completion_window": "24h"
+  },
+  "authorization": {
+    "external_api_and_restricted_text_transfer": "user explicitly authorized many GPT-5.6-Luna subagent/API reviews of the low-score errors on 2026-08-04",
+    "gpu_scope": [],
+    "validation_loaded": false,
+    "average_target_used": false
+  },
+  "privacy": {
+    "row_requests_responses_and_source_maps": "ignored restricted storage only",
+    "public_output": "aggregate counts and rates only; no essay, rationale, identifier, prompt text, or row prediction"
+  }
+}
