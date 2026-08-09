@@ -1,0 +1,53 @@
+{
+  "schema_version": "mal2026-decoder-human-audited-prompt-validation-config-v1",
+  "run_id": "decoder-human-audited-prompt-validation-v1-20260809-001",
+  "seed": 2026080901,
+  "bootstrap_seed": 2026080902,
+  "bootstrap_replicates": 10000,
+  "split": "validation",
+  "validation_rows": 400,
+  "prompt_arms": [
+    "official_p0",
+    "public_band_p1",
+    "human_audit_p2"
+  ],
+  "official_prompt_path": "/dataset/aa007878/mal2026/evaluation.txt",
+  "official_prompt_sha256": "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145",
+  "public_band_prompt_path": "/dataset/aa007878/mal2026/configs/public_spec_score_band_prompt.v1.txt",
+  "public_band_prompt_sha256": "1c126b26b4ff8b99a6dd4d14235a9e8eaa07b7e9f3d8f28040e2fdccd35a4e4e",
+  "human_audit_prompt_path": "/dataset/aa007878/mal2026/configs/human_audited_score_prompt.v1.txt",
+  "human_audit_prompt_sha256": "690a7c58c60240c9da49904bda895f868a7d070c3f6276aaf198ab23a88df250",
+  "human_responses_path": "/dataset/aa007878/mal2026/outputs/humaneval/cloudflare-final-20260809-001/responses.jsonl",
+  "human_responses_sha256": "471a13750fcb71bb6b8683b7839803fb8b4198532cb4abe7c66c4886c8cc48a8",
+  "reason_audit_path": "/dataset/aa007878/mal2026/outputs/humaneval/reports/cloudflare-final-20260809-001/reason_audit.json",
+  "reason_audit_sha256": "cf985f375ffbfa3e4431a74fdf70268ecc64dde1b94e6aad26e3259c45e2daa0",
+  "derivation_filter": {
+    "split": "train",
+    "maximum_absolute_human_target_difference": 1,
+    "accepted_audit_labels": [
+      "match",
+      "partial"
+    ],
+    "expected_selected_axis_reasons": 18,
+    "validation_axis_reasons_excluded": 3
+  },
+  "model": {
+    "key": "qwen35-9b",
+    "model_id": "Qwen/Qwen3.5-9B",
+    "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/Qwen--Qwen3.5-9B-c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+    "tensor_parallel_size": 1,
+    "disable_thinking": true
+  },
+  "physical_gpu_scope": [
+    6
+  ],
+  "gpu_scope_authorization": "2026-08-09 current user explicitly requested vLLM on number 6 for this validation-only prompt experiment; interpreted and recorded as authorization to use GPU 6 only.",
+  "max_model_len": 12288,
+  "max_tokens": 512,
+  "retry_max_tokens": 2048,
+  "temperature": 0.0,
+  "gpu_memory_utilization": 0.9,
+  "max_num_seqs": 64,
+  "max_num_batched_tokens": 32768
+}
