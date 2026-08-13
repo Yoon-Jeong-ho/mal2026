@@ -1,0 +1,385 @@
+{
+  "axes": {
+    "content": {
+      "band_counts": {
+        "1": 11,
+        "2": 202,
+        "3": 982,
+        "4": 749,
+        "5": 56
+      },
+      "bands": {
+        "1": {
+          "count": 11,
+          "feature_means": {
+            "causal_proxy_count": 2.636364,
+            "character_count": 1031.636364,
+            "enumeration_proxy_count": 0.272727,
+            "evidence_proxy_count": 0.363636,
+            "mean_non_whitespace_characters_per_sentence": 72.539402,
+            "non_whitespace_character_count": 787.181818,
+            "sentence_count": 18.0,
+            "serialized_line_count": 1.0,
+            "transition_proxy_count": 2.181818
+          }
+        },
+        "2": {
+          "count": 202,
+          "feature_means": {
+            "causal_proxy_count": 1.930693,
+            "character_count": 972.366337,
+            "enumeration_proxy_count": 0.539604,
+            "evidence_proxy_count": 0.90099,
+            "mean_non_whitespace_characters_per_sentence": 48.955084,
+            "non_whitespace_character_count": 737.094059,
+            "sentence_count": 16.173267,
+            "serialized_line_count": 1.0,
+            "transition_proxy_count": 2.608911
+          }
+        },
+        "3": {
+          "count": 982,
+          "feature_means": {
+            "causal_proxy_count": 2.284114,
+            "character_count": 998.060081,
+            "enumeration_proxy_count": 0.748473,
+            "evidence_proxy_count": 1.019348,
+            "mean_non_whitespace_characters_per_sentence": 50.394491,
+            "non_whitespace_character_count": 756.349287,
+            "sentence_count": 16.694501,
+            "serialized_line_count": 1.014257,
+            "transition_proxy_count": 2.734216
+          }
+        },
+        "4": {
+          "count": 749,
+          "feature_means": {
+            "causal_proxy_count": 2.558077,
+            "character_count": 1053.619493,
+            "enumeration_proxy_count": 1.12016,
+            "evidence_proxy_count": 1.304406,
+            "mean_non_whitespace_characters_per_sentence": 47.894203,
+            "non_whitespace_character_count": 798.726302,
+            "sentence_count": 17.835781,
+            "serialized_line_count": 1.025367,
+            "transition_proxy_count": 3.200267
+          }
+        },
+        "5": {
+          "count": 56,
+          "feature_means": {
+            "causal_proxy_count": 2.375,
+            "character_count": 1109.928571,
+            "enumeration_proxy_count": 1.5,
+            "evidence_proxy_count": 1.857143,
+            "mean_non_whitespace_characters_per_sentence": 45.520711,
+            "non_whitespace_character_count": 841.803571,
+            "sentence_count": 18.928571,
+            "serialized_line_count": 1.0,
+            "transition_proxy_count": 3.464286
+          }
+        }
+      },
+      "feature_raw_score_spearman": {
+        "causal_proxy_count": 0.105944,
+        "character_count": 0.281485,
+        "enumeration_proxy_count": 0.205149,
+        "evidence_proxy_count": 0.160786,
+        "mean_non_whitespace_characters_per_sentence": -0.04616,
+        "non_whitespace_character_count": 0.27998,
+        "sentence_count": 0.186109,
+        "serialized_line_count": -0.002079,
+        "transition_proxy_count": 0.15242
+      }
+    },
+    "expression": {
+      "band_counts": {
+        "1": 4,
+        "2": 77,
+        "3": 533,
+        "4": 1093,
+        "5": 293
+      },
+      "bands": {
+        "1": {
+          "count": 4,
+          "feature_means": {
+            "causal_proxy_count": 4.25,
+            "character_count": 915.5,
+            "enumeration_proxy_count": 0.0,
+            "evidence_proxy_count": 0.25,
+            "mean_non_whitespace_characters_per_sentence": 155.982143,
+            "non_whitespace_character_count": 705.5,
+            "sentence_count": 5.5,
+            "serialized_line_count": 1.0,
+            "transition_proxy_count": 3.25
+          }
+        },
+        "2": {
+          "count": 77,
+          "feature_means": {
+            "causal_proxy_count": 2.207792,
+            "character_count": 980.428571,
+            "enumeration_proxy_count": 0.818182,
+            "evidence_proxy_count": 0.805195,
+            "mean_non_whitespace_characters_per_sentence": 69.992496,
+            "non_whitespace_character_count": 747.402597,
+            "sentence_count": 16.051948,
+            "serialized_line_count": 1.0,
+            "transition_proxy_count": 2.324675
+          }
+        },
+        "3": {
+          "count": 533,
+          "feature_means": {
+            "causal_proxy_count": 2.20075,
+            "character_count": 987.939962,
+            "enumeration_proxy_count": 0.690432,
+            "evidence_proxy_count": 0.9606,
+            "mean_non_whitespace_characters_per_sentence": 51.729768,
+            "non_whitespace_character_count": 748.574109,
+            "sentence_count": 16.142589,
+            "serialized_line_count": 1.028143,
+            "transition_proxy_count": 2.844278
+          }
+        },
+        "4": {
+          "count": 1093,
+          "feature_means": {
+            "causal_proxy_count": 2.340348,
+            "character_count": 1029.31473,
+            "enumeration_proxy_count": 0.923147,
+            "evidence_proxy_count": 1.145471,
+            "mean_non_whitespace_characters_per_sentence": 47.215632,
+            "non_whitespace_character_count": 780.024703,
+            "sentence_count": 17.508692,
+            "serialized_line_count": 1.010064,
+            "transition_proxy_count": 2.902104
+          }
+        },
+        "5": {
+          "count": 293,
+          "feature_means": {
+            "causal_proxy_count": 2.706485,
+            "character_count": 1052.593857,
+            "enumeration_proxy_count": 1.12628,
+            "evidence_proxy_count": 1.505119,
+            "mean_non_whitespace_characters_per_sentence": 45.748008,
+            "non_whitespace_character_count": 797.764505,
+            "sentence_count": 18.017065,
+            "serialized_line_count": 1.023891,
+            "transition_proxy_count": 3.232082
+          }
+        }
+      },
+      "feature_raw_score_spearman": {
+        "causal_proxy_count": 0.070905,
+        "character_count": 0.181013,
+        "enumeration_proxy_count": 0.130263,
+        "evidence_proxy_count": 0.096363,
+        "mean_non_whitespace_characters_per_sentence": -0.095344,
+        "non_whitespace_character_count": 0.177878,
+        "sentence_count": 0.178642,
+        "serialized_line_count": -0.01636,
+        "transition_proxy_count": 0.100305
+      }
+    },
+    "organization": {
+      "band_counts": {
+        "1": 26,
+        "2": 252,
+        "3": 708,
+        "4": 803,
+        "5": 211
+      },
+      "bands": {
+        "1": {
+          "count": 26,
+          "feature_means": {
+            "causal_proxy_count": 2.115385,
+            "character_count": 909.076923,
+            "enumeration_proxy_count": 0.538462,
+            "evidence_proxy_count": 0.961538,
+            "mean_non_whitespace_characters_per_sentence": 85.033287,
+            "non_whitespace_character_count": 688.115385,
+            "sentence_count": 13.461538,
+            "serialized_line_count": 1.0,
+            "transition_proxy_count": 2.038462
+          }
+        },
+        "2": {
+          "count": 252,
+          "feature_means": {
+            "causal_proxy_count": 2.123016,
+            "character_count": 964.154762,
+            "enumeration_proxy_count": 0.515873,
+            "evidence_proxy_count": 0.77381,
+            "mean_non_whitespace_characters_per_sentence": 52.394431,
+            "non_whitespace_character_count": 732.111111,
+            "sentence_count": 15.698413,
+            "serialized_line_count": 1.0,
+            "transition_proxy_count": 2.662698
+          }
+        },
+        "3": {
+          "count": 708,
+          "feature_means": {
+            "causal_proxy_count": 2.227401,
+            "character_count": 998.995763,
+            "enumeration_proxy_count": 0.685028,
+            "evidence_proxy_count": 1.05791,
+            "mean_non_whitespace_characters_per_sentence": 49.527467,
+            "non_whitespace_character_count": 757.286723,
+            "sentence_count": 16.625706,
+            "serialized_line_count": 1.021186,
+            "transition_proxy_count": 2.786723
+          }
+        },
+        "4": {
+          "count": 803,
+          "feature_means": {
+            "causal_proxy_count": 2.43462,
+            "character_count": 1040.43213,
+            "enumeration_proxy_count": 1.048568,
+            "evidence_proxy_count": 1.272727,
+            "mean_non_whitespace_characters_per_sentence": 47.890081,
+            "non_whitespace_character_count": 788.298879,
+            "sentence_count": 17.768369,
+            "serialized_line_count": 1.013699,
+            "transition_proxy_count": 3.03736
+          }
+        },
+        "5": {
+          "count": 211,
+          "feature_means": {
+            "causal_proxy_count": 2.791469,
+            "character_count": 1089.189573,
+            "enumeration_proxy_count": 1.417062,
+            "evidence_proxy_count": 1.312796,
+            "mean_non_whitespace_characters_per_sentence": 45.785425,
+            "non_whitespace_character_count": 825.251185,
+            "sentence_count": 18.63981,
+            "serialized_line_count": 1.033175,
+            "transition_proxy_count": 3.274882
+          }
+        }
+      },
+      "feature_raw_score_spearman": {
+        "causal_proxy_count": 0.097165,
+        "character_count": 0.299899,
+        "enumeration_proxy_count": 0.236785,
+        "evidence_proxy_count": 0.123537,
+        "mean_non_whitespace_characters_per_sentence": -0.096538,
+        "non_whitespace_character_count": 0.294647,
+        "sentence_count": 0.237525,
+        "serialized_line_count": 0.018268,
+        "transition_proxy_count": 0.124773
+      }
+    }
+  },
+  "banding": {
+    "bands": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "method": "Decimal(str(score)).quantize(1, ROUND_HALF_UP)"
+  },
+  "feature_definitions": {
+    "causal_proxy_count": {
+      "markers": [
+        "때문",
+        "따라서",
+        "그러므로",
+        "그러니",
+        "결과적으로",
+        "원인",
+        "결과"
+      ],
+      "operation": "sum of literal substring occurrence counts"
+    },
+    "character_count": "Python len(text), including whitespace",
+    "enumeration_proxy_count": {
+      "markers": [
+        "첫째",
+        "둘째",
+        "셋째",
+        "첫 번째",
+        "두 번째",
+        "세 번째",
+        "먼저",
+        "다음으로",
+        "마지막으로"
+      ],
+      "operation": "sum of literal substring occurrence counts"
+    },
+    "evidence_proxy_count": {
+      "markers": [
+        "예를 들어",
+        "예컨대",
+        "실제로",
+        "통계",
+        "자료",
+        "연구",
+        "사례",
+        "근거"
+      ],
+      "operation": "sum of literal substring occurrence counts"
+    },
+    "mean_non_whitespace_characters_per_sentence": "non-whitespace characters divided by sentence_count",
+    "non_whitespace_character_count": "characters for which str.isspace() is false",
+    "sentence_count": "non-empty segments split on . ! ? and CJK equivalents; minimum 1",
+    "serialized_line_count": "non-empty physical lines from str.splitlines(); minimum 1",
+    "transition_proxy_count": {
+      "markers": [
+        "그러나",
+        "하지만",
+        "반면",
+        "한편",
+        "또한",
+        "더불어",
+        "따라서",
+        "그러므로",
+        "결론적으로",
+        "요컨대"
+      ],
+      "operation": "sum of literal substring occurrence counts"
+    }
+  },
+  "limitations": [
+    "Proxy counts use short fixed marker lists and cannot establish whether evidence, causality, enumeration, or transitions are valid or effective.",
+    "Rare score bands yield unstable aggregate means; counts must be considered with every comparison.",
+    "Physical line breaks may be lost or normalized during JSONL serialization, and line count does not measure discourse organization.",
+    "Surface-feature correlations are descriptive associations with raw scores, not scoring rules or causal effects."
+  ],
+  "overall_feature_means": {
+    "causal_proxy_count": 2.3555,
+    "character_count": 1019.589,
+    "enumeration_proxy_count": 0.885,
+    "evidence_proxy_count": 1.134,
+    "mean_non_whitespace_characters_per_sentence": 49.298084,
+    "non_whitespace_character_count": 772.837,
+    "sentence_count": 17.139,
+    "serialized_line_count": 1.0165,
+    "transition_proxy_count": 2.9135
+  },
+  "privacy": {
+    "aggregate_only": true,
+    "individual_examples_included": false,
+    "source_identifiers_included": false,
+    "source_text_included": false
+  },
+  "schema_version": "mal2026-train-score-band-profile-v1",
+  "serialization_diagnostic": {
+    "single_serialized_line_count": 1994,
+    "single_serialized_line_rate": 0.997
+  },
+  "source": {
+    "record_count": 2000,
+    "sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "split": "train",
+    "validation_records_read": 0
+  }
+}

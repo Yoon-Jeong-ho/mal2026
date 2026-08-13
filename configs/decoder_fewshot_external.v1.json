@@ -1,0 +1,25 @@
+{
+  "schema_version": "mal2026-decoder-fewshot-external-config-v1",
+  "run_id": "decoder-fewshot-external-v1-20260731-001",
+  "seed": 2026073104,
+  "base_run_id": "decoder-fewshot-validation-v1-20260731-001",
+  "base_config_sha256": "07169afcb230939d4d54411e34cd05a748342e5da1d53e9a710bd993011305b9",
+  "shot_manifest_sha256": "a9431b7b432526bf30659dd33d812f35c967286e0a107903a63b93eb70bfe111",
+  "score_prompt_sha256": "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145",
+  "conditions": ["balanced5", "central5"],
+  "api_models": ["gpt-5.6-terra", "gpt-5.6-luna"],
+  "api_max_output_tokens": 1800,
+  "solar": {
+    "model_id": "nota-ai/Solar-Open2-250B-Nota-INT4",
+    "model_path": "/dataset/large-models/nota-ai/Solar-Open2-250B-Nota-INT4",
+    "model_alias": "solar-open2-250b-nota-int4",
+    "docker_image": "upstage/vllm-solar-open2@sha256:b34b7dd42d986bafb8dcfb285758de2fbfd55e7cf28a1b5ba6b858e6b2b7c8c3",
+    "docker_image_id": "sha256:b34b7dd42d986bafb8dcfb285758de2fbfd55e7cf28a1b5ba6b858e6b2b7c8c3",
+    "gpu_scope": [0, 1, 2, 3],
+    "port": 19430,
+    "max_model_len": 12288,
+    "max_tokens": 512,
+    "retry_max_tokens": 2048,
+    "max_inflight": 64
+  }
+}

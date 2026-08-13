@@ -1,0 +1,31 @@
+{
+  "schema_version": "mal2026-decoder-prompt-band-ablation-config-v1",
+  "run_id": "decoder-prompt-band-ablation-v1-20260801-001",
+  "seed": 2026080101,
+  "train_probe_seed": 2026080102,
+  "train_probe_rows": 400,
+  "official_prompt_sha256": "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145",
+  "revised_prompt_path": "/dataset/aa007878/mal2026/configs/public_spec_score_band_prompt.v1.txt",
+  "revised_prompt_sha256": "1c126b26b4ff8b99a6dd4d14235a9e8eaa07b7e9f3d8f28040e2fdccd35a4e4e",
+  "prompt_arms": ["official_p0", "axis_band_p1"],
+  "splits": ["train-probe", "validation"],
+  "max_model_len": 12288,
+  "max_tokens": 512,
+  "retry_max_tokens": 2048,
+  "temperature": 0.0,
+  "gpu_memory_utilization": 0.9,
+  "max_num_seqs": 64,
+  "max_num_batched_tokens": 32768,
+  "bootstrap_replicates": 10000,
+  "bootstrap_seed": 2026080103,
+  "qwen": {
+    "model_key": "qwen36-35b-a3b-fp8",
+    "model_id": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "revision": "95a723d08a9490559dae23d0cff1d9466213d989",
+    "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/Qwen--Qwen3.6-35B-A3B-FP8-native-fp8-v1",
+    "tensor_parallel_size": 4,
+    "disable_thinking": true
+  },
+  "solar_base_config_path": "/dataset/aa007878/mal2026/configs/decoder_fewshot_external.v1.json",
+  "solar_base_config_sha256": "e24d56472f660ecab5deadfb206d2d2d877556339cc004998f2296393f840d56"
+}

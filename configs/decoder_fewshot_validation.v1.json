@@ -1,0 +1,58 @@
+{
+  "schema_version": "mal2026-decoder-fewshot-validation-config-v1",
+  "run_id": "decoder-fewshot-validation-v1-20260731-001",
+  "seed": 2026073104,
+  "score_prompt_kind": "user_supplied_evaluation_txt_v1",
+  "score_prompt_sha256": "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145",
+  "rationale_path": "/dataset/aa007878/mal2026/data/processed/restricted/evaluation_prompt_rationale_v2/evaluation-prompt-rationale-generation-v2-score-blind-20260729-004/rationales.train.jsonl",
+  "rationale_sha256": "d4a2be9a070c786728fde6f64f066ac9d462bc5f83305a2d9161b380abd88e55",
+  "conditions": ["balanced5", "central5"],
+  "max_model_len": 12288,
+  "max_tokens": 512,
+  "temperature": 0.0,
+  "gpu_memory_utilization": 0.9,
+  "max_num_seqs": 64,
+  "max_num_batched_tokens": 32768,
+  "models": [
+    {
+      "key": "ax4-light",
+      "model_id": "skt/A.X-4.0-Light",
+      "revision": "ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "tensor_parallel_size": 1,
+      "disable_thinking": false
+    },
+    {
+      "key": "midm2-base-instruct",
+      "model_id": "K-intelligence/Midm-2.0-Base-Instruct",
+      "revision": "35479c5fc9a18a5db7cc6dbadcf1db68db7beab0",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/K-intelligence--Midm-2.0-Base-Instruct-35479c5fc9a18a5db7cc6dbadcf1db68db7beab0",
+      "tensor_parallel_size": 1,
+      "disable_thinking": false
+    },
+    {
+      "key": "qwen3-8b",
+      "model_id": "Qwen/Qwen3-8B",
+      "revision": "b968826d9c46dd6066d109eabc6255188de91218",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/Qwen--Qwen3-8B-b968826d9c46dd6066d109eabc6255188de91218",
+      "tensor_parallel_size": 1,
+      "disable_thinking": true
+    },
+    {
+      "key": "qwen35-9b",
+      "model_id": "Qwen/Qwen3.5-9B",
+      "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/Qwen--Qwen3.5-9B-c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+      "tensor_parallel_size": 1,
+      "disable_thinking": true
+    },
+    {
+      "key": "qwen36-35b-a3b-fp8",
+      "model_id": "Qwen/Qwen3.6-35B-A3B-FP8",
+      "revision": "95a723d08a9490559dae23d0cff1d9466213d989",
+      "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/Qwen--Qwen3.6-35B-A3B-FP8-native-fp8-v1",
+      "tensor_parallel_size": 4,
+      "disable_thinking": true
+    }
+  ]
+}
