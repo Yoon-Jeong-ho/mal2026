@@ -128,7 +128,10 @@ def call(endpoint: str, body: Mapping[str, Any]) -> tuple[dict[str, Any] | None,
     # being disabled. Retry only an explicitly length-truncated response;
     # malformed stop completions remain hard failures.
     if choice.get("finish_reason") == "length" and int(body.get("max_tokens", 0)) == 1800:
-        choice, failure = fetch({**body, "max_tokens": 3600})
+        # One long-input rationale case in the full campaign also exhausted
+        # 3,600 and 7,200 tokens. The retry runs only for an explicit length finish and
+        # uses a dedicated 32k-context slot, preserving prompt/model/seed.
+        choice, failure = fetch({**body, "max_tokens": 14400})
         if choice is None:
             return None, failure, attempts
     try:

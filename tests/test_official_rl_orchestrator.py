@@ -47,7 +47,8 @@ class OfficialRLOrchestratorTest(unittest.TestCase):
             max_num_seqs=192, max_num_batched_tokens=65536, dynamic_updates=True,
             model_path=Path(midm["model_path"]), model_id=midm["model_id"],
         )
-        self.assertEqual(midm_command[2], midm["model_path"])
+        self.assertEqual(midm_command[2], "mal2026:vllm:official-rl-policy")
+        self.assertEqual(midm_command[midm_command.index("serve") + 1], midm["model_path"])
         self.assertEqual(midm_command[midm_command.index("--served-model-name") + 1], midm["model_id"])
         self.assertNotIn("--lora-modules", midm_command)
 

@@ -1,0 +1,90 @@
+{
+  "schema_version": "mal2026-submission-candidates-v1",
+  "evidence_cutoff": "2026-07-30",
+  "selection_note": "Validation is development evidence, not a hidden-test estimate. Exact-prompt and historical arms are not directly interchangeable.",
+  "recommended_build_order": [
+    "exact_contract_reuse_blind_v1",
+    "exact_score_dpo_rationale_v1",
+    "historical_state_soup_dpo_v1",
+    "historical_r0_prediction_ensemble_dpo_v1"
+  ],
+  "shared_models": {
+    "rationale_base": {
+      "model_id": "skt/A.X-4.0-Light",
+      "revision": "ba21c20ea1b31ded1ec3e2fb432335077dc4be98"
+    },
+    "score_base": {
+      "model_id": "Qwen/Qwen3-Embedding-8B",
+      "revision": "1d8ad4ca9b3dd8059ad90a75d4983776a23d44af"
+    }
+  },
+  "candidates": [
+    {
+      "id": "exact_contract_reuse_blind_v1",
+      "status": "recommended_first_submission",
+      "pipeline": "exact score-blind A.X rationale -> exact rationale-aware Qwen score -> reuse the same rationale",
+      "passes": {"rationale": 1, "score": 1, "total": 2},
+      "score_validation": {
+        "continuous_macro_rmse": 0.583675726284561,
+        "continuous_macro_spearman": 0.619364942700499,
+        "integer_macro_rmse": 0.6262927477461085,
+        "integer_macro_spearman": 0.5644985456726963
+      },
+      "exact_judge_macro_5point": 4.971875,
+      "evidence": "docs/experiment_records/evaluation_prompt_end_to_end_reaudit_20260729_001.md",
+      "artifacts": {
+        "blind_adapter": "outputs/evaluation-prompt-rationale-sft-v2/evaluation-prompt-rationale-sft-v2-ax4-score-blind-20260729-001/adapter",
+        "blind_adapter_model_sha256": "2d3f3c2ad0f773fcf1958e42f96fe93b66c4fa56899d1d89d3ca523f65a8c86d",
+        "score_trainable_state": "outputs/evaluation-prompt-score-encoder-v1/evaluation-prompt-score-encoder-v1-qwen3-embedding-8b-rationale-aware-score-blind-20260729-001/selected_refit_trainable.safetensors",
+        "score_trainable_state_sha256": "4bdf0fd0ea96ef229bbea087fcde4ffa8f1737c458e9f67471a7e65b577b75e9"
+      },
+      "caveat": "Best fully matched evaluation.txt pipeline, but not the lowest historical validation RMSE."
+    },
+    {
+      "id": "exact_score_dpo_rationale_v1",
+      "status": "recommended_second_submission_after_l40s_gate",
+      "pipeline": "exact score-blind A.X rationale -> exact rationale-aware Qwen score -> score-conditioned A.X DPO rationale",
+      "passes": {"rationale": 2, "score": 1, "total": 3},
+      "score_validation": {
+        "continuous_macro_rmse": 0.583675726284561,
+        "continuous_macro_spearman": 0.619364942700499,
+        "integer_macro_rmse": 0.6262927477461085,
+        "integer_macro_spearman": 0.5644985456726963
+      },
+      "standalone_dpo_exact_judge_macro_5point": 4.987708333333333,
+      "artifacts": {
+        "final_dpo_adapter": "outputs/official-rationale-rl-v1/orchestration/official-rationale-rl-experiment-v1-exact-judge-20260729-019/models/dpo-official-bundle-ddp4-full-user-aligned-001/adapter",
+        "final_dpo_adapter_model_sha256": "887abf9d1bf07693251a17b7a0fb655fe8203fa6945e9c178a38bdc538ded826"
+      },
+      "caveat": "The DPO adapter was evaluated separately with another emitted score bundle; this exact three-stage composition still requires a frozen end-to-end gate."
+    },
+    {
+      "id": "historical_state_soup_dpo_v1",
+      "status": "metric_first_candidate",
+      "pipeline": "historical A.X rationale -> Qwen R0 epoch-1..4 uniform state soup -> score-conditioned A.X DPO rationale",
+      "passes": {"rationale": 2, "score": 1, "total": 3},
+      "score_validation": {
+        "continuous_macro_rmse": 0.5614047186019392,
+        "continuous_macro_spearman": 0.6428239194782164,
+        "integer_macro_rmse": 0.6156484492282978,
+        "integer_macro_spearman": 0.5727322413321656
+      },
+      "evidence": "outputs/official-prompt-alignment-v1/score-metrics/official-score-r0-ensemble-full-20260727-002/aggregate_metrics.json",
+      "caveat": "Better historical score metrics, but the rationale/score prompt lineage predates the exact evaluation.txt re-audit and validation was previously exposed."
+    },
+    {
+      "id": "historical_r0_prediction_ensemble_dpo_v1",
+      "status": "latency_heavy_last_candidate",
+      "pipeline": "historical A.X rationale -> four Qwen R0 epoch predictions -> average continuous scores -> score-conditioned A.X DPO rationale",
+      "passes": {"rationale": 2, "score": 4, "total": 6},
+      "score_validation": {
+        "continuous_macro_rmse": 0.5582937519204271,
+        "continuous_macro_spearman": 0.6441959864775355,
+        "integer_macro_rmse": 0.6158981882311673,
+        "integer_macro_spearman": 0.5681974394968795
+      },
+      "evidence": "outputs/official-prompt-alignment-v1/score-metrics/official-score-r0-ensemble-full-20260727-002/aggregate_metrics.json",
+      "caveat": "Lowest local continuous RMSE, but requires four encoder passes and retains the historical prompt caveat."
+    }
+  ]
+}

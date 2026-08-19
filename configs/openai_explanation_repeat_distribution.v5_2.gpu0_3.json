@@ -1,0 +1,54 @@
+{
+  "schema_version": "mal2026-openai-explanation-repeat-distribution-v5_2-gpu0_3",
+  "seed": 2026072008,
+  "selection": {
+    "split": "train",
+    "max_essays": 2000,
+    "rank_algorithm": "sha256(seed:source_id)",
+    "required_candidate_artifact": "derived/train-only-candidates-v1-20260719-001/candidates.train.jsonl",
+    "required_candidate_manifest": "derived/train-only-candidates-v1-20260719-001/candidates.train.manifest.json"
+  },
+  "model": {
+    "filename": "Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf",
+    "bytes": 22285080192,
+    "sha256": "b46fedd33e0bfb0cae308aa3c158d0a4b2c4a1d2185a1ed6f093cdaf39064772"
+  },
+  "runtime": {
+    "physical_gpus": [0, 1, 2, 3],
+    "parallel_requests_per_server": 4,
+    "host": "127.0.0.1",
+    "context_size": 16384,
+    "slot_context_size": 4096,
+    "context_safety_margin": 256,
+    "ports": {"0": 18200, "1": 18201, "2": 18202, "3": 18203}
+  },
+  "request": {"chat_template_kwargs": {"enable_thinking": false}, "max_tokens": 192, "top_p": 1.0},
+  "retry": {"max_attempts": 2, "policy": "only_timeout_connection_http_429_http_5xx; unchanged_endpoint_seed_and_bytes"},
+  "sampling": {
+    "deterministic": {"temperature": 0.0, "seed": 2026072008, "repeats": 5},
+    "dispersion": {"temperature": 0.15, "seeds": [2026072011, 2026072012, 2026072013, 2026072014, 2026072015], "repeats": 5}
+  },
+  "protocol": {
+    "validation_policy": "never_open_validation_or_construct_validation_requests",
+    "selection_artifact_permitted": false,
+    "candidate_isolated": true,
+    "rubric_permutations": [["content", "organization", "expression"], ["content", "expression", "organization"], ["organization", "content", "expression"], ["organization", "expression", "content"], ["expression", "content", "organization"]],
+    "prompt_layouts": ["rubric_then_essay", "essay_then_rubric", "rubric_compact", "essay_compact", "interleaved"],
+    "controls": {"repeats": 5, "duplicate_identity": true, "padded_verbosity": true, "invalid_evidence": true},
+    "comparison": {"statistic": "median_overall_score", "uncertainty": "sqrt((iqr_a/1.349)^2/n_a + (iqr_b/1.349)^2/n_b)", "rule": "eligible candidate must exceed each other eligible candidate by more than combined uncertainty; otherwise tie_or_withhold"}
+  },
+  "hard_gates": {
+    "validation_rows_loaded_equals": 0,
+    "validation_requests_equals": 0,
+    "sample_essays_min": 1,
+    "sample_essays_max": 2000,
+    "transport_or_schema_failures_equals": 0,
+    "evidence_valid_rate_min": 0.98,
+    "deterministic_repeat_agreement_min": 0.98,
+    "cross_gpu_agreement_min": 0.98,
+    "invalid_control_abstain_rate_min": 0.99,
+    "duplicate_identity_agreement_min": 0.99,
+    "padded_verbosity_non_improvement": true,
+    "watchdog_faults_equals": 0
+  }
+}

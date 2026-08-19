@@ -1,0 +1,37 @@
+{
+  "schema_version": "mal2026-rationale-pipeline-sft-evaluation-v1",
+  "campaign": "rationale-pipeline-sft-evaluation-20260807-004",
+  "gpu_scope": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "user_authorization": "2026-08-07: user explicitly authorized GPUs 0-3 for the rationale training and evaluation pipeline",
+  "candidates": [
+    {
+      "key": "mal-direct-lora-epoch1",
+      "base_model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "adapter_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-direct-lora-full-20260807-001/checkpoint-178",
+      "training_completion_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-direct-lora-full-20260807-001/training_complete.json"
+    },
+    {
+      "key": "mal-direct-lora-epoch2",
+      "base_model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "adapter_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-direct-lora-full-20260807-001/adapter",
+      "training_completion_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-direct-lora-full-20260807-001/training_complete.json"
+    },
+    {
+      "key": "aihub-full-then-mal-lora-epoch1",
+      "base_model_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-aihub-score-blind-full-20260807-001/final_model",
+      "adapter_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-after-aihub-lora-full-20260807-001/checkpoint-178",
+      "training_completion_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-after-aihub-lora-full-20260807-001/training_complete.json"
+    },
+    {
+      "key": "aihub-full-then-mal-lora-epoch2",
+      "base_model_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-aihub-score-blind-full-20260807-001/final_model",
+      "adapter_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-after-aihub-lora-full-20260807-001/adapter",
+      "training_completion_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-after-aihub-lora-full-20260807-001/training_complete.json"
+    }
+  ]
+}

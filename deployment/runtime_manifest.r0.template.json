@@ -1,0 +1,32 @@
+{
+  "schema_version": "mal2026-submission-runtime-v1",
+  "pipeline_kind": "legacy_r0_prediction_ensemble_to_dpo_rationale",
+  "served_model_name": "mal2026-r0-ensemble-v1",
+  "seed": 42,
+  "score": {
+    "base_path": "score/base",
+    "adapter_paths": [
+      "score/adapters/epoch_01",
+      "score/adapters/epoch_02",
+      "score/adapters/epoch_03",
+      "score/adapters/epoch_04"
+    ],
+    "head_paths": [
+      "score/heads/epoch_01.safetensors",
+      "score/heads/epoch_02.safetensors",
+      "score/heads/epoch_03.safetensors",
+      "score/heads/epoch_04.safetensors"
+    ],
+    "max_length": 2048,
+    "ensemble": "uniform_continuous_mean_then_clip_1_5_then_half_up"
+  },
+  "rationale": {
+    "base_path": "rationale/base",
+    "blind_adapter_path": "rationale/adapters/rank2_ax4_random1",
+    "final_adapter_path": "rationale/adapters/final_dpo",
+    "max_model_len": 4096,
+    "gpu_memory_utilization": 0.43,
+    "blind_max_tokens": 512,
+    "final_max_tokens": 512
+  }
+}

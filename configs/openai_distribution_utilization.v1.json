@@ -1,0 +1,53 @@
+{
+  "schema_version": "mal2026-openai-distribution-utilization-v1",
+  "status": "preregistered_pending_judge_v3_and_separate_production_selection_protocol",
+  "scope": {
+    "candidate_source_split": "train_only",
+    "validation_policy": "evaluation_only_never_used_for_judge_prompt_candidate_selection_sft_target_reweighting_threshold_or_training",
+    "average_policy": "outside_score_model_only=(content+organization+expression)/3"
+  },
+  "hard_preconditions": {
+    "judge_v3_global_hard_gates_pass": true,
+    "judge_v3_candidate_evidence": ["schema_and_grounding_valid", "pointwise_eligible_in_all_fixed_repeats", "pairwise_outcome_invariant_after_label_position_unblinding_across_fixed_lanes"],
+    "separate_post_v3_production_selection_protocol_required": true,
+    "selection_before_preconditions": "fail_closed"
+  },
+  "high_confidence_admission": {
+    "eligible_candidate": "all_candidate_evidence_and_global_preconditions_hold",
+    "winner_rule": "strict_pairwise_winner_only; ties_abstentions_failures_and_missing_evidence_are_excluded",
+    "no_repair_or_backfill": true
+  },
+  "stratification": {
+    "primary": ["content_band", "organization_band", "expression_band", "essay_length_bin"],
+    "score_bands": ["[1,2)", "[2,3)", "[3,4)", "[4,5]"],
+    "essay_character_bins": ["[0,200)", "[200,400)", "[400,800)", "[800,1200)", "[1200,inf)"],
+    "preselection_coarsening_order": ["joint_score_x_length", "single_axis_score_x_length", "single_axis_score", "length", "source_population"],
+    "forbid_validation_derived_bins_or_coarsening": true
+  },
+  "guardrails": {
+    "publish_rate_or_metric_min_n": 20,
+    "calibrate_stratum_base_min_n": 30,
+    "calibrate_stratum_accepted_min_n": 10,
+    "zero_support_selection": "prohibited",
+    "low_score_short_text_rare_stratum": "never_dropped_by_fallback; retain_if_high_confidence_or_report_unavailable",
+    "maximum_inverse_propensity_weight": 3.0,
+    "report": ["available_eligible_selected_counts", "selection_propensity_with_wilson_95ci", "selected_to_available_ratio", "weight_summary", "effective_sample_size", "weight_clipping_count", "coarsening_decisions"]
+  },
+  "distribution_preservation": {
+    "target": "train_available_high_confidence_population_by_final_predeclared_strata",
+    "method": "deterministic_stratum_quota_or_capped_inverse_propensity_weighting",
+    "validation_never_in_target_or_threshold_selection": true,
+    "must_fail_if_required_stratum_has_zero_selected_support": true
+  },
+  "score_model_evaluation": {
+    "split": "validation_only",
+    "metrics": ["RMSE", "MAE", "Spearman"],
+    "targets": ["content", "organization", "expression", "external_average"],
+    "slices": ["source_population", "opaque_task_prompt_metadata", "component_score_bands", "joint_score_strata", "essay_length_bins"],
+    "minimum_slice_n": 20,
+    "spearman_min_n": 50,
+    "spearman_requires_at_least_two_unique_target_and_prediction_ranks": true,
+    "confidence_interval": "95_percent_cluster_bootstrap_at_prompt_group_or_source_cluster",
+    "average_definition": "mean_of_three_component_predictions_or_targets_outside_model"
+  }
+}

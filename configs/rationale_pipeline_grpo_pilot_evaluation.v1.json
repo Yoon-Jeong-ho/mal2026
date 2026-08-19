@@ -1,0 +1,14 @@
+{
+  "schema_version": "mal2026-rationale-pipeline-sft-evaluation-v1",
+  "campaign": "rationale-pipeline-grpo-pilot-evaluation-20260807-001",
+  "gpu_scope": [0, 1, 2, 3],
+  "user_authorization": "2026-08-07: user explicitly authorized GPUs 0-3 for the rationale training and evaluation pipeline",
+  "candidates": [
+    {
+      "key": "mal-direct-grpo-pilot20",
+      "base_model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+      "adapter_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-grpo-v1/rationale-pipeline-grpo-sft-winner-pilot-20260807-005/adapter",
+      "training_completion_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-grpo-v1/rationale-pipeline-grpo-sft-winner-pilot-20260807-005/training_complete.json"
+    }
+  ]
+}

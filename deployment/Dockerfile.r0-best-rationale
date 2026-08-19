@@ -1,0 +1,10 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG RUNTIME_OVERLAY=runtime_overlay_r0_best_rationale
+
+# The base image is the immutable, fully verified R0 ensemble image.  Overlay
+# only the serving code, frozen latest-rationale prompt, adapter, and manifest
+# so the 31 GiB model bundle is not repackaged or uploaded a second time.
+COPY src/ /opt/mal2026/src/
+COPY ${RUNTIME_OVERLAY}/ /opt/mal2026/models/

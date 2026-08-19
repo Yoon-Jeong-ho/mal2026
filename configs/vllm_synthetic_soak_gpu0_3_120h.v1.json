@@ -1,0 +1,41 @@
+{
+  "schema_version": "mal2026-vllm-synthetic-soak-gpu0-3-120h-v1",
+  "seed": 20260801,
+  "purpose": "synthetic systems soak only; no project data and no scientific model result",
+  "model": {
+    "repository": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "revision": "95a723d08a9490559dae23d0cff1d9466213d989",
+    "local_path": "outputs/model-cache/Qwen--Qwen3.6-35B-A3B-FP8-native-fp8-v1"
+  },
+  "runtime": {
+    "engine": "vllm",
+    "required_vllm_version": "0.25.1",
+    "physical_gpus": [0, 1, 2, 3],
+    "tensor_parallel_size": 1,
+    "data_parallel_size": 4,
+    "context_size": 4096,
+    "max_num_seqs_per_dp_rank": 192,
+    "max_num_batched_tokens": 65536,
+    "client_concurrency": 768,
+    "gpu_memory_utilization": 0.9,
+    "enable_prefix_caching": true,
+    "generation_config": "vllm",
+    "host": "127.0.0.1",
+    "port": 18360,
+    "duration_seconds": 432000,
+    "telemetry_interval_seconds": 10,
+    "max_temperature_c": 85
+  },
+  "request": {
+    "max_tokens": 512,
+    "min_tokens": 512,
+    "ignore_eos": true,
+    "temperature": 0.2,
+    "top_p": 1.0,
+    "chat_template_kwargs": {"enable_thinking": false}
+  },
+  "artifacts": {
+    "root": "outputs/legacy/vllm-synthetic-soak",
+    "persist_raw_prompts_or_responses": false
+  }
+}

@@ -1,0 +1,1221 @@
+{
+  "api_candidate_availability_and_qc": {
+    "accepted_candidate_count": 7200,
+    "candidate_availability_rate": 1.0,
+    "candidates_per_source": 3,
+    "expected_candidate_count": 7200,
+    "judge_v3_passed": false,
+    "note": "availability/QC is not a selection decision and does not prove membership beyond recorded aggregate lineage",
+    "quality_control_failure_counts": {
+      "candidate_duplicate_records": 0,
+      "candidate_schema_or_grounding_invalid_records": 0,
+      "candidate_unknown_records": 0,
+      "mapping_duplicate_records": 0,
+      "missing_records": 0,
+      "rejected_records": 0
+    },
+    "restricted_train_only_artifact_present": true,
+    "selection_or_sft_authorized": false,
+    "source_split_counts": {
+      "train": 2000,
+      "validation": 400
+    },
+    "status": "aggregate_manifest_available",
+    "strict_quality_control_status": "strict_validation_complete"
+  },
+  "confidence_count_guardrails": {
+    "publish_slice_rate_or_metric_min_n": 20,
+    "selection_calibration_accepted_min_n": 10,
+    "selection_calibration_base_min_n": 30,
+    "sparse_cell_definition": "count_lt_20",
+    "zero_support_selection": "prohibited"
+  },
+  "divergence_diagnostics": {
+    "api": {
+      "api_source_union_to_api_train": {
+        "content": {
+          "cell_count": 4,
+          "hellinger_distance": 0.006229720830984435,
+          "jensen_shannon_divergence_base2": 5.59895346455951e-05,
+          "max_absolute_share_delta": 0.007500000000000062,
+          "overlap_min_mass": 0.9921666666666666,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.007833333333333345,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "essay_length": {
+          "cell_count": 3,
+          "hellinger_distance": 0.007153019516966511,
+          "jensen_shannon_divergence_base2": 7.377466134641408e-05,
+          "max_absolute_share_delta": 0.001666666666666667,
+          "overlap_min_mass": 0.9983333333333333,
+          "sparse_cells_min_count_lt_20": 1,
+          "total_variation_distance": 0.0016666666666666765,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "expression": {
+          "cell_count": 4,
+          "hellinger_distance": 0.00691143935574013,
+          "jensen_shannon_divergence_base2": 6.890245495537483e-05,
+          "max_absolute_share_delta": 0.005083333333333329,
+          "overlap_min_mass": 0.9934166666666666,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.006583333333333351,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "external_average": {
+          "cell_count": 4,
+          "hellinger_distance": 0.006478604486386765,
+          "jensen_shannon_divergence_base2": 6.055231583938965e-05,
+          "max_absolute_share_delta": 0.008083333333333331,
+          "overlap_min_mass": 0.9919166666666667,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.008083333333333335,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "joint_score_strata": {
+          "cell_count": 44,
+          "hellinger_distance": 0.024385659996868595,
+          "jensen_shannon_divergence_base2": 0.0007630618388854537,
+          "max_absolute_share_delta": 0.00708333333333333,
+          "overlap_min_mass": 0.9830833333333333,
+          "sparse_cells_min_count_lt_20": 26,
+          "total_variation_distance": 0.016916666666666667,
+          "zero_cells_left": 0,
+          "zero_cells_right": 1
+        },
+        "organization": {
+          "cell_count": 4,
+          "hellinger_distance": 0.0060328257964823015,
+          "jensen_shannon_divergence_base2": 5.250368252713764e-05,
+          "max_absolute_share_delta": 0.003750000000000031,
+          "overlap_min_mass": 0.9941666666666666,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.005833333333333343,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "task_prompt_metadata": {
+          "cell_count": 9,
+          "hellinger_distance": 0.0007289380474146986,
+          "jensen_shannon_divergence_base2": 7.665767744255555e-07,
+          "max_absolute_share_delta": 0.0005833333333333524,
+          "overlap_min_mass": 0.9991666666666666,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.0008333333333333387,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        }
+      },
+      "api_source_union_to_api_validation": {
+        "content": {
+          "cell_count": 4,
+          "hellinger_distance": 0.03060198891618427,
+          "jensen_shannon_divergence_base2": 0.0013507315982231132,
+          "max_absolute_share_delta": 0.03749999999999998,
+          "overlap_min_mass": 0.9608333333333333,
+          "sparse_cells_min_count_lt_20": 1,
+          "total_variation_distance": 0.03916666666666667,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "essay_length": {
+          "cell_count": 3,
+          "hellinger_distance": 0.051416185024910376,
+          "jensen_shannon_divergence_base2": 0.0028868643917585304,
+          "max_absolute_share_delta": 0.008333333333333333,
+          "overlap_min_mass": 0.9916666666666667,
+          "sparse_cells_min_count_lt_20": 2,
+          "total_variation_distance": 0.008333333333333326,
+          "zero_cells_left": 0,
+          "zero_cells_right": 1
+        },
+        "expression": {
+          "cell_count": 4,
+          "hellinger_distance": 0.03262170815988553,
+          "jensen_shannon_divergence_base2": 0.0015320458979713875,
+          "max_absolute_share_delta": 0.0254166666666667,
+          "overlap_min_mass": 0.9670833333333333,
+          "sparse_cells_min_count_lt_20": 1,
+          "total_variation_distance": 0.03291666666666668,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "external_average": {
+          "cell_count": 4,
+          "hellinger_distance": 0.03174490081420497,
+          "jensen_shannon_divergence_base2": 0.0014534013924666037,
+          "max_absolute_share_delta": 0.040416666666666656,
+          "overlap_min_mass": 0.9595833333333333,
+          "sparse_cells_min_count_lt_20": 1,
+          "total_variation_distance": 0.04041666666666666,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "joint_score_strata": {
+          "cell_count": 44,
+          "hellinger_distance": 0.10336230325599538,
+          "jensen_shannon_divergence_base2": 0.013633573431115483,
+          "max_absolute_share_delta": 0.03541666666666668,
+          "overlap_min_mass": 0.9154166666666667,
+          "sparse_cells_min_count_lt_20": 37,
+          "total_variation_distance": 0.08458333333333334,
+          "zero_cells_left": 0,
+          "zero_cells_right": 7
+        },
+        "organization": {
+          "cell_count": 4,
+          "hellinger_distance": 0.028561072401041162,
+          "jensen_shannon_divergence_base2": 0.0011756613915873864,
+          "max_absolute_share_delta": 0.01874999999999999,
+          "overlap_min_mass": 0.9708333333333333,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.029166666666666667,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "task_prompt_metadata": {
+          "cell_count": 9,
+          "hellinger_distance": 0.003657663820630807,
+          "jensen_shannon_divergence_base2": 1.9300964706018365e-05,
+          "max_absolute_share_delta": 0.0029166666666666508,
+          "overlap_min_mass": 0.9958333333333333,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.004166666666666659,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        }
+      },
+      "api_train_to_api_validation": {
+        "content": {
+          "cell_count": 4,
+          "hellinger_distance": 0.036829681023496784,
+          "jensen_shannon_divergence_base2": 0.001956211955278166,
+          "max_absolute_share_delta": 0.04500000000000004,
+          "overlap_min_mass": 0.9530000000000001,
+          "sparse_cells_min_count_lt_20": 1,
+          "total_variation_distance": 0.047000000000000014,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "essay_length": {
+          "cell_count": 3,
+          "hellinger_distance": 0.057974520636181845,
+          "jensen_shannon_divergence_base2": 0.0037301512188191487,
+          "max_absolute_share_delta": 0.01,
+          "overlap_min_mass": 0.99,
+          "sparse_cells_min_count_lt_20": 2,
+          "total_variation_distance": 0.010000000000000002,
+          "zero_cells_left": 0,
+          "zero_cells_right": 1
+        },
+        "expression": {
+          "cell_count": 4,
+          "hellinger_distance": 0.03950863183732667,
+          "jensen_shannon_divergence_base2": 0.002244204881685843,
+          "max_absolute_share_delta": 0.030500000000000027,
+          "overlap_min_mass": 0.9605,
+          "sparse_cells_min_count_lt_20": 1,
+          "total_variation_distance": 0.03950000000000002,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "external_average": {
+          "cell_count": 4,
+          "hellinger_distance": 0.03822066427832233,
+          "jensen_shannon_divergence_base2": 0.0021065275848758096,
+          "max_absolute_share_delta": 0.04849999999999999,
+          "overlap_min_mass": 0.9515,
+          "sparse_cells_min_count_lt_20": 1,
+          "total_variation_distance": 0.0485,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "joint_score_strata": {
+          "cell_count": 44,
+          "hellinger_distance": 0.12455887771715006,
+          "jensen_shannon_divergence_base2": 0.019557297853554718,
+          "max_absolute_share_delta": 0.04250000000000001,
+          "overlap_min_mass": 0.8985,
+          "sparse_cells_min_count_lt_20": 37,
+          "total_variation_distance": 0.1015,
+          "zero_cells_left": 1,
+          "zero_cells_right": 7
+        },
+        "organization": {
+          "cell_count": 4,
+          "hellinger_distance": 0.034588702174809506,
+          "jensen_shannon_divergence_base2": 0.0017233054979786397,
+          "max_absolute_share_delta": 0.02250000000000002,
+          "overlap_min_mass": 0.965,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.03500000000000001,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "task_prompt_metadata": {
+          "cell_count": 9,
+          "hellinger_distance": 0.004386596446266877,
+          "jensen_shannon_divergence_base2": 2.7760383921666395e-05,
+          "max_absolute_share_delta": 0.003500000000000003,
+          "overlap_min_mass": 0.995,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.0049999999999999975,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        }
+      }
+    },
+    "definition": "TVD=0.5*L1; JSD uses base-2 midpoint and zero terms contribute zero; overlap=min-mass; task groups are only opaque in-memory keys",
+    "prepared": {
+      "prepared_source_to_prepared_dev": {
+        "content": {
+          "cell_count": 4,
+          "hellinger_distance": 0.03260379588911656,
+          "jensen_shannon_divergence_base2": 0.001533044961884594,
+          "max_absolute_share_delta": 0.0309626307399114,
+          "overlap_min_mass": 0.9614695074723625,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.038530492527637544,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "essay_length": {
+          "cell_count": 5,
+          "hellinger_distance": 0.022412480097106856,
+          "jensen_shannon_divergence_base2": 0.0007245020984101579,
+          "max_absolute_share_delta": 0.02129722345686097,
+          "overlap_min_mass": 0.9761695586553293,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.023830441344670744,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "expression": {
+          "cell_count": 4,
+          "hellinger_distance": 0.019924700796983833,
+          "jensen_shannon_divergence_base2": 0.0005724154986677227,
+          "max_absolute_share_delta": 0.02352177803814276,
+          "overlap_min_mass": 0.9764782219618573,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.023521778038142732,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "external_average": {
+          "cell_count": 4,
+          "hellinger_distance": 0.013272651961827503,
+          "jensen_shannon_divergence_base2": 0.00025372586528515895,
+          "max_absolute_share_delta": 0.008389839106460212,
+          "overlap_min_mass": 0.9916101608935398,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.008389839106460227,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "joint_score_strata": {
+          "cell_count": 54,
+          "hellinger_distance": 0.05973494270292514,
+          "jensen_shannon_divergence_base2": 0.005085645893595111,
+          "max_absolute_share_delta": 0.014137834104619426,
+          "overlap_min_mass": 0.9463356002655084,
+          "sparse_cells_min_count_lt_20": 20,
+          "total_variation_distance": 0.053664399734491615,
+          "zero_cells_left": 0,
+          "zero_cells_right": 3
+        },
+        "organization": {
+          "cell_count": 4,
+          "hellinger_distance": 0.005454914467771898,
+          "jensen_shannon_divergence_base2": 4.2928324927439114e-05,
+          "max_absolute_share_delta": 0.005492507672670843,
+          "overlap_min_mass": 0.9938881453568479,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.006111854643152044,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "task_prompt_metadata": {
+          "cell_count": 149,
+          "hellinger_distance": 0.7435931632355698,
+          "jensen_shannon_divergence_base2": 0.6101534619383362,
+          "max_absolute_share_delta": 0.08403982042455578,
+          "overlap_min_mass": 0.19987087637454182,
+          "sparse_cells_min_count_lt_20": 114,
+          "total_variation_distance": 0.8001291236254582,
+          "zero_cells_left": 0,
+          "zero_cells_right": 114
+        }
+      },
+      "prepared_source_to_prepared_train": {
+        "content": {
+          "cell_count": 4,
+          "hellinger_distance": 0.00818868139162064,
+          "jensen_shannon_divergence_base2": 9.673677700387199e-05,
+          "max_absolute_share_delta": 0.007734411806942676,
+          "overlap_min_mass": 0.9903751493587095,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.009624850641290445,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "essay_length": {
+          "cell_count": 5,
+          "hellinger_distance": 0.00552897055946186,
+          "jensen_shannon_divergence_base2": 4.4101827322546466e-05,
+          "max_absolute_share_delta": 0.005320009722155572,
+          "overlap_min_mass": 0.994047196814472,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.0059528031855281,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "expression": {
+          "cell_count": 4,
+          "hellinger_distance": 0.0051258511061507495,
+          "jensen_shannon_divergence_base2": 3.790374778006334e-05,
+          "max_absolute_share_delta": 0.005875699623416941,
+          "overlap_min_mass": 0.9941243003765831,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.00587569962341695,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "external_average": {
+          "cell_count": 4,
+          "hellinger_distance": 0.0035955529055991054,
+          "jensen_shannon_divergence_base2": 1.8647928389708832e-05,
+          "max_absolute_share_delta": 0.002095767352213701,
+          "overlap_min_mass": 0.9979042326477864,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.0020957673522136655,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "joint_score_strata": {
+          "cell_count": 54,
+          "hellinger_distance": 0.017133828751672207,
+          "jensen_shannon_divergence_base2": 0.0004223025564173651,
+          "max_absolute_share_delta": 0.0035316065983506256,
+          "overlap_min_mass": 0.98659472541576,
+          "sparse_cells_min_count_lt_20": 13,
+          "total_variation_distance": 0.013405274584239993,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "organization": {
+          "cell_count": 4,
+          "hellinger_distance": 0.0013716102795157318,
+          "jensen_shannon_divergence_base2": 2.714160834503235e-06,
+          "max_absolute_share_delta": 0.00137201895246164,
+          "overlap_min_mass": 0.9984732692415126,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.0015267307584874712,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "task_prompt_metadata": {
+          "cell_count": 149,
+          "hellinger_distance": 0.32480860458349975,
+          "jensen_shannon_divergence_base2": 0.10795601784245407,
+          "max_absolute_share_delta": 0.020993002332555816,
+          "overlap_min_mass": 0.8001291236254582,
+          "sparse_cells_min_count_lt_20": 35,
+          "total_variation_distance": 0.19987087637454182,
+          "zero_cells_left": 0,
+          "zero_cells_right": 35
+        }
+      },
+      "prepared_train_to_prepared_dev": {
+        "content": {
+          "cell_count": 4,
+          "hellinger_distance": 0.04078686162752318,
+          "jensen_shannon_divergence_base2": 0.002398650287185962,
+          "max_absolute_share_delta": 0.03869704254685408,
+          "overlap_min_mass": 0.951844656831072,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.048155343168927986,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "essay_length": {
+          "cell_count": 5,
+          "hellinger_distance": 0.027939164744402372,
+          "jensen_shannon_divergence_base2": 0.0011257089612446637,
+          "max_absolute_share_delta": 0.02661723317901654,
+          "overlap_min_mass": 0.9702167554698011,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.029783244530198844,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "expression": {
+          "cell_count": 4,
+          "hellinger_distance": 0.02504583911334309,
+          "jensen_shannon_divergence_base2": 0.0009041123055625962,
+          "max_absolute_share_delta": 0.0293974776615597,
+          "overlap_min_mass": 0.9706025223384404,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.029397477661559684,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "external_average": {
+          "cell_count": 4,
+          "hellinger_distance": 0.016864131583072296,
+          "jensen_shannon_divergence_base2": 0.00040911189502352717,
+          "max_absolute_share_delta": 0.010485606458673913,
+          "overlap_min_mass": 0.9895143935413261,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.010485606458673892,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "joint_score_strata": {
+          "cell_count": 54,
+          "hellinger_distance": 0.07659709880122824,
+          "jensen_shannon_divergence_base2": 0.008310615709710796,
+          "max_absolute_share_delta": 0.017669440702970052,
+          "overlap_min_mass": 0.9329303256812684,
+          "sparse_cells_min_count_lt_20": 20,
+          "total_variation_distance": 0.0670696743187316,
+          "zero_cells_left": 0,
+          "zero_cells_right": 3
+        },
+        "organization": {
+          "cell_count": 4,
+          "hellinger_distance": 0.006826509446080253,
+          "jensen_shannon_divergence_base2": 6.722978331845413e-05,
+          "max_absolute_share_delta": 0.006864526625132483,
+          "overlap_min_mass": 0.9923614145983605,
+          "sparse_cells_min_count_lt_20": 0,
+          "total_variation_distance": 0.007638585401639515,
+          "zero_cells_left": 0,
+          "zero_cells_right": 0
+        },
+        "task_prompt_metadata": {
+          "cell_count": 149,
+          "hellinger_distance": 1.0,
+          "jensen_shannon_divergence_base2": 1.0,
+          "max_absolute_share_delta": 0.1050328227571116,
+          "overlap_min_mass": 0.0,
+          "sparse_cells_min_count_lt_20": 149,
+          "total_variation_distance": 1.0,
+          "zero_cells_left": 35,
+          "zero_cells_right": 114
+        }
+      }
+    }
+  },
+  "fixed_binning": {
+    "average_policy": "computed_outside_score_model_from_unrounded_content_organization_expression",
+    "component_score_bands": [
+      "[1,2)",
+      "[2,3)",
+      "[3,4)",
+      "[4,5]"
+    ],
+    "essay_character_bins": [
+      "[0,200)",
+      "[200,400)",
+      "[400,800)",
+      "[800,1200)",
+      "[1200,inf)"
+    ],
+    "joint_score_strata": "cartesian_product_of_three_component_bands"
+  },
+  "populations": {
+    "api": {
+      "api_source_union": {
+        "essay_length_bin_counts": {
+          "[0,200)": 0,
+          "[1200,inf)": 28,
+          "[200,400)": 0,
+          "[400,800)": 10,
+          "[800,1200)": 2362
+        },
+        "external_average_band_counts": {
+          "[1,2)": 44,
+          "[2,3)": 537,
+          "[3,4)": 1357,
+          "[4,5]": 462
+        },
+        "joint_score_stratum_counts": {
+          "[1,2)|[1,2)|[1,2)": 8,
+          "[1,2)|[1,2)|[2,3)": 15,
+          "[1,2)|[1,2)|[3,4)": 7,
+          "[1,2)|[1,2)|[4,5]": 0,
+          "[1,2)|[2,3)|[1,2)": 3,
+          "[1,2)|[2,3)|[2,3)": 12,
+          "[1,2)|[2,3)|[3,4)": 9,
+          "[1,2)|[2,3)|[4,5]": 2,
+          "[1,2)|[3,4)|[1,2)": 0,
+          "[1,2)|[3,4)|[2,3)": 0,
+          "[1,2)|[3,4)|[3,4)": 3,
+          "[1,2)|[3,4)|[4,5]": 1,
+          "[1,2)|[4,5]|[1,2)": 0,
+          "[1,2)|[4,5]|[2,3)": 0,
+          "[1,2)|[4,5]|[3,4)": 0,
+          "[1,2)|[4,5]|[4,5]": 0,
+          "[2,3)|[1,2)|[1,2)": 8,
+          "[2,3)|[1,2)|[2,3)": 28,
+          "[2,3)|[1,2)|[3,4)": 22,
+          "[2,3)|[1,2)|[4,5]": 1,
+          "[2,3)|[2,3)|[1,2)": 6,
+          "[2,3)|[2,3)|[2,3)": 104,
+          "[2,3)|[2,3)|[3,4)": 187,
+          "[2,3)|[2,3)|[4,5]": 33,
+          "[2,3)|[3,4)|[1,2)": 3,
+          "[2,3)|[3,4)|[2,3)": 34,
+          "[2,3)|[3,4)|[3,4)": 160,
+          "[2,3)|[3,4)|[4,5]": 60,
+          "[2,3)|[4,5]|[1,2)": 0,
+          "[2,3)|[4,5]|[2,3)": 0,
+          "[2,3)|[4,5]|[3,4)": 8,
+          "[2,3)|[4,5]|[4,5]": 8,
+          "[3,4)|[1,2)|[1,2)": 2,
+          "[3,4)|[1,2)|[2,3)": 2,
+          "[3,4)|[1,2)|[3,4)": 14,
+          "[3,4)|[1,2)|[4,5]": 6,
+          "[3,4)|[2,3)|[1,2)": 0,
+          "[3,4)|[2,3)|[2,3)": 27,
+          "[3,4)|[2,3)|[3,4)": 128,
+          "[3,4)|[2,3)|[4,5]": 50,
+          "[3,4)|[3,4)|[1,2)": 0,
+          "[3,4)|[3,4)|[2,3)": 26,
+          "[3,4)|[3,4)|[3,4)": 385,
+          "[3,4)|[3,4)|[4,5]": 326,
+          "[3,4)|[4,5]|[1,2)": 0,
+          "[3,4)|[4,5]|[2,3)": 5,
+          "[3,4)|[4,5]|[3,4)": 106,
+          "[3,4)|[4,5]|[4,5]": 237,
+          "[4,5]|[1,2)|[1,2)": 0,
+          "[4,5]|[1,2)|[2,3)": 1,
+          "[4,5]|[1,2)|[3,4)": 0,
+          "[4,5]|[1,2)|[4,5]": 0,
+          "[4,5]|[2,3)|[1,2)": 0,
+          "[4,5]|[2,3)|[2,3)": 0,
+          "[4,5]|[2,3)|[3,4)": 4,
+          "[4,5]|[2,3)|[4,5]": 1,
+          "[4,5]|[3,4)|[1,2)": 0,
+          "[4,5]|[3,4)|[2,3)": 3,
+          "[4,5]|[3,4)|[3,4)": 20,
+          "[4,5]|[3,4)|[4,5]": 48,
+          "[4,5]|[4,5]|[1,2)": 0,
+          "[4,5]|[4,5]|[2,3)": 0,
+          "[4,5]|[4,5]|[3,4)": 41,
+          "[4,5]|[4,5]|[4,5]": 246
+        },
+        "mean_scores": {
+          "average": 3.4239722222222224,
+          "content": 3.269625,
+          "expression": 3.6733333333333333,
+          "organization": 3.3289583333333335
+        },
+        "record_count": 2400,
+        "score_band_counts": {
+          "content": {
+            "[1,2)": 60,
+            "[2,3)": 662,
+            "[3,4)": 1314,
+            "[4,5]": 364
+          },
+          "expression": {
+            "[1,2)": 30,
+            "[2,3)": 257,
+            "[3,4)": 1094,
+            "[4,5]": 1019
+          },
+          "organization": {
+            "[1,2)": 114,
+            "[2,3)": 566,
+            "[3,4)": 1069,
+            "[4,5]": 651
+          }
+        },
+        "task_prompt_metadata": {
+          "available_for_all_rows": true,
+          "opaque_group_count": 9
+        }
+      },
+      "api_train": {
+        "essay_length_bin_counts": {
+          "[0,200)": 0,
+          "[1200,inf)": 20,
+          "[200,400)": 0,
+          "[400,800)": 10,
+          "[800,1200)": 1970
+        },
+        "external_average_band_counts": {
+          "[1,2)": 35,
+          "[2,3)": 435,
+          "[3,4)": 1147,
+          "[4,5]": 383
+        },
+        "joint_score_stratum_counts": {
+          "[1,2)|[1,2)|[1,2)": 6,
+          "[1,2)|[1,2)|[2,3)": 13,
+          "[1,2)|[1,2)|[3,4)": 6,
+          "[1,2)|[1,2)|[4,5]": 0,
+          "[1,2)|[2,3)|[1,2)": 3,
+          "[1,2)|[2,3)|[2,3)": 11,
+          "[1,2)|[2,3)|[3,4)": 7,
+          "[1,2)|[2,3)|[4,5]": 1,
+          "[1,2)|[3,4)|[1,2)": 0,
+          "[1,2)|[3,4)|[2,3)": 0,
+          "[1,2)|[3,4)|[3,4)": 1,
+          "[1,2)|[3,4)|[4,5]": 1,
+          "[1,2)|[4,5]|[1,2)": 0,
+          "[1,2)|[4,5]|[2,3)": 0,
+          "[1,2)|[4,5]|[3,4)": 0,
+          "[1,2)|[4,5]|[4,5]": 0,
+          "[2,3)|[1,2)|[1,2)": 6,
+          "[2,3)|[1,2)|[2,3)": 23,
+          "[2,3)|[1,2)|[3,4)": 16,
+          "[2,3)|[1,2)|[4,5]": 0,
+          "[2,3)|[2,3)|[1,2)": 4,
+          "[2,3)|[2,3)|[2,3)": 86,
+          "[2,3)|[2,3)|[3,4)": 149,
+          "[2,3)|[2,3)|[4,5]": 27,
+          "[2,3)|[3,4)|[1,2)": 2,
+          "[2,3)|[3,4)|[2,3)": 30,
+          "[2,3)|[3,4)|[3,4)": 132,
+          "[2,3)|[3,4)|[4,5]": 48,
+          "[2,3)|[4,5]|[1,2)": 0,
+          "[2,3)|[4,5]|[2,3)": 0,
+          "[2,3)|[4,5]|[3,4)": 7,
+          "[2,3)|[4,5]|[4,5]": 7,
+          "[3,4)|[1,2)|[1,2)": 1,
+          "[3,4)|[1,2)|[2,3)": 1,
+          "[3,4)|[1,2)|[3,4)": 11,
+          "[3,4)|[1,2)|[4,5]": 5,
+          "[3,4)|[2,3)|[1,2)": 0,
+          "[3,4)|[2,3)|[2,3)": 24,
+          "[3,4)|[2,3)|[3,4)": 105,
+          "[3,4)|[2,3)|[4,5]": 44,
+          "[3,4)|[3,4)|[1,2)": 0,
+          "[3,4)|[3,4)|[2,3)": 24,
+          "[3,4)|[3,4)|[3,4)": 335,
+          "[3,4)|[3,4)|[4,5]": 265,
+          "[3,4)|[4,5]|[1,2)": 0,
+          "[3,4)|[4,5]|[2,3)": 5,
+          "[3,4)|[4,5]|[3,4)": 93,
+          "[3,4)|[4,5]|[4,5]": 197,
+          "[4,5]|[1,2)|[1,2)": 0,
+          "[4,5]|[1,2)|[2,3)": 1,
+          "[4,5]|[1,2)|[3,4)": 0,
+          "[4,5]|[1,2)|[4,5]": 0,
+          "[4,5]|[2,3)|[1,2)": 0,
+          "[4,5]|[2,3)|[2,3)": 0,
+          "[4,5]|[2,3)|[3,4)": 4,
+          "[4,5]|[2,3)|[4,5]": 1,
+          "[4,5]|[3,4)|[1,2)": 0,
+          "[4,5]|[3,4)|[2,3)": 3,
+          "[4,5]|[3,4)|[3,4)": 16,
+          "[4,5]|[3,4)|[4,5]": 38,
+          "[4,5]|[4,5]|[1,2)": 0,
+          "[4,5]|[4,5]|[2,3)": 0,
+          "[4,5]|[4,5]|[3,4)": 36,
+          "[4,5]|[4,5]|[4,5]": 205
+        },
+        "mean_scores": {
+          "average": 3.42925,
+          "content": 3.27775,
+          "expression": 3.672625,
+          "organization": 3.337375
+        },
+        "record_count": 2000,
+        "score_band_counts": {
+          "content": {
+            "[1,2)": 49,
+            "[2,3)": 537,
+            "[3,4)": 1110,
+            "[4,5]": 304
+          },
+          "expression": {
+            "[1,2)": 22,
+            "[2,3)": 221,
+            "[3,4)": 918,
+            "[4,5]": 839
+          },
+          "organization": {
+            "[1,2)": 89,
+            "[2,3)": 466,
+            "[3,4)": 895,
+            "[4,5]": 550
+          }
+        },
+        "task_prompt_metadata": {
+          "available_for_all_rows": true,
+          "opaque_group_count": 9
+        }
+      },
+      "api_validation": {
+        "essay_length_bin_counts": {
+          "[0,200)": 0,
+          "[1200,inf)": 8,
+          "[200,400)": 0,
+          "[400,800)": 0,
+          "[800,1200)": 392
+        },
+        "external_average_band_counts": {
+          "[1,2)": 9,
+          "[2,3)": 102,
+          "[3,4)": 210,
+          "[4,5]": 79
+        },
+        "joint_score_stratum_counts": {
+          "[1,2)|[1,2)|[1,2)": 2,
+          "[1,2)|[1,2)|[2,3)": 2,
+          "[1,2)|[1,2)|[3,4)": 1,
+          "[1,2)|[1,2)|[4,5]": 0,
+          "[1,2)|[2,3)|[1,2)": 0,
+          "[1,2)|[2,3)|[2,3)": 1,
+          "[1,2)|[2,3)|[3,4)": 2,
+          "[1,2)|[2,3)|[4,5]": 1,
+          "[1,2)|[3,4)|[1,2)": 0,
+          "[1,2)|[3,4)|[2,3)": 0,
+          "[1,2)|[3,4)|[3,4)": 2,
+          "[1,2)|[3,4)|[4,5]": 0,
+          "[1,2)|[4,5]|[1,2)": 0,
+          "[1,2)|[4,5]|[2,3)": 0,
+          "[1,2)|[4,5]|[3,4)": 0,
+          "[1,2)|[4,5]|[4,5]": 0,
+          "[2,3)|[1,2)|[1,2)": 2,
+          "[2,3)|[1,2)|[2,3)": 5,
+          "[2,3)|[1,2)|[3,4)": 6,
+          "[2,3)|[1,2)|[4,5]": 1,
+          "[2,3)|[2,3)|[1,2)": 2,
+          "[2,3)|[2,3)|[2,3)": 18,
+          "[2,3)|[2,3)|[3,4)": 38,
+          "[2,3)|[2,3)|[4,5]": 6,
+          "[2,3)|[3,4)|[1,2)": 1,
+          "[2,3)|[3,4)|[2,3)": 4,
+          "[2,3)|[3,4)|[3,4)": 28,
+          "[2,3)|[3,4)|[4,5]": 12,
+          "[2,3)|[4,5]|[1,2)": 0,
+          "[2,3)|[4,5]|[2,3)": 0,
+          "[2,3)|[4,5]|[3,4)": 1,
+          "[2,3)|[4,5]|[4,5]": 1,
+          "[3,4)|[1,2)|[1,2)": 1,
+          "[3,4)|[1,2)|[2,3)": 1,
+          "[3,4)|[1,2)|[3,4)": 3,
+          "[3,4)|[1,2)|[4,5]": 1,
+          "[3,4)|[2,3)|[1,2)": 0,
+          "[3,4)|[2,3)|[2,3)": 3,
+          "[3,4)|[2,3)|[3,4)": 23,
+          "[3,4)|[2,3)|[4,5]": 6,
+          "[3,4)|[3,4)|[1,2)": 0,
+          "[3,4)|[3,4)|[2,3)": 2,
+          "[3,4)|[3,4)|[3,4)": 50,
+          "[3,4)|[3,4)|[4,5]": 61,
+          "[3,4)|[4,5]|[1,2)": 0,
+          "[3,4)|[4,5]|[2,3)": 0,
+          "[3,4)|[4,5]|[3,4)": 13,
+          "[3,4)|[4,5]|[4,5]": 40,
+          "[4,5]|[1,2)|[1,2)": 0,
+          "[4,5]|[1,2)|[2,3)": 0,
+          "[4,5]|[1,2)|[3,4)": 0,
+          "[4,5]|[1,2)|[4,5]": 0,
+          "[4,5]|[2,3)|[1,2)": 0,
+          "[4,5]|[2,3)|[2,3)": 0,
+          "[4,5]|[2,3)|[3,4)": 0,
+          "[4,5]|[2,3)|[4,5]": 0,
+          "[4,5]|[3,4)|[1,2)": 0,
+          "[4,5]|[3,4)|[2,3)": 0,
+          "[4,5]|[3,4)|[3,4)": 4,
+          "[4,5]|[3,4)|[4,5]": 10,
+          "[4,5]|[4,5]|[1,2)": 0,
+          "[4,5]|[4,5]|[2,3)": 0,
+          "[4,5]|[4,5]|[3,4)": 5,
+          "[4,5]|[4,5]|[4,5]": 41
+        },
+        "mean_scores": {
+          "average": 3.3975833333333334,
+          "content": 3.229,
+          "expression": 3.676875,
+          "organization": 3.286875
+        },
+        "record_count": 400,
+        "score_band_counts": {
+          "content": {
+            "[1,2)": 11,
+            "[2,3)": 125,
+            "[3,4)": 204,
+            "[4,5]": 60
+          },
+          "expression": {
+            "[1,2)": 8,
+            "[2,3)": 36,
+            "[3,4)": 176,
+            "[4,5]": 180
+          },
+          "organization": {
+            "[1,2)": 25,
+            "[2,3)": 100,
+            "[3,4)": 174,
+            "[4,5]": 101
+          }
+        },
+        "task_prompt_metadata": {
+          "available_for_all_rows": true,
+          "opaque_group_count": 9
+        }
+      }
+    },
+    "prepared": {
+      "prepared_dev": {
+        "essay_length_bin_counts": {
+          "[0,200)": 1979,
+          "[1200,inf)": 113,
+          "[200,400)": 4102,
+          "[400,800)": 403,
+          "[800,1200)": 3000
+        },
+        "external_average_band_counts": {
+          "[1,2)": 104,
+          "[2,3)": 1905,
+          "[3,4)": 5946,
+          "[4,5]": 1642
+        },
+        "joint_score_stratum_counts": {
+          "[1,2)|[1,2)|[1,2)": 17,
+          "[1,2)|[1,2)|[2,3)": 31,
+          "[1,2)|[1,2)|[3,4)": 64,
+          "[1,2)|[1,2)|[4,5]": 19,
+          "[1,2)|[2,3)|[1,2)": 22,
+          "[1,2)|[2,3)|[2,3)": 59,
+          "[1,2)|[2,3)|[3,4)": 128,
+          "[1,2)|[2,3)|[4,5]": 121,
+          "[1,2)|[3,4)|[1,2)": 1,
+          "[1,2)|[3,4)|[2,3)": 3,
+          "[1,2)|[3,4)|[3,4)": 20,
+          "[1,2)|[3,4)|[4,5]": 17,
+          "[1,2)|[4,5]|[1,2)": 0,
+          "[1,2)|[4,5]|[2,3)": 0,
+          "[1,2)|[4,5]|[3,4)": 0,
+          "[1,2)|[4,5]|[4,5]": 0,
+          "[2,3)|[1,2)|[1,2)": 5,
+          "[2,3)|[1,2)|[2,3)": 8,
+          "[2,3)|[1,2)|[3,4)": 21,
+          "[2,3)|[1,2)|[4,5]": 6,
+          "[2,3)|[2,3)|[1,2)": 36,
+          "[2,3)|[2,3)|[2,3)": 248,
+          "[2,3)|[2,3)|[3,4)": 595,
+          "[2,3)|[2,3)|[4,5]": 266,
+          "[2,3)|[3,4)|[1,2)": 20,
+          "[2,3)|[3,4)|[2,3)": 181,
+          "[2,3)|[3,4)|[3,4)": 668,
+          "[2,3)|[3,4)|[4,5]": 435,
+          "[2,3)|[4,5]|[1,2)": 0,
+          "[2,3)|[4,5]|[2,3)": 6,
+          "[2,3)|[4,5]|[3,4)": 23,
+          "[2,3)|[4,5]|[4,5]": 51,
+          "[3,4)|[1,2)|[1,2)": 0,
+          "[3,4)|[1,2)|[2,3)": 1,
+          "[3,4)|[1,2)|[3,4)": 0,
+          "[3,4)|[1,2)|[4,5]": 0,
+          "[3,4)|[2,3)|[1,2)": 10,
+          "[3,4)|[2,3)|[2,3)": 84,
+          "[3,4)|[2,3)|[3,4)": 191,
+          "[3,4)|[2,3)|[4,5]": 59,
+          "[3,4)|[3,4)|[1,2)": 25,
+          "[3,4)|[3,4)|[2,3)": 361,
+          "[3,4)|[3,4)|[3,4)": 1936,
+          "[3,4)|[3,4)|[4,5]": 1235,
+          "[3,4)|[4,5]|[1,2)": 2,
+          "[3,4)|[4,5]|[2,3)": 78,
+          "[3,4)|[4,5]|[3,4)": 283,
+          "[3,4)|[4,5]|[4,5]": 665,
+          "[4,5]|[1,2)|[1,2)": 0,
+          "[4,5]|[1,2)|[2,3)": 0,
+          "[4,5]|[1,2)|[3,4)": 0,
+          "[4,5]|[1,2)|[4,5]": 0,
+          "[4,5]|[2,3)|[1,2)": 0,
+          "[4,5]|[2,3)|[2,3)": 3,
+          "[4,5]|[2,3)|[3,4)": 5,
+          "[4,5]|[2,3)|[4,5]": 3,
+          "[4,5]|[3,4)|[1,2)": 14,
+          "[4,5]|[3,4)|[2,3)": 67,
+          "[4,5]|[3,4)|[3,4)": 217,
+          "[4,5]|[3,4)|[4,5]": 147,
+          "[4,5]|[4,5]|[1,2)": 4,
+          "[4,5]|[4,5]|[2,3)": 60,
+          "[4,5]|[4,5]|[3,4)": 206,
+          "[4,5]|[4,5]|[4,5]": 870
+        },
+        "mean_scores": {
+          "average": 3.436611788406099,
+          "content": 3.2172022507033446,
+          "expression": 3.678727727414817,
+          "organization": 3.4139053871001352
+        },
+        "record_count": 9597,
+        "score_band_counts": {
+          "content": {
+            "[1,2)": 502,
+            "[2,3)": 2569,
+            "[3,4)": 4930,
+            "[4,5]": 1596
+          },
+          "expression": {
+            "[1,2)": 156,
+            "[2,3)": 1190,
+            "[3,4)": 4357,
+            "[4,5]": 3894
+          },
+          "organization": {
+            "[1,2)": 172,
+            "[2,3)": 1830,
+            "[3,4)": 5347,
+            "[4,5]": 2248
+          }
+        },
+        "task_prompt_metadata": {
+          "available_for_all_rows": true,
+          "opaque_group_count": 35
+        }
+      },
+      "prepared_source": {
+        "essay_length_bin_counts": {
+          "[0,200)": 10924,
+          "[1200,inf)": 687,
+          "[200,400)": 19653,
+          "[400,800)": 1774,
+          "[800,1200)": 14978
+        },
+        "external_average_band_counts": {
+          "[1,2)": 373,
+          "[2,3)": 9934,
+          "[3,4)": 29595,
+          "[4,5]": 8114
+        },
+        "joint_score_stratum_counts": {
+          "[1,2)|[1,2)|[1,2)": 47,
+          "[1,2)|[1,2)|[2,3)": 160,
+          "[1,2)|[1,2)|[3,4)": 306,
+          "[1,2)|[1,2)|[4,5]": 139,
+          "[1,2)|[2,3)|[1,2)": 73,
+          "[1,2)|[2,3)|[2,3)": 333,
+          "[1,2)|[2,3)|[3,4)": 792,
+          "[1,2)|[2,3)|[4,5]": 750,
+          "[1,2)|[3,4)|[1,2)": 5,
+          "[1,2)|[3,4)|[2,3)": 28,
+          "[1,2)|[3,4)|[3,4)": 99,
+          "[1,2)|[3,4)|[4,5]": 139,
+          "[1,2)|[4,5]|[1,2)": 0,
+          "[1,2)|[4,5]|[2,3)": 0,
+          "[1,2)|[4,5]|[3,4)": 2,
+          "[1,2)|[4,5]|[4,5]": 2,
+          "[2,3)|[1,2)|[1,2)": 16,
+          "[2,3)|[1,2)|[2,3)": 43,
+          "[2,3)|[1,2)|[3,4)": 98,
+          "[2,3)|[1,2)|[4,5]": 16,
+          "[2,3)|[2,3)|[1,2)": 166,
+          "[2,3)|[2,3)|[2,3)": 1225,
+          "[2,3)|[2,3)|[3,4)": 2922,
+          "[2,3)|[2,3)|[4,5]": 1311,
+          "[2,3)|[3,4)|[1,2)": 102,
+          "[2,3)|[3,4)|[2,3)": 1078,
+          "[2,3)|[3,4)|[3,4)": 4021,
+          "[2,3)|[3,4)|[4,5]": 2773,
+          "[2,3)|[4,5]|[1,2)": 0,
+          "[2,3)|[4,5]|[2,3)": 34,
+          "[2,3)|[4,5]|[3,4)": 167,
+          "[2,3)|[4,5]|[4,5]": 368,
+          "[3,4)|[1,2)|[1,2)": 0,
+          "[3,4)|[1,2)|[2,3)": 2,
+          "[3,4)|[1,2)|[3,4)": 3,
+          "[3,4)|[1,2)|[4,5]": 0,
+          "[3,4)|[2,3)|[1,2)": 37,
+          "[3,4)|[2,3)|[2,3)": 267,
+          "[3,4)|[2,3)|[3,4)": 756,
+          "[3,4)|[2,3)|[4,5]": 237,
+          "[3,4)|[3,4)|[1,2)": 104,
+          "[3,4)|[3,4)|[2,3)": 1658,
+          "[3,4)|[3,4)|[3,4)": 9113,
+          "[3,4)|[3,4)|[4,5]": 6391,
+          "[3,4)|[4,5]|[1,2)": 12,
+          "[3,4)|[4,5]|[2,3)": 371,
+          "[3,4)|[4,5]|[3,4)": 1475,
+          "[3,4)|[4,5]|[4,5]": 3531,
+          "[4,5]|[1,2)|[1,2)": 0,
+          "[4,5]|[1,2)|[2,3)": 0,
+          "[4,5]|[1,2)|[3,4)": 0,
+          "[4,5]|[1,2)|[4,5]": 0,
+          "[4,5]|[2,3)|[1,2)": 0,
+          "[4,5]|[2,3)|[2,3)": 7,
+          "[4,5]|[2,3)|[3,4)": 10,
+          "[4,5]|[2,3)|[4,5]": 7,
+          "[4,5]|[3,4)|[1,2)": 20,
+          "[4,5]|[3,4)|[2,3)": 162,
+          "[4,5]|[3,4)|[3,4)": 566,
+          "[4,5]|[3,4)|[4,5]": 757,
+          "[4,5]|[4,5]|[1,2)": 11,
+          "[4,5]|[4,5]|[2,3)": 237,
+          "[4,5]|[4,5]|[3,4)": 876,
+          "[4,5]|[4,5]|[4,5]": 4191
+        },
+        "mean_scores": {
+          "average": 3.429764175830279,
+          "content": 3.149281906031323,
+          "expression": 3.7152667860713096,
+          "organization": 3.424743835388204
+        },
+        "record_count": 48016,
+        "score_band_counts": {
+          "content": {
+            "[1,2)": 2875,
+            "[2,3)": 14340,
+            "[3,4)": 23957,
+            "[4,5]": 6844
+          },
+          "expression": {
+            "[1,2)": 593,
+            "[2,3)": 5605,
+            "[3,4)": 21206,
+            "[4,5]": 20612
+          },
+          "organization": {
+            "[1,2)": 830,
+            "[2,3)": 8893,
+            "[3,4)": 27016,
+            "[4,5]": 11277
+          }
+        },
+        "task_prompt_metadata": {
+          "available_for_all_rows": true,
+          "opaque_group_count": 149
+        }
+      },
+      "prepared_train": {
+        "essay_length_bin_counts": {
+          "[0,200)": 8945,
+          "[1200,inf)": 574,
+          "[200,400)": 15551,
+          "[400,800)": 1371,
+          "[800,1200)": 11978
+        },
+        "external_average_band_counts": {
+          "[1,2)": 269,
+          "[2,3)": 8029,
+          "[3,4)": 23649,
+          "[4,5]": 6472
+        },
+        "joint_score_stratum_counts": {
+          "[1,2)|[1,2)|[1,2)": 30,
+          "[1,2)|[1,2)|[2,3)": 129,
+          "[1,2)|[1,2)|[3,4)": 242,
+          "[1,2)|[1,2)|[4,5]": 120,
+          "[1,2)|[2,3)|[1,2)": 51,
+          "[1,2)|[2,3)|[2,3)": 274,
+          "[1,2)|[2,3)|[3,4)": 664,
+          "[1,2)|[2,3)|[4,5]": 629,
+          "[1,2)|[3,4)|[1,2)": 4,
+          "[1,2)|[3,4)|[2,3)": 25,
+          "[1,2)|[3,4)|[3,4)": 79,
+          "[1,2)|[3,4)|[4,5]": 122,
+          "[1,2)|[4,5]|[1,2)": 0,
+          "[1,2)|[4,5]|[2,3)": 0,
+          "[1,2)|[4,5]|[3,4)": 2,
+          "[1,2)|[4,5]|[4,5]": 2,
+          "[2,3)|[1,2)|[1,2)": 11,
+          "[2,3)|[1,2)|[2,3)": 35,
+          "[2,3)|[1,2)|[3,4)": 77,
+          "[2,3)|[1,2)|[4,5]": 10,
+          "[2,3)|[2,3)|[1,2)": 130,
+          "[2,3)|[2,3)|[2,3)": 977,
+          "[2,3)|[2,3)|[3,4)": 2327,
+          "[2,3)|[2,3)|[4,5]": 1045,
+          "[2,3)|[3,4)|[1,2)": 82,
+          "[2,3)|[3,4)|[2,3)": 897,
+          "[2,3)|[3,4)|[3,4)": 3353,
+          "[2,3)|[3,4)|[4,5]": 2338,
+          "[2,3)|[4,5]|[1,2)": 0,
+          "[2,3)|[4,5]|[2,3)": 28,
+          "[2,3)|[4,5]|[3,4)": 144,
+          "[2,3)|[4,5]|[4,5]": 317,
+          "[3,4)|[1,2)|[1,2)": 0,
+          "[3,4)|[1,2)|[2,3)": 1,
+          "[3,4)|[1,2)|[3,4)": 3,
+          "[3,4)|[1,2)|[4,5]": 0,
+          "[3,4)|[2,3)|[1,2)": 27,
+          "[3,4)|[2,3)|[2,3)": 183,
+          "[3,4)|[2,3)|[3,4)": 565,
+          "[3,4)|[2,3)|[4,5]": 178,
+          "[3,4)|[3,4)|[1,2)": 79,
+          "[3,4)|[3,4)|[2,3)": 1297,
+          "[3,4)|[3,4)|[3,4)": 7177,
+          "[3,4)|[3,4)|[4,5]": 5156,
+          "[3,4)|[4,5]|[1,2)": 10,
+          "[3,4)|[4,5]|[2,3)": 293,
+          "[3,4)|[4,5]|[3,4)": 1192,
+          "[3,4)|[4,5]|[4,5]": 2866,
+          "[4,5]|[1,2)|[1,2)": 0,
+          "[4,5]|[1,2)|[2,3)": 0,
+          "[4,5]|[1,2)|[3,4)": 0,
+          "[4,5]|[1,2)|[4,5]": 0,
+          "[4,5]|[2,3)|[1,2)": 0,
+          "[4,5]|[2,3)|[2,3)": 4,
+          "[4,5]|[2,3)|[3,4)": 5,
+          "[4,5]|[2,3)|[4,5]": 4,
+          "[4,5]|[3,4)|[1,2)": 6,
+          "[4,5]|[3,4)|[2,3)": 95,
+          "[4,5]|[3,4)|[3,4)": 349,
+          "[4,5]|[3,4)|[4,5]": 610,
+          "[4,5]|[4,5]|[1,2)": 7,
+          "[4,5]|[4,5]|[2,3)": 177,
+          "[4,5]|[4,5]|[3,4)": 670,
+          "[4,5]|[4,5]|[4,5]": 3321
+        },
+        "mean_scores": {
+          "average": 3.4280536540079996,
+          "content": 3.1323155209661886,
+          "expression": 3.7243941799630393,
+          "organization": 3.4274512610947707
+        },
+        "record_count": 38419,
+        "score_band_counts": {
+          "content": {
+            "[1,2)": 2373,
+            "[2,3)": 11771,
+            "[3,4)": 19027,
+            "[4,5]": 5248
+          },
+          "expression": {
+            "[1,2)": 437,
+            "[2,3)": 4415,
+            "[3,4)": 16849,
+            "[4,5]": 16718
+          },
+          "organization": {
+            "[1,2)": 658,
+            "[2,3)": 7063,
+            "[3,4)": 21669,
+            "[4,5]": 9029
+          }
+        },
+        "task_prompt_metadata": {
+          "available_for_all_rows": true,
+          "opaque_group_count": 114
+        }
+      }
+    }
+  },
+  "privacy": "aggregate_only_no_essays_explanations_prompts_source_ids_or_api_keys",
+  "provenance": {
+    "api_source_union_is_train_plus_validation": true,
+    "audit_script_sha256": "bf24bca40f2139843ba295e7fd4b2dbc77f6710758ebd5436d42de2ca61e01ce",
+    "canonical_manifest_sha256": "12222a8df5b41c9d05a3362e97302600e2ccf8b5928baf360baa6a2a04355f53",
+    "cross_population_comparisons": "not_reported_without_a_deterministic_provenance_join",
+    "eval_train_sha256": "b24d2f1fcab24536774606f0f6b198aec647561e72f36cfbfdf7968d5b245737",
+    "eval_validation_sha256": "0805445029328848164cf15f34b90b88fb5f7896d7b73f24f1717b733a9a00a4",
+    "utilization_config_sha256": "a1c0a7605d0261a66eadfe5bd6ac4a57372e0dec11f3ccb056324d01722260f1"
+  },
+  "schema_version": "mal2026-openai-distribution-audit-v1",
+  "status": "completed"
+}

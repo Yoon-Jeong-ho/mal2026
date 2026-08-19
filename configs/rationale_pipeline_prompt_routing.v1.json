@@ -1,0 +1,46 @@
+{
+  "schema_version": "mal2026-rationale-pipeline-prompt-routing-v1",
+  "rationale_generation_training_evaluation": {
+    "source_file": "Rationale_evaluation_training.txt",
+    "source_file_sha256": "830cff37e2462a2a5a82ea614a84fee254aadd900b97c014d5822af73e97c5d0",
+    "derived_from": "evaluation.txt",
+    "derived_from_sha256": "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145",
+    "inputs": [
+      "prompt_text",
+      "essay_text"
+    ],
+    "score_input": false,
+    "output": "three rationale-only axis objects",
+    "score_output": false
+  },
+  "rationale_reward_and_quality_judge": {
+    "source_file": "llm_as_judge.txt",
+    "source_file_sha256": "91cd2f94fa78cc1a07d1bb63a1c5faf07fa25d77d5c60bf6952081c8f047cb6d",
+    "inputs": [
+      "prompt_text",
+      "essay_text",
+      "candidate_predicted_score_and_rationale"
+    ],
+    "score_semantics": "canonical split score projected independently per axis with Decimal ROUND_HALF_UP",
+    "score_in_policy_prompt": false,
+    "score_in_judge_prompt": true,
+    "average_used": false
+  },
+  "rationale_to_score_encoder": {
+    "source_file": "rationale_to_score.txt",
+    "source_file_sha256": "0bec7d13a109522413226a3fc155bc0b3ec5f7838b3de61008f2cb9eacf6e9f2",
+    "inputs": [
+      "prompt_text",
+      "essay_text",
+      "content_rationale",
+      "organization_rationale",
+      "expression_rationale"
+    ],
+    "score_input": false,
+    "regression_train_target": "original finite per-axis decimal score in [1,5]",
+    "regression_evaluation_projection": "clip [1,5], then Decimal ROUND_HALF_UP",
+    "classification_target": "per-axis Decimal ROUND_HALF_UP class in {1,2,3,4,5}",
+    "average_used": false
+  },
+  "cross_role_rule": "Never use the rationale generator prompt as the judge prompt or encoder serialization, and never expose score targets to the rationale policy or encoder input."
+}

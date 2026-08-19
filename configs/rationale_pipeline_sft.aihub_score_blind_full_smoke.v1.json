@@ -1,0 +1,20 @@
+{
+  "schema_version": "mal2026-rationale-pipeline-sft-v1",
+  "run_id": "rationale-pipeline-sft-v1-aihub-score-blind-full-smoke-20260807-001",
+  "stage": "aihub_score_blind_full_smoke",
+  "merged_run_id": null,
+  "initialization_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+  "output_dir": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-aihub-score-blind-full-smoke-20260807-001",
+  "seed": 2026080704,
+  "max_length": 3072,
+  "learning_rate": 0.000005,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.03,
+  "num_train_epochs": 1.0,
+  "per_device_train_batch_size": 1,
+  "gradient_accumulation_steps": 1,
+  "logging_steps": 1,
+  "lora_r": null,
+  "lora_alpha": null,
+  "lora_dropout": null
+}

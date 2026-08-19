@@ -3,6 +3,7 @@
 .omx/
 outputs/
 wandb/
+.research/
 
 # AI-Hub raw downloads and operational logs (large and/or restricted data)
 data/raw/
@@ -25,6 +26,16 @@ __pycache__/
 # Local project environment; dependencies are reproducible from project specs.
 .venv/
 .venv-standard/
+
+# Submission images are built from a local runtime bundle containing model
+# weights.  Keep the reproducible serving code and bundle instructions tracked,
+# but never add the staged checkpoints themselves to Git.
+deployment/runtime_bundle/*
+!deployment/runtime_bundle/README.md
+deployment/runtime_bundle_r0/*
+!deployment/runtime_bundle_r0/README.md
+deployment/runtime_overlay_r0_best_rationale/*
+!deployment/runtime_overlay_r0_best_rationale/README.md
 
 과제기술서_글쓰기 채점 능력 평가.pdf
 Docker Image 제출 규정_글쓰기 채점 능력 평가.pdf

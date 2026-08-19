@@ -19,6 +19,21 @@ reproducible code and documentation for model training and evaluation.
 
 ## Reproducibility
 
+- The default MAL2026 GPU scope is GPUs 0--3, with GPU0 used first for
+  preflight and smoke gates. The current user may explicitly expand a named
+  task card to specified GPUs among 4--7. After that authorization, the lead
+  may perform the minimum read-only availability check needed and use only
+  those named GPUs. Never terminate, displace, or alter a pre-existing process,
+  and never infer its ownership. Record the exact GPU scope and the user's
+  authorization in the run ledger.
+- Follow the two-tier execution authority in
+  [`docs/codex_execution_policy_v2.md`](docs/codex_execution_policy_v2.md)
+  and its MAL2026 implementation in
+  [`docs/omx_codex_research_orchestration.md`](docs/omx_codex_research_orchestration.md).
+  Integration recovery is autonomous within an approved stage; scientific
+  decisions require recorded authorization unless a named experiment plan
+  explicitly preapproves them. Current run state belongs only in append-only
+  ledgers or aggregate experiment records, never in durable policy documents.
 - Treat `docs/aihub_writing_evaluation_data.md`, the preparation scripts in
   `scripts/`, and non-sensitive files in `data/manifests/` as the canonical
   record of the AI-Hub data acquisition and preparation workflow.
@@ -34,15 +49,17 @@ reproducible code and documentation for model training and evaluation.
   Use a custom loop only for a documented framework gap. For decoder batch
   generation/evaluation, use a maintained high-throughput engine such as
   vLLM or SGLang when compatible with the model and evaluation contract.
-- When a clarification would otherwise pause an approved experiment, first
-  obtain a bounded proceed/stop recommendation from a subagent acting as a
-  user proxy. A proceed recommendation authorizes completing the approved
-  experiment stage without another routine question; it never substitutes for
-  explicit consent for destructive actions, external publication, credentials,
-  or use outside the approved resource and data boundaries.
+- Repository-owned long-running Python processes for the vLLM soak and its
+  scheduler must use `setproctitle` with the exact title `(D)_vllm` so server
+  operators can distinguish this workload. Do not install a package for this;
+  use the existing project environment and fail preflight if it is unavailable.
+- Within an approved experiment stage, the lead autonomously completes allowed
+  integration recovery and continues after a passing smoke. Stop only for a
+  boundary or cost issue, destructive action, unapproved external API or new
+  data, or a scientific decision that is not explicitly preapproved.
 
 ## Guidance maintenance
 
-- Keep this file limited to durable, repository-specific rules. Put current
-  run state and results in experiment records, and use
-  `$maintain-research-guidance` when a durable repository convention changes.
+- Keep this file limited to durable, repository-specific rules. Put current run state
+  and results in experiment records; update this file only after a verified durable
+  repository convention changes.

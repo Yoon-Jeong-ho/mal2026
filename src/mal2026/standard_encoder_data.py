@@ -11,10 +11,16 @@ def encoder_input(row: RestrictedRow) -> str:
     return f"[과제]\n{row.prompt}\n[학생 글]\n{row.essay}"
 
 
-def build_encoder_dataset(rows: Sequence[RestrictedRow], tokenizer: Any, max_length: int) -> Any:
+def build_encoder_dataset(
+    rows: Sequence[RestrictedRow], tokenizer: Any, max_length: int,
+    score_fields: Sequence[str] = SCORE_FIELDS,
+) -> Any:
     """Return a lazy Dataset; restricted fields remain only in process memory."""
     if not rows or max_length <= 0:
         raise StandardDecoderContractError("encoder dataset requires nonempty rows and positive max_length")
+    fields = tuple(score_fields)
+    if not fields or len(set(fields)) != len(fields) or not set(fields) <= set(SCORE_FIELDS):
+        raise StandardDecoderContractError("encoder dataset requires unique canonical score fields")
     try:
         import torch
         from torch.utils.data import Dataset
@@ -33,7 +39,7 @@ def build_encoder_dataset(rows: Sequence[RestrictedRow], tokenizer: Any, max_len
             return {
                 "input_ids": ids,
                 "attention_mask": mask,
-                "labels": torch.tensor([rows[index].score[field] for field in SCORE_FIELDS], dtype=torch.float32),
+                "labels": torch.tensor([rows[index].score[field] for field in fields], dtype=torch.float32),
             }
 
     return RestrictedEncoderDataset()

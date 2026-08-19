@@ -1,7 +1,7 @@
 """Model construction for the standard Hugging Face Trainer encoder runs.
 
 The training lifecycle lives in :mod:`standard_encoder_train`; this module only
-constructs a four-target regression model.  It deliberately has no optimizer,
+constructs configurable canonical-score regression models.  It deliberately has no optimizer,
 DDP, or manual training loop.  NV-Embed-v2 remote code is admitted only from a
 reviewed immutable local snapshot and is made offline before Transformers is
 allowed to import it.
@@ -170,9 +170,11 @@ def _validate_targets(model: Any, targets: Sequence[str]) -> None:
     _need(not missing, "configured LoRA target modules are absent: " + ", ".join(missing))
 
 
-def build_encoder_regressor(spec: EncoderModelSpec) -> Any:
+def build_encoder_regressor(spec: EncoderModelSpec, score_fields: Sequence[str] = SCORE_FIELDS) -> Any:
     """Build the PEFT model and regression head for a Hugging Face ``Trainer``."""
     spec.validate()
+    fields = tuple(score_fields)
+    _need(bool(fields) and len(set(fields)) == len(fields) and set(fields) <= set(SCORE_FIELDS), "regressor requires unique canonical score fields")
     local_path = Path(spec.model_path).resolve()
     _need(local_path.is_dir() and not Path(spec.model_path).is_symlink(), "model_path must be an existing local non-symlink snapshot")
     if spec.backbone == "nv_embed_v2":
@@ -207,7 +209,7 @@ def build_encoder_regressor(spec: EncoderModelSpec) -> Any:
         def __init__(self) -> None:
             super().__init__()
             self.backbone = backbone
-            self.regression_head = nn.Linear(hidden, len(SCORE_FIELDS))
+            self.regression_head = nn.Linear(hidden, len(fields))
 
         def forward(self, input_ids: Any, attention_mask: Any, labels: Any | None = None, **_: Any) -> Mapping[str, Any]:
             if spec.pooling == "remote_sentence_embedding":
@@ -219,7 +221,7 @@ def build_encoder_regressor(spec: EncoderModelSpec) -> Any:
             logits = self.regression_head(F.normalize(embedding, p=2, dim=-1).float())
             result: dict[str, Any] = {"logits": logits}
             if labels is not None:
-                _need(tuple(labels.shape[-1:]) == (len(SCORE_FIELDS),), "labels must be [batch, four_scores]")
+                _need(tuple(labels.shape[-1:]) == (len(fields),), "labels shape does not match configured score fields")
                 result["loss"] = F.mse_loss(logits, labels.float(), reduction="mean")
             return result
 

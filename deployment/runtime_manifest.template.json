@@ -1,0 +1,21 @@
+{
+  "schema_version": "mal2026-submission-runtime-v1",
+  "pipeline_kind": "score_blind_rationale_to_qwen_score_reuse_blind",
+  "served_model_name": "mal2026-writing-scorer-v1",
+  "evaluation_path": "evaluation.txt",
+  "evaluation_sha256": "1950b3f837bf390032cd6eb03214e718f972531d442060e3c611bef1da7e1145",
+  "seed": 42,
+  "score": {
+    "backbone_path": "score/backbone",
+    "head_path": "score/score_head.safetensors",
+    "max_length": 2560
+  },
+  "rationale": {
+    "base_path": "rationale/base",
+    "blind_adapter_path": "rationale/adapters/score_blind_v2",
+    "max_model_len": 4096,
+    "gpu_memory_utilization": 0.45,
+    "blind_max_tokens": 512,
+    "final_max_tokens": 0
+  }
+}

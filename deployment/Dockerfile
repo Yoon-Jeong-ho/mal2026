@@ -1,0 +1,22 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG RUNTIME_BUNDLE=runtime_bundle
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_DATASETS_OFFLINE=1 \
+    TOKENIZERS_PARALLELISM=false \
+    VLLM_USE_FLASHINFER_SAMPLER=0 \
+    MAL2026_BUNDLE_ROOT=/opt/mal2026/models \
+    MAL2026_SERVED_MODEL=mal2026-writing-scorer-v1 \
+    PYTHONPATH=/opt/mal2026/models/python:/opt/mal2026/src
+
+WORKDIR /opt/mal2026
+COPY src/ /opt/mal2026/src/
+COPY ${RUNTIME_BUNDLE}/ /opt/mal2026/models/
+
+EXPOSE 8000
+ENTRYPOINT ["python3", "-m", "mal2026_submission.server"]

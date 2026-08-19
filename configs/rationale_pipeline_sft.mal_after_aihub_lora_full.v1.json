@@ -1,0 +1,20 @@
+{
+  "schema_version": "mal2026-rationale-pipeline-sft-v1",
+  "run_id": "rationale-pipeline-sft-v1-mal-after-aihub-lora-full-20260807-001",
+  "stage": "mal_after_aihub_lora_full",
+  "merged_run_id": "rationale-v3-tail-sft-merged-20260807-001",
+  "initialization_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-aihub-score-blind-full-20260807-001/final_model",
+  "output_dir": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-sft-v1/rationale-pipeline-sft-v1-mal-after-aihub-lora-full-20260807-001",
+  "seed": 2026080704,
+  "max_length": 3072,
+  "learning_rate": 0.00002,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.03,
+  "num_train_epochs": 2.0,
+  "per_device_train_batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "logging_steps": 10,
+  "lora_r": 32,
+  "lora_alpha": 64,
+  "lora_dropout": 0.05
+}

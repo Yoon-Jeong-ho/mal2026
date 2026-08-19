@@ -1,0 +1,21 @@
+{
+  "schema_version": "mal2026-rationale-pipeline-joint-decoder-v1",
+  "run_id": "rationale-pipeline-joint-decoder-20260808-001",
+  "model_path": "/dataset/aa007878/mal2026/outputs/model-cache/skt--A.X-4.0-Light-ba21c20ea1b31ded1ec3e2fb432335077dc4be98",
+  "encoder_handoff_path": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-encoder-ratio-handoff-v2/rationale-pipeline-encoder-ratio-handoff-20260808-001/1to1/aggregate.json",
+  "encoder_handoff_sha256": "7fd13203231a736cf4a1e6c9f3a42d626706d90fec922c089ce809b3a9ce2593",
+  "output_dir": "/dataset/aa007878/mal2026/outputs/rationale-pipeline-joint-decoder-v1/rationale-pipeline-joint-decoder-20260808-001",
+  "seed": 2026080708,
+  "max_length": 3072,
+  "learning_rate": 0.00002,
+  "weight_decay": 0.01,
+  "warmup_ratio": 0.03,
+  "num_train_epochs": 2.0,
+  "per_device_train_batch_size": 2,
+  "gradient_accumulation_steps": 8,
+  "lora_r": 32,
+  "lora_alpha": 64,
+  "lora_dropout": 0.05,
+  "gpu_scope": [0, 1, 2, 3],
+  "user_authorization": "2026-08-08: user explicitly authorized GPUs 0-3 and the final rationale plus score decoder comparison."
+}

@@ -31,6 +31,7 @@ from .official_rationale_rl import (
 
 PYTHON = ROOT / ".venv-standard/bin/python"
 VLLM = ROOT / ".venv-standard/bin/vllm"
+VLLM_WRAPPER = ROOT / "scripts/run_named_vllm.py"
 LLAMA_SERVER = ROOT / "outputs/runtime-cache/qwen36-judge-pre-sft-20260719-001/build-cuda/bin/llama-server"
 LLAMA_REPO = ROOT / "outputs/runtime-cache/qwen36-judge-pre-sft-20260719-001/llama.cpp"
 Q4_MODEL = ROOT / "outputs/model-cache/Qwen--Qwen3.6-35B-A3B-GGUF-5c2410d71524f4f72b023ce8daf7a80528226d5f/Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf"
@@ -86,7 +87,7 @@ def assert_ports_free(ports: Sequence[int]) -> None:
 
 
 def verify_policy_prerequisites() -> None:
-    need(PYTHON.is_file() and VLLM.is_file() and MODEL_PATH.is_dir(), "vLLM/model prerequisite is unavailable")
+    need(PYTHON.is_file() and VLLM.is_file() and VLLM_WRAPPER.is_file() and MODEL_PATH.is_dir(), "vLLM/model prerequisite is unavailable")
     need(importlib.metadata.version("vllm") == VLLM_VERSION, "vLLM version differs")
 
 
@@ -122,7 +123,19 @@ class OwnedProcesses:
                     process.poll()
                     need(process.returncode is not None, "refusing to stop a process without current-run ownership proof")
                     continue
-                need(f"MAL2026_OFFICIAL_RL_SERVER_TOKEN={self.token}".encode() in environment.read_bytes().split(b"\0"), "refusing to stop a process without current-run ownership proof")
+                values = environment.read_bytes().split(b"\0")
+                token_proof = f"MAL2026_OFFICIAL_RL_SERVER_TOKEN={self.token}".encode() in values
+                # setproctitle may reuse and blank the original argv/environ
+                # memory.  In that case the still-live Popen object, its fresh
+                # session/PGID, and the exact repo wrapper argv are the
+                # ownership proof; no pre-existing PID is ever adopted.
+                wrapper_proof = (
+                    os.getpgid(process.pid) == process.pid
+                    and isinstance(process.args, list)
+                    and str(VLLM_WRAPPER) in process.args
+                    and "mal2026:vllm:official-rl-policy" in process.args
+                )
+                need(token_proof or wrapper_proof, "refusing to stop a process without current-run ownership proof")
                 os.killpg(process.pid, signal.SIGTERM)
         for process, _ in self.items:
             if process.poll() is None:
@@ -130,7 +143,14 @@ class OwnedProcesses:
                     process.wait(timeout=90)
                 except subprocess.TimeoutExpired:
                     environment = Path(f"/proc/{process.pid}/environ")
-                    need(environment.is_file() and f"MAL2026_OFFICIAL_RL_SERVER_TOKEN={self.token}".encode() in environment.read_bytes().split(b"\0"), "refusing forced stop without ownership proof")
+                    token_proof = environment.is_file() and f"MAL2026_OFFICIAL_RL_SERVER_TOKEN={self.token}".encode() in environment.read_bytes().split(b"\0")
+                    wrapper_proof = (
+                        os.getpgid(process.pid) == process.pid
+                        and isinstance(process.args, list)
+                        and str(VLLM_WRAPPER) in process.args
+                        and "mal2026:vllm:official-rl-policy" in process.args
+                    )
+                    need(token_proof or wrapper_proof, "refusing forced stop without ownership proof")
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait(timeout=30)
         for _, handle in self.items:
@@ -156,7 +176,8 @@ def vllm_policy_command(
     model_path: Path = MODEL_PATH, model_id: str = MODEL_ID,
 ) -> list[str]:
     command = [
-        str(VLLM), "serve", str(model_path), "--served-model-name", model_id,
+        str(PYTHON), str(VLLM_WRAPPER), "mal2026:vllm:official-rl-policy",
+        "serve", str(model_path), "--served-model-name", model_id,
         "--host", "127.0.0.1", "--port", str(port),
         "--tensor-parallel-size", str(len(tuple(gpus))), "--attention-backend", "FLASH_ATTN",
         "--max-model-len", str(max_model_len), "--max-num-seqs", str(max_num_seqs),
@@ -219,6 +240,16 @@ def vllm_policy_server(
                                    dynamic_updates=dynamic_updates, max_model_len=max_model_len,
                                    model_path=model_path, model_id=model_id)
     visible = ",".join(str(gpu) for gpu in chosen)
+    cache_root = ROOT / "outputs/runtime-cache/vllm-shared"
+    cache_paths = {
+        "VLLM_CACHE_ROOT": cache_root / "vllm",
+        "TORCHINDUCTOR_CACHE_DIR": cache_root / "torchinductor",
+        "TRITON_CACHE_DIR": cache_root / "triton",
+        "XDG_CACHE_HOME": cache_root / "xdg",
+        "TMPDIR": cache_root / "tmp",
+    }
+    for path in cache_paths.values():
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
     environment = {
         **os.environ,
         "CUDA_VISIBLE_DEVICES": visible,
@@ -228,14 +259,22 @@ def vllm_policy_server(
         "TRANSFORMERS_OFFLINE": "1",
         "VLLM_USE_FLASHINFER_SAMPLER": "0",
         "VLLM_ALLOW_RUNTIME_LORA_UPDATING": "1" if dynamic_updates else "0",
+        "VLLM_PROCESS_NAME_PREFIX": "mal2026:official-rl-policy",
+        **{key: str(path.resolve()) for key, path in cache_paths.items()},
     }
     handle = log.open("x", encoding="utf-8")
     process = subprocess.Popen(command, cwd=ROOT, env=environment, stdout=handle, stderr=subprocess.STDOUT, text=True, start_new_session=True)
     owner.add(process, handle)
     try:
         wait_health(process, endpoint, label)
-        process_environment = Path(f"/proc/{process.pid}/environ").read_bytes().split(b"\0")
-        need(f"CUDA_VISIBLE_DEVICES={visible}".encode() in process_environment and f"MAL2026_OFFICIAL_RL_SERVER_TOKEN={token}".encode() in process_environment, "policy server environment differs")
+        process_title = Path(f"/proc/{process.pid}/cmdline").read_bytes().replace(b"\0", b" ")
+        need(
+            os.getpgid(process.pid) == process.pid
+            and b"mal2026:vllm:official-rl-policy" in process_title
+            and isinstance(process.args, list)
+            and str(VLLM_WRAPPER) in process.args,
+            "policy server owned-wrapper identity differs",
+        )
         atomic_json(attestation, {
             "schema_version": "mal2026-official-rl-policy-server-attestation-v1",
             "created_at": now(), "endpoint": endpoint, "physical_gpus": list(chosen),
@@ -253,6 +292,8 @@ def vllm_policy_server(
             "train_split_only": data_split == "train",
             "judge_prompt_sha256": JUDGE_PROMPT_SHA256,
             "server_pid": process.pid, "server_process_environment_verified": True,
+            "server_process_verification": "fresh_owned_popen_plus_process_group_plus_repo_setproctitle_wrapper; launch environment bound before exec",
+            "dataset_backed_cache_paths": {key: str(path.resolve()) for key, path in cache_paths.items()},
         })
         yield endpoint, attestation
     finally:
