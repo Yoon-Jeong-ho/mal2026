@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mal2026-human-validation",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-30",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAEGZYgiOAtLiEwPL",
+    "TURNSTILE_HOSTNAME": "mal2026-human-validation.yoon300days.workers.dev"
+  },
+  "assets": {
+    "directory": "../web",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*",
+      "/healthz"
+    ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mal2026-human-validation",
+      "database_id": "dca817ac-ccea-4581-a080-818a100aaa77"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "LOGIN_RATE",
+      "namespace_id": "2026080501",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
+    },
+    {
+      "name": "LOGIN_GLOBAL_RATE",
+      "namespace_id": "2026080502",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    },
+    {
+      "name": "API_RATE",
+      "namespace_id": "2026080503",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
+}

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.mal2026.humaneval</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-s</string>
+    <string>REPLACE_WITH_ABSOLUTE_PYTHON312_PATH</string>
+    <string>REPLACE_WITH_ABSOLUTE_REPOSITORY_PATH/humaneval/run.py</string>
+    <string>--auth-config</string>
+    <string>REPLACE_WITH_ABSOLUTE_REPOSITORY_PATH/outputs/humaneval/auth.json</string>
+    <string>--public-origin</string>
+    <string>https://human-eval.example.com</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>REPLACE_WITH_ABSOLUTE_REPOSITORY_PATH</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+    <key>PYTHONDONTWRITEBYTECODE</key>
+    <string>1</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>REPLACE_WITH_ABSOLUTE_REPOSITORY_PATH/outputs/humaneval/service.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>REPLACE_WITH_ABSOLUTE_REPOSITORY_PATH/outputs/humaneval/service.stderr.log</string>
+</dict>
+</plist>

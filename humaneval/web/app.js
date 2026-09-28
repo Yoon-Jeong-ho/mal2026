@@ -7,6 +7,11 @@ const SCORE_REASON_PLACEHOLDERS = {
   expression: "문장, 어휘, 맞춤법과 가독성을 어떻게 판단했는지 적어 주세요",
 };
 let state = null;
+let selectedName = null;
+let securityConfigLoaded = false;
+let turnstileSiteKey = null;
+let turnstileWidgetId = null;
+let turnstileToken = "";
 
 const $ = (selector) => document.querySelector(selector);
 const el = (tag, className, text) => {
@@ -17,9 +22,13 @@ const el = (tag, className, text) => {
 };
 
 async function api(path, options = {}) {
+  const headers = options.body ? { "Content-Type": "application/json" } : {};
+  if (state?.csrf_token && path !== "/api/login") {
+    headers["X-CSRF-Token"] = state.csrf_token;
+  }
   const response = await fetch(path, {
     method: options.method || "GET",
-    headers: options.body ? { "Content-Type": "application/json" } : {},
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined,
     credentials: "same-origin",
   });
@@ -41,8 +50,69 @@ function setBusy(form, busy) {
   form.querySelectorAll("button, input, textarea").forEach((node) => { node.disabled = busy; });
 }
 
+function updateLoginButton() {
+  const submit = $("#login-submit");
+  const challengePending = Boolean(turnstileSiteKey && !turnstileToken);
+  submit.disabled = !securityConfigLoaded || !selectedName || challengePending;
+  if (!securityConfigLoaded) submit.textContent = "보안 설정 확인 중";
+  else if (!selectedName) submit.textContent = "이름을 선택해 주세요";
+  else if (challengePending) submit.textContent = "보안 확인을 완료해 주세요";
+  else submit.textContent = `${selectedName} 평가자로 입장하기`;
+}
+
+function resetTurnstile() {
+  turnstileToken = "";
+  if (turnstileWidgetId !== null && window.turnstile) window.turnstile.reset(turnstileWidgetId);
+  updateLoginButton();
+}
+
+function loadTurnstileScript() {
+  if (window.turnstile) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+    script.async = true;
+    script.defer = true;
+    script.addEventListener("load", resolve, { once: true });
+    script.addEventListener("error", () => reject(new Error("보안 확인을 불러오지 못했습니다.")), { once: true });
+    document.head.append(script);
+  });
+}
+
+async function configureLoginSecurity() {
+  try {
+    const config = await api("/api/config");
+    turnstileSiteKey = typeof config.turnstile_site_key === "string" ? config.turnstile_site_key : null;
+    if (turnstileSiteKey) {
+      await loadTurnstileScript();
+      const container = $("#turnstile-container");
+      container.classList.remove("hidden");
+      turnstileWidgetId = window.turnstile.render(container, {
+        sitekey: turnstileSiteKey,
+        action: "login",
+        appearance: "interaction-only",
+        callback: (token) => { turnstileToken = token; updateLoginButton(); },
+        "expired-callback": resetTurnstile,
+        "error-callback": resetTurnstile,
+      });
+    }
+    securityConfigLoaded = true;
+  } catch (error) {
+    toast(error.message || "로그인 보안 설정을 확인하지 못했습니다.");
+  }
+  updateLoginButton();
+}
+
 function showLogin() {
   state = null;
+  selectedName = null;
+  document.querySelectorAll(".name-button").forEach((button) => {
+    button.classList.remove("selected");
+    button.setAttribute("aria-pressed", "false");
+  });
+  $("#access-password").value = "";
+  if (turnstileSiteKey) resetTurnstile();
+  else updateLoginButton();
   $("#login-view").classList.remove("hidden");
   $("#study-view").classList.add("hidden");
   $("#user-area").classList.add("hidden");
@@ -190,21 +260,52 @@ function render(nextState, { scroll = true } = {}) {
   if (scroll) $("#item-view").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function login(name) {
-  try {
-    render(await api("/api/login", { method: "POST", body: { name } }), { scroll: false });
-  } catch (error) { toast(error.message); }
-}
-
 function buildLogin() {
   const grid = $("#name-grid");
   USERS.forEach((name) => {
     const button = el("button", "name-button", name);
     button.type = "button";
-    button.addEventListener("click", () => login(name));
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => {
+      selectedName = name;
+      grid.querySelectorAll(".name-button").forEach((candidate) => {
+        const selected = candidate === button;
+        candidate.classList.toggle("selected", selected);
+        candidate.setAttribute("aria-pressed", String(selected));
+      });
+      updateLoginButton();
+      $("#access-password").focus();
+    });
     grid.append(button);
   });
 }
+
+$("#login-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!selectedName) { toast("평가자 이름을 선택해 주세요."); return; }
+  const password = $("#access-password").value;
+  if (password.length < 6) {
+    toast("공통 비밀번호를 6자 이상 입력해 주세요.");
+    return;
+  }
+  const form = event.currentTarget;
+  setBusy(form, true);
+  try {
+    const next = await api("/api/login", {
+      method: "POST",
+      body: { name: selectedName, password, turnstile_token: turnstileToken },
+    });
+    $("#access-password").value = "";
+    render(next, { scroll: false });
+  } catch (error) {
+    $("#access-password").value = "";
+    if (turnstileSiteKey) resetTurnstile();
+    toast(error.message);
+  } finally {
+    setBusy(form, false);
+    updateLoginButton();
+  }
+});
 
 $("#score-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -258,6 +359,7 @@ $("#logout").addEventListener("click", async () => {
 
 async function bootstrap() {
   buildLogin();
+  await configureLoginSecurity();
   try { render(await api("/api/state"), { scroll: false }); }
   catch (_) { showLogin(); }
 }

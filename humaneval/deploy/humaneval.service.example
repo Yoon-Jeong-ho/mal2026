@@ -1,0 +1,24 @@
+[Unit]
+Description=MAL2026 authenticated human validation service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=REPLACE_WITH_SERVICE_USER
+Group=REPLACE_WITH_SERVICE_GROUP
+WorkingDirectory=/srv/mal2026
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /srv/mal2026/humaneval/run.py --auth-config /srv/mal2026/outputs/humaneval/auth.json --public-origin https://human-eval.example.com
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/mal2026/outputs/humaneval
+
+[Install]
+WantedBy=multi-user.target

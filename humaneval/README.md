@@ -1,9 +1,12 @@
-# Human score and rationale validation app
+# Authenticated human score and rationale validation app
 
-This local application supports a fixed, source-blind review of 20 writings
+This application supports a fixed, source-blind review of 20 writings
 from the restricted `eval/train.jsonl` and `eval/validation.jsonl` inputs.
-Writing text, prompts, and rationales are read at runtime and are never copied
-into tracked files or the response database.
+Writing text, prompts, and rationales are never copied into tracked files.
+The Python app reads them at runtime and excludes them from its response SQLite
+database. The separate Cloudflare implementation stores the selected study
+content in its access-controlled D1 database; see [its runbook](cloudflare/README.md). Remote access uses one shared
+entrance password; reviewers select their own name after entering the site.
 
 ## Folder layout
 
@@ -12,9 +15,12 @@ Everything needed to maintain the interface is isolated here:
 ```text
 humaneval/
 ├── README.md          # operations, privacy, and study contract
+├── auth.py            # password hashing and ignored auth configuration
 ├── run.py             # preflight, launch, and export CLI
 ├── core.py            # selection, input validation, and SQLite persistence
-├── server.py          # dependency-free local HTTP server
+├── server.py          # authenticated dependency-free HTTP server
+├── deploy/            # tunnel and service examples; contains no secrets
+├── cloudflare/        # alternative Worker/D1 backend and export utilities
 ├── web/               # browser UI
 ├── tests/             # synthetic tests only
 └── records/           # aggregate, non-sensitive protocol records
@@ -68,19 +74,52 @@ dependency.
 
 ```bash
 python humaneval/run.py --dry-run
-python humaneval/run.py
 ```
 
-The default listener is `127.0.0.1:8765`. For a remote reviewer, prefer an SSH
-port forward rather than a public bind because the pages contain restricted
-writing text:
+Before the first launch, create the ignored authentication file interactively:
 
 ```bash
-ssh -L 8765:127.0.0.1:8765 USER@SERVER
+python humaneval/run.py --generate-auth-config
 ```
 
-Then open `http://127.0.0.1:8765`. Progress resumes from the first incomplete
-phase after selecting the same reviewer name, including after a server restart.
+The command prompts, without terminal echo, for one shared entrance password
+of at least 6 characters, entered twice.
+
+It writes only salted scrypt hashes to the ignored, owner-readable file
+`outputs/humaneval/auth.json`. The plaintext password is not written to disk or
+passed as a command-line argument. Give each reviewer the public URL and the
+shared password, and ask each person to select their own name.
+
+For a loopback-only browser smoke test:
+
+```bash
+python humaneval/run.py --insecure-local-http
+```
+
+Open `http://127.0.0.1:8765`. Never attach an Internet tunnel while using this
+explicit insecure mode. For the remote HTTPS deployment:
+
+```bash
+python humaneval/run.py \
+  --public-origin https://human-eval.example.com
+```
+
+Replace the example origin with the exact tunnel hostname. The listener stays
+on `127.0.0.1:8765`; the application refuses a non-loopback bind. See
+`humaneval/deploy/README.md` for the Cloudflare Tunnel and service setup.
+
+To rotate the shared password, stop the app and explicitly replace the
+authentication hash file:
+
+```bash
+python humaneval/run.py \
+  --generate-auth-config \
+  --replace-auth-config
+```
+
+Restarting after rotation invalidates all in-memory sessions but does not alter
+saved evaluation responses. Progress resumes from the first incomplete phase
+after the same reviewer authenticates again.
 
 To use a later selected model rationale run:
 
@@ -115,12 +154,26 @@ in one database.
 
 ## Network and Mac deployment boundary
 
-The reviewer name selector is not authentication. Keep the default loopback
-listener unless access is protected by SSH or another approved private network.
-Do not expose the app through public router forwarding.
+The shared password gates every endpoint that returns study content or saves a
+response. Sessions expire after 12 hours, mutation requests
+require a per-session CSRF token, and five failed logins from one client block
+new attempts for 15 minutes. The public login page and reviewer names are not
+secret. A shared password cannot identify who disclosed it, so rotate it
+immediately if it is forwarded beyond the four reviewers.
+
+Keep the application listener on loopback and use an outbound HTTPS tunnel; do
+not expose port 8765 or configure public router forwarding. The public hostname
+must use HTTPS because the production session cookie is `Secure`, `HttpOnly`,
+and `SameSite=Strict`.
 
 A Git checkout on a Mac contains only code and aggregate documentation, not the
 restricted inputs. Moving even the selected 20 writings and rationales to a Mac
 requires explicit data-transfer authorization and an approved secure transfer
 method. Prefer a minimal study bundle over copying complete evaluation files;
 never add that bundle or Mac response databases to Git.
+
+Authentication limits who can load the data but does not prevent an authorized
+reviewer from taking a screenshot or copying visible text. Because reviewers
+share one password, it also does not prevent someone from choosing another
+reviewer's name. Reviewer instructions
+and data-handling authorization remain part of the study's operational boundary.

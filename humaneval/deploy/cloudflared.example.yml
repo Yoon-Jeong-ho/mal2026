@@ -1,0 +1,13 @@
+# Copy to a protected host configuration path and replace placeholders.
+# Never commit the tunnel credentials JSON.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  - hostname: human-eval.example.com
+    service: http://127.0.0.1:8765
+    originRequest:
+      connectTimeout: 10s
+      noHappyEyeballs: false
+  - service: http_status:404
+

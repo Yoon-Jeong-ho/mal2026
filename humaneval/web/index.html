@@ -16,7 +16,7 @@
       </a>
       <div id="user-area" class="user-area hidden">
         <span id="user-name"></span>
-        <button id="logout" class="text-button" type="button">이름 바꾸기</button>
+        <button id="logout" class="text-button" type="button">로그아웃</button>
       </div>
     </header>
 
@@ -29,9 +29,19 @@
         </div>
         <div class="login-card card">
           <div class="step-number">시작하기</div>
-          <h2>이름을 선택해 주세요</h2>
-          <p class="muted">응답은 이름별로 따로 안전하게 저장됩니다.</p>
-          <div id="name-grid" class="name-grid" role="group" aria-label="평가자 이름"></div>
+          <h2>평가자로 로그인해 주세요</h2>
+          <p class="muted">본인 이름을 선택하고 전달받은 공통 비밀번호를 입력해 주세요.</p>
+          <form id="login-form">
+            <div id="name-grid" class="name-grid" role="group" aria-label="평가자 이름"></div>
+            <div class="login-fields">
+              <label class="login-field" for="access-password">
+                <span>공통 입장 비밀번호</span>
+                <input id="access-password" name="password" type="password" required autocomplete="current-password" minlength="6" maxlength="256">
+              </label>
+            </div>
+            <div id="turnstile-container" class="turnstile-slot hidden" aria-label="자동 접속 보안 확인"></div>
+            <button id="login-submit" class="primary-button login-submit" type="submit" disabled>이름을 선택해 주세요</button>
+          </form>
         </div>
       </section>
 

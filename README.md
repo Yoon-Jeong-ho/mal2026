@@ -11,9 +11,10 @@ RLAIF/GRPO continuation uses maintained TRL `GRPOTrainer`, a local vLLM policy
 rollout server, and a local Qwen judge; its reproducibility record is
 `docs/experiment_records/rlaif_grpo_prompt_ensemble_v8_20260722_022.md`.
 
-The local four-reviewer score/rationale validation page is documented in
-`humaneval/README.md`. Its restricted inputs and reviewer responses
-remain in ignored local paths.
+The four-reviewer score/rationale validation page, including its shared
+password and loopback-only HTTPS tunnel deployment contract, is
+documented in `humaneval/README.md`. Its credentials, restricted inputs, and
+reviewer responses remain in ignored local paths.
 
 ## Train-OOF tail refinement (20 rounds, fail-closed)
 
