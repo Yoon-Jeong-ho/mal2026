@@ -10,4 +10,3 @@ ingress:
       connectTimeout: 10s
       noHappyEyeballs: false
   - service: http_status:404
-
